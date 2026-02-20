@@ -1,0 +1,30 @@
+2026/01/22-14:51:11.543 7ad8 Reusing MANIFEST D:\projects\designhub-main\backend\whatsapp\whatsapp_session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/01/22-14:51:11.544 7ad8 Recovering log #1763
+2026/01/22-14:51:11.567 7ad8 Reusing old log D:\projects\designhub-main\backend\whatsapp\whatsapp_session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/001763.log 
+2026/01/22-14:51:11.568 7ad8 Delete type=2 #1760
+2026/01/22-14:51:11.568 7ad8 Delete type=2 #1761
+2026/01/22-14:51:11.568 7ad8 Delete type=2 #1762
+2026/01/22-14:51:11.568 7ad8 Delete type=2 #1764
+2026/01/22-14:51:13.048 286c Level-0 table #1771: started
+2026/01/22-14:51:13.057 286c Level-0 table #1771: 540544 bytes OK
+2026/01/22-14:51:13.060 286c Delete type=0 #1763
+2026/01/22-14:51:13.060 7ad8 Manual compaction at level-0 from ' \x15\x02\x00\x00\x00' @ 72057594037927935 : 1 .. ' \x16\x02\x00\x00\x00' @ 0 : 0; will stop at ' \x15\x02\x00\x00\x05' @ 3994996 : 1
+2026/01/22-14:51:13.060 7ad8 Compacting 1@0 + 4@1 files
+2026/01/22-14:51:13.127 7ad8 Generated table #1772@0: 230008 keys, 2415444 bytes
+2026/01/22-14:51:13.156 7ad8 Generated table #1773@0: 41706 keys, 2204911 bytes
+2026/01/22-14:51:13.181 7ad8 Generated table #1774@0: 32356 keys, 2190877 bytes
+2026/01/22-14:51:13.192 7ad8 Generated table #1775@0: 21948 keys, 474827 bytes
+2026/01/22-14:51:13.192 7ad8 Compacted 1@0 + 4@1 files => 7286059 bytes
+2026/01/22-14:51:13.194 7ad8 compacted to: files[ 0 4 1 0 0 0 0 ]
+2026/01/22-14:51:13.195 7ad8 Delete type=2 #1771
+2026/01/22-14:51:13.195 7ad8 Manual compaction at level-0 from ' \x15\x02\x00\x00\x05' @ 3994996 : 1 .. ' \x16\x02\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/01/22-14:51:15.977 7ad8 Compacting 1@1 + 1@2 files
+2026/01/22-14:51:16.010 7ad8 Generated table #1776@1: 19066 keys, 701806 bytes
+2026/01/22-14:51:16.010 7ad8 Compacted 1@1 + 1@2 files => 701806 bytes
+2026/01/22-14:51:16.011 7ad8 compacted to: files[ 0 3 1 0 0 0 0 ]
+2026/01/22-14:51:16.012 7ad8 Delete type=2 #1348
+2026/01/22-14:51:16.012 7ad8 Delete type=2 #1765
+2026/01/22-14:51:16.012 7ad8 Delete type=2 #1766
+2026/01/22-14:51:16.012 7ad8 Delete type=2 #1767
+2026/01/22-14:51:16.012 7ad8 Delete type=2 #1768
+2026/01/22-14:51:16.012 7ad8 Delete type=2 #1772

@@ -1,0 +1,391 @@
+import { Task, TaskStatus } from '@/types';
+import { Button } from '@/components/ui/button';
+import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight, CheckCircle2, AlertTriangle, Tag, Share2, MessageCircle, Mail, Copy, Check } from 'lucide-react';
+import { format, formatDistanceToNow, isPast } from 'date-fns';
+import { cn } from '@/lib/utils';
+import { Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { AnimatedCard } from '@/components/ui/animated-card';
+import { useEffect, useRef, useState } from 'react';
+
+interface TaskCardProps {
+  task: Task;
+  showRequester?: boolean;
+  showAssignee?: boolean;
+  showAssignDesignerButton?: boolean;
+  onAssignDesigner?: () => void;
+}
+
+type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
+const statusConfig: Record<DisplayTaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
+  pending: { label: 'Pending', variant: 'pending' },
+  assigned: { label: 'Assigned', variant: 'pending' },
+  accepted: { label: 'Accepted', variant: 'progress' },
+  in_progress: { label: 'In Progress', variant: 'progress' },
+  clarification_required: { label: 'Clarification Required', variant: 'clarification' },
+  under_review: { label: 'Under Review', variant: 'review' },
+  completed: { label: 'Completed', variant: 'completed' },
+};
+const normalizeTaskStatus = (value?: string): DisplayTaskStatus => {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'assigned') return 'assigned';
+  if (normalized === 'accepted') return 'accepted';
+  if (normalized === 'in_progress') return 'in_progress';
+  if (normalized === 'clarification' || normalized === 'clarification_required') {
+    return 'clarification_required';
+  }
+  if (normalized === 'under_review') return 'under_review';
+  if (normalized === 'completed') return 'completed';
+  return 'pending';
+};
+
+const categoryLabels: Record<string, string> = {
+  banner: 'Banner',
+  campaign_or_others: 'Campaign or others',
+  social_media_creative: 'Social Media Creative',
+  website_assets: 'Website Assets',
+  ui_ux: 'UI/UX',
+  led_backdrop: 'LED Backdrop',
+  brochure: 'Brochure',
+  flyer: 'Flyer',
+};
+
+const truncateChipText = (value: string, maxChars: number) =>
+  value.length > maxChars ? `${value.slice(0, maxChars - 1)}…` : value;
+
+export function TaskCard({
+  task,
+  showRequester = true,
+  showAssignee = false,
+  showAssignDesignerButton = false,
+  onAssignDesigner,
+}: TaskCardProps) {
+  const { user } = useAuth();
+  const [copied, setCopied] = useState(false);
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const taskId = task.id || (task as unknown as { _id?: string })._id || '';
+  const taskUrl =
+    typeof window !== 'undefined' && taskId
+      ? `${window.location.origin}/task/${taskId}`
+      : '';
+  const taskShareText = `DesignDesk task: ${task.title}${taskId ? ` (ID: ${taskId})` : ''}`;
+  const displayTaskId = taskId || 'N/A';
+  const normalizedStatus = normalizeTaskStatus(task.status);
+  const status = statusConfig[normalizedStatus];
+  const categoryLabel = categoryLabels[task.category] || 'Design';
+  const categoryChipLabel = truncateChipText(categoryLabel, 16);
+  const chipBase =
+    'inline-flex items-center gap-1.5 rounded-full border border-[#C9D7FF] bg-[#F5F8FF] dark:bg-muted dark:border-border px-2.5 py-1 text-[11px] font-medium text-[#2F3A56] dark:text-foreground min-w-0 max-w-full leading-none';
+  const chipLabel = 'min-w-0 max-w-[9.5rem] truncate';
+  const chipCount =
+    'ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-[#C9D7FF] bg-white dark:bg-card dark:border-border px-1 text-[10px] font-semibold text-[#2F3A56] dark:text-foreground shrink-0';
+  const chipIcon = 'h-3.5 w-3.5 shrink-0';
+  const renderChip = (
+    Icon: typeof CheckCircle2,
+    label: string,
+    count = 0,
+    options?: { className?: string; title?: string }
+  ) => (
+    <span className={cn(chipBase, options?.className)} title={options?.title || label}>
+      <Icon className={chipIcon} />
+      <span className={chipLabel}>{label}</span>
+      <span className={chipCount}>{count}</span>
+    </span>
+  );
+  const isOverdue = isPast(task.deadline) && normalizedStatus !== 'completed';
+  const deadlineText = isPast(task.deadline)
+    ? `${formatDistanceToNow(task.deadline)} overdue`
+    : `Due ${formatDistanceToNow(task.deadline, { addSuffix: true })}`;
+  const emergencyStatus = task.emergencyApprovalStatus;
+  const emergencyLabel =
+    emergencyStatus === 'approved'
+      ? 'Emergency Approved'
+      : emergencyStatus === 'rejected'
+        ? 'Emergency Rejected'
+        : 'Emergency Pending';
+  const emergencyVariant =
+    emergencyStatus === 'approved'
+      ? 'completed'
+      : emergencyStatus === 'rejected'
+        ? 'destructive'
+        : 'urgent';
+
+  const assignedToId =
+    (task as { assignedTo?: string; assignedToId?: string }).assignedTo ||
+    (task as { assignedToId?: string }).assignedToId;
+  const assignedToName = (task.assignedToName || '').trim();
+  const hasAssignedDesigner = Boolean(assignedToName || assignedToId);
+  const assignedDesignerLabel = assignedToName || 'Designer';
+  const normalizedAssignedName = assignedToName.toLowerCase();
+  const normalizedUserName = user?.name?.trim().toLowerCase() || '';
+  const normalizedUserEmail = user?.email?.trim().toLowerCase() || '';
+  const emailPrefix = normalizedUserEmail.split('@')[0];
+  const nameMatches =
+    normalizedAssignedName &&
+    normalizedUserName &&
+    (normalizedAssignedName === normalizedUserName ||
+      normalizedAssignedName.includes(normalizedUserName) ||
+      normalizedUserName.includes(normalizedAssignedName));
+  const emailMatches =
+    normalizedAssignedName && emailPrefix && normalizedAssignedName.includes(emailPrefix);
+  const isAssignedToUser =
+    Boolean(user) && (assignedToId === user?.id || nameMatches || emailMatches);
+  const viewedKey =
+    user && taskId ? `designhub.task.viewed.${user.id}.${taskId}` : '';
+  const hasViewed =
+    typeof window !== 'undefined' && viewedKey
+      ? localStorage.getItem(viewedKey) === 'true'
+      : false;
+  const isHighlighted = Boolean(user) && !hasViewed;
+  const hasAssignAction = Boolean(showAssignDesignerButton && onAssignDesigner);
+
+  const copyToClipboard = async (value: string) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      if (typeof document === 'undefined') return;
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current) {
+        clearTimeout(copyResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleNativeShare = async () => {
+    if (!taskUrl) return;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: task.title,
+          text: taskShareText,
+          url: taskUrl
+        });
+        return;
+      } catch {
+        // Ignore user-cancelled share.
+      }
+    }
+    await copyToClipboard(taskUrl);
+  };
+
+  const handleWhatsAppShare = () => {
+    if (!taskUrl) return;
+    const shareUrl = `https://wa.me/?text=${encodeURIComponent(`${taskShareText} ${taskUrl}`)}`;
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleEmailShare = () => {
+    if (!taskUrl) return;
+    const subject = encodeURIComponent(`DesignDesk Task: ${task.title}`);
+    const body = encodeURIComponent(`${taskShareText}\n${taskUrl}`);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  };
+
+  return (
+    <AnimatedCard
+      containerClassName={cn(
+        'h-full transition-all duration-300 dark:transition-none',
+        isHighlighted && 'ring-1 ring-[#D9E6FF] dark:ring-border'
+      )}
+      className="p-6 h-full flex flex-col"
+    >
+      <div className="mb-4 flex flex-wrap items-start gap-2">
+        {renderChip(CheckCircle2, status.label, 0, {
+          className: 'max-w-[calc(50%-0.25rem)]',
+        })}
+        {renderChip(Tag, categoryChipLabel, 0, {
+          className: 'max-w-[calc(50%-0.25rem)]',
+          title: categoryLabel,
+        })}
+        {task.urgency === 'urgent' && renderChip(AlertTriangle, 'Urgent')}
+        {task.approvalStatus === 'pending' && renderChip(Clock, 'Awaiting Approval')}
+        {(task.isEmergency || emergencyStatus) && renderChip(AlertTriangle, emergencyLabel)}
+      </div>
+
+      <div className="space-y-3 mb-6">
+        <h3 className="text-lg font-bold text-slate-900 dark:text-foreground dark:transition-none transition-colors tracking-tight line-clamp-2">
+          {task.title}
+        </h3>
+        <p className="text-sm text-slate-500 dark:text-muted-foreground line-clamp-2 leading-relaxed">
+          {task.description}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-muted-foreground">
+          <span className="uppercase tracking-[0.2em] text-[10px] text-slate-400 dark:text-muted-foreground">Task ID</span>
+          <span
+            className="font-mono text-[12px] font-semibold text-slate-700 dark:text-foreground max-w-[180px] truncate"
+            title={displayTaskId}
+          >
+            {displayTaskId}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleNativeShare}
+            className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+            title="Share"
+            aria-label="Share task"
+          >
+            <Share2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleWhatsAppShare}
+            className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+            title="Share via WhatsApp"
+            aria-label="Share via WhatsApp"
+          >
+            <MessageCircle className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleEmailShare}
+            className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+            title="Share via Email"
+            aria-label="Share via Email"
+          >
+            <Mail className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              await copyToClipboard(taskUrl);
+              setCopied(true);
+              if (copyResetTimerRef.current) {
+                clearTimeout(copyResetTimerRef.current);
+              }
+              copyResetTimerRef.current = setTimeout(() => {
+                setCopied(false);
+              }, 1200);
+            }}
+            data-success={copied}
+            className={cn(
+              "icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white dark:bg-muted dark:border-border text-slate-400 dark:text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none",
+              copied && "border-primary/50 text-primary bg-primary/10 dark:border-primary/50 dark:bg-primary/20 dark:text-primary"
+            )}
+            title={copied ? "Copied" : "Copy link"}
+            aria-label="Copy task link"
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 mb-6 text-xs text-slate-500 dark:text-muted-foreground font-medium">
+        {showRequester && (
+          <div className="flex items-center gap-2 group/item">
+            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 transition-colors dark:transition-none">
+              <User className="h-3.5 w-3.5" />
+            </div>
+            <span>{task.requesterName}</span>
+          </div>
+        )}
+        {showAssignee && (
+          <div className="flex items-center gap-2 group/item">
+            <div className="p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 transition-colors dark:transition-none">
+              <UserCheck className="h-3.5 w-3.5" />
+            </div>
+            <span>
+              {hasAssignedDesigner ? (
+                <span className="inline-flex items-center gap-1">
+                  <span className="text-slate-500 dark:text-muted-foreground">Assigned to</span>
+                  <span className="font-semibold text-slate-700 dark:text-foreground">{assignedDesignerLabel}</span>
+                </span>
+              ) : (
+                <span className="text-slate-400 italic">Unassigned</span>
+              )}
+            </span>
+          </div>
+        )}
+        <div className={cn('flex items-center gap-2 group/item', isOverdue && 'text-red-500 dark:text-rose-300')}>
+          <div className={cn("p-1 rounded-full bg-slate-50 dark:bg-slate-800/70 text-slate-400 dark:text-slate-400 transition-colors dark:transition-none", isOverdue && "bg-red-50 text-red-500 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-1 dark:ring-rose-300/30")}>
+            <Calendar className="h-3.5 w-3.5" />
+          </div>
+          <span>{deadlineText}</span>
+        </div>
+      </div>
+
+      <div className="mt-auto flex flex-col gap-3 pt-4 border-t border-slate-50 dark:border-border sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-2">
+        <div className="flex min-w-0 items-center gap-3">
+          {task.files.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors dark:transition-none">
+              <Paperclip className="h-3.5 w-3.5" />
+              <span>{task.files.length}</span>
+            </div>
+          )}
+          {task.comments.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors dark:transition-none">
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>{task.comments.length}</span>
+            </div>
+          )}
+          <div className="w-px h-3 bg-slate-200 dark:bg-slate-700 mx-1" />
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400">
+            <Clock className="h-3.5 w-3.5" />
+            <span className="whitespace-nowrap">{format(task.createdAt, 'MMM d')}</span>
+          </div>
+        </div>
+
+        <div
+          className={cn(
+            "w-full gap-2 lg:ml-auto lg:w-auto lg:shrink-0",
+            hasAssignAction ? "grid grid-cols-2" : "flex justify-start sm:justify-end"
+          )}
+        >
+          {hasAssignAction && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={onAssignDesigner}
+              title={
+                hasAssignedDesigner
+                  ? `Assigned to ${assignedDesignerLabel}`
+                  : 'No designer assigned'
+              }
+              className="h-9 min-w-0 w-full justify-center whitespace-nowrap rounded-full px-2 text-sm font-medium leading-none text-secondary-foreground no-underline shadow-sm hover:text-secondary-foreground sm:px-3"
+            >
+              {hasAssignedDesigner ? 'Reassign' : 'Assign Designer'}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            asChild
+            className={cn(
+              "h-9 min-w-0 justify-center whitespace-nowrap gap-1.5 rounded-full border border-[#D9E6FF] bg-[#F8FBFF] px-2 text-sm font-semibold leading-none text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white dark:transition-none group/btn sm:px-3",
+              hasAssignAction ? "w-full" : "w-full sm:w-auto"
+            )}
+          >
+            <Link to={`/task/${taskId}`} state={{ task }}>
+              <span className="truncate">View Details</span>
+              <ArrowRight className="h-3 w-3 transition-transform group-hover/btn:translate-x-0.5" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </AnimatedCard>
+  );
+}
+
+
