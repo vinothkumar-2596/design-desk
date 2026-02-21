@@ -390,7 +390,7 @@ export default function Dashboard() {
         designerName: selectedDesigner?.name || updatedTaskRaw?.assignedToName || 'Designer',
         ccCount: ccEmails.length,
       });
-      toast.success('Task assigned and email notification sent.');
+      toast.success('Task assigned. Email notification is being sent.');
     } catch (error) {
       const message =
         error instanceof Error && error.message

@@ -2017,7 +2017,8 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
       ? `${baseUrl.replace(/\/$/, "")}/task/${taskId}`
       : undefined;
 
-    const emailSent = await sendFinalFilesEmail({
+    // Do not block assignment UX on external SMTP latency.
+    void sendFinalFilesEmail({
       to: assignedDesignerEmail,
       cc: ccEmails,
       taskTitle: updatedTask.title,
@@ -2037,10 +2038,15 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
       },
       emailType: "TASK_ASSIGNED",
       assignmentMessage,
-    });
-    if (!emailSent) {
-      console.warn("Task assignment email failed to send. Check SMTP configuration.");
-    }
+    })
+      .then((emailSent) => {
+        if (!emailSent) {
+          console.warn("Task assignment email failed to send. Check SMTP configuration.");
+        }
+      })
+      .catch((error) => {
+        console.error("Task assignment email error:", error?.message || error);
+      });
 
     const io = getSocket();
     if (io) {
@@ -2061,7 +2067,7 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
       typeof updatedTask.toJSON === "function" ? updatedTask.toJSON() : updatedTask;
     res.json({
       ...responsePayload,
-      emailSent,
+      emailQueued: true,
       accessMode: "full",
       viewOnly: false,
       ccEmails,
