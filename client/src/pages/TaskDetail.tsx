@@ -68,6 +68,7 @@ import { createSocket } from '@/lib/socket';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { pushScheduleNotification } from '@/lib/designerSchedule';
 import { GridBackground } from '@/components/ui/background';
+import { isMainDesigner } from '@/lib/designerAccess';
 
 type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
 const statusConfig: Record<DisplayTaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
@@ -397,6 +398,7 @@ export default function TaskDetail() {
     taskState?.activeDesignVersionId || designVersions[designVersions.length - 1]?.id;
   const activeDesignVersion = designVersions.find((version) => version.id === activeDesignVersionId);
   const isDesignerRole = user?.role === 'designer';
+  const isMainDesignerUser = isMainDesigner(user);
   const compareLeft = designVersions.find((version) => version.id === compareLeftId);
   const compareRight = designVersions.find((version) => version.id === compareRightId);
   useEffect(() => {
@@ -1015,6 +1017,7 @@ export default function TaskDetail() {
     ? backendAccessMode === 'full' && !explicitViewOnlyFlag
     : !isViewOnlyTask;
   const canDesignerActions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
+  const canFinalizeTaskActions = canDesignerActions || (isDesignerRole && isMainDesignerUser);
   const canEditTask = user?.role === 'staff' && !isViewOnlyTask;
   const editTaskActionTooltip = approvalLockedForStaff
     ? 'Editing is temporarily locked while this request is under approval.'
@@ -1125,7 +1128,7 @@ export default function TaskDetail() {
   }, [sortedFinalDeliverableVersions]);
   const isTaskCompleted = normalizedTaskStatus === 'completed';
   const canHandover =
-    canDesignerActions &&
+    canFinalizeTaskActions &&
     ((!isTaskCompleted && (hasFinalDeliverables || hasPendingFinalFiles)) ||
       (isTaskCompleted && hasPendingFinalFiles)) &&
     !isUploadingFinal;
@@ -1477,14 +1480,16 @@ export default function TaskDetail() {
     );
   };
 
-  const ensureWritableTask = (options?: { allowManagerApproval?: boolean }) => {
+  const ensureWritableTask = (options?: { allowManagerApproval?: boolean; allowMainDesignerFinalize?: boolean }) => {
     if (options?.allowManagerApproval) {
       const isManagerApprovalActor = user?.role === 'treasurer' || user?.role === 'admin';
       if (isManagerApprovalActor) {
         return true;
       }
     }
-    if (isViewOnlyTask || !hasFullTaskAccess) {
+    const canBypassRestrictedAccess =
+      options?.allowMainDesignerFinalize && isDesignerRole && isMainDesignerUser;
+    if ((isViewOnlyTask || !hasFullTaskAccess) && !canBypassRestrictedAccess) {
       toast.error('Action unavailable for this task.');
       return false;
     }
@@ -1957,7 +1962,7 @@ export default function TaskDetail() {
 
   const handleHandoverTask = async () => {
     if (!taskState) return;
-    if (!ensureWritableTask()) return;
+    if (!ensureWritableTask({ allowMainDesignerFinalize: true })) return;
     if (!hasFinalDeliverables && !hasPendingFinalFiles) {
       toast.message('Upload final files before handing over the task.');
       return;
@@ -2007,7 +2012,7 @@ export default function TaskDetail() {
                 } as typeof prev)
               : prev
           );
-          toast.error('Only the assigned designer can submit this task.');
+          toast.error('Only the assigned designer or main designer can submit this task.');
           return;
         }
         toast.error(message);
@@ -2369,7 +2374,7 @@ export default function TaskDetail() {
   const uploadFinalFiles = async (uploads: File[]) => {
     if (uploads.length === 0) return;
     if (!taskState) return;
-    if (!ensureWritableTask()) {
+    if (!ensureWritableTask({ allowMainDesignerFinalize: true })) {
       return;
     }
     const taskId = (taskState as { id?: string; _id?: string })?.id || (taskState as { _id?: string })?._id;
@@ -2580,7 +2585,7 @@ export default function TaskDetail() {
   };
 
   const handleUpdateFinalVersionNote = async () => {
-    if (!ensureWritableTask()) return;
+    if (!ensureWritableTask({ allowMainDesignerFinalize: true })) return;
     if (!taskState || !apiUrl) return;
     const versionId = String(activeFinalVersion?.id || '');
     if (!versionId) {
@@ -2617,7 +2622,7 @@ export default function TaskDetail() {
   };
 
   const handleAddFinalLink = async () => {
-    if (!ensureWritableTask()) return;
+    if (!ensureWritableTask({ allowMainDesignerFinalize: true })) return;
     const trimmedUrl = finalLinkUrl.trim();
     const linkValidation = validateFinalGoogleDriveLink(trimmedUrl);
     if (!linkValidation.valid) {
@@ -3824,7 +3829,7 @@ export default function TaskDetail() {
               )}
 
               {/* Upload (Designer only) */}
-              {canDesignerActions && (
+              {canFinalizeTaskActions && (
                 <>
                   <div
                     className={cn(

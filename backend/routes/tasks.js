@@ -680,6 +680,33 @@ const ensureTaskAccess = async (req, res, next) => {
         isCommentWrite &&
         isManagerRole(userRole) &&
         accessContext.mode !== "none";
+      const completionWriteFields = new Set(["status"]);
+      const completionWriteUpdateKeys = new Set(["status", "updatedAt"]);
+      const hasCompletionStatusChange =
+        bodyChanges.some(
+          (change) =>
+            normalizeValue(change?.field) === "status" &&
+            normalizeValue(change?.newValue) === "completed"
+        ) || normalizeValue(bodyUpdates?.status) === "completed";
+      const hasOnlyCompletionStatusChanges =
+        bodyChanges.length > 0 &&
+        bodyChanges.every((change) => completionWriteFields.has(normalizeValue(change?.field)));
+      const hasOnlyCompletionUpdates =
+        Object.keys(bodyUpdates).length === 0 ||
+        Object.keys(bodyUpdates).every((key) => completionWriteUpdateKeys.has(key));
+      const canMainDesignerFinalizeWrite =
+        userRole === "designer" &&
+        isMainDesigner &&
+        (
+          isFinalDeliverablesWrite ||
+          isFinalDeliverableNoteWrite ||
+          (
+            isChangeWrite &&
+            hasCompletionStatusChange &&
+            hasOnlyCompletionStatusChanges &&
+            hasOnlyCompletionUpdates
+          )
+        );
 
       if (isReadOnly) {
         if (accessContext.mode === "none") {
@@ -718,6 +745,13 @@ const ensureTaskAccess = async (req, res, next) => {
       if (canManagerCommentWrite) {
         req.task = task;
         req.taskAccessMode = accessContext.mode;
+        req.taskAccessContext = accessContext;
+        return next();
+      }
+
+      if (canMainDesignerFinalizeWrite) {
+        req.task = task;
+        req.taskAccessMode = accessContext.mode === "none" ? "full" : accessContext.mode;
         req.taskAccessContext = accessContext;
         return next();
       }
