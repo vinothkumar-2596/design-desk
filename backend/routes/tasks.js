@@ -2050,13 +2050,23 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
     const taskUrl = baseUrl
       ? `${baseUrl.replace(/\/$/, "")}/task/${taskId}`
       : undefined;
+    const assignmentSupportingFiles = (Array.isArray(updatedTask.files) ? updatedTask.files : [])
+      .filter((file) => {
+        const fileType = normalizeValue(file?.type);
+        const fileUrl = String(file?.url || "").trim();
+        return fileType === "input" && Boolean(fileUrl);
+      })
+      .map((file) => ({
+        name: file?.name || "Document",
+        url: String(file?.url || "").trim()
+      }));
 
     // Do not block assignment UX on external SMTP latency.
     void sendFinalFilesEmail({
       to: assignedDesignerEmail,
       cc: ccEmails,
       taskTitle: updatedTask.title,
-      files: [],
+      files: assignmentSupportingFiles,
       designerName: assignedDesignerName,
       assignedByName: assignedBy,
       taskUrl,

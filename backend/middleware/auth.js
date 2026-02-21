@@ -8,6 +8,7 @@ const PUBLIC_ROUTES = [
   { method: "POST", path: "/api/auth/refresh" },
   { method: "GET", path: "/api/auth/google/start" },
   { method: "GET", path: "/api/auth/google/callback" },
+  { method: "GET", path: "/api/auth/email-task/resolve" },
   { method: "POST", path: "/api/auth/password/forgot" },
   { method: "POST", path: "/api/auth/password/reset" },
   { method: "POST", path: "/api/auth/password/otp/send" },

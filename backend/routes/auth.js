@@ -4,11 +4,13 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { google } from "googleapis";
 import User from "../models/User.js";
+import Task from "../models/Task.js";
 import RefreshToken from "../models/RefreshToken.js";
 import { sendPasswordResetEmail } from "../lib/notifications.js";
 import { signAccessToken, requireAuth, requireRole } from "../middleware/auth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { logAudit, logAuditFromRequest } from "../lib/audit.js";
+import { isMainDesignerUser } from "../lib/designerAccess.js";
 
 const router = express.Router();
 
@@ -173,6 +175,39 @@ const normalizeOtpPhone = (value) => {
     return `+${digits}`;
   }
   return `+${digits}`;
+};
+
+const EMPTY_ID_VALUES = new Set([
+  "",
+  "null",
+  "undefined",
+  "none",
+  "na",
+  "n/a",
+  "unassigned",
+  "false"
+]);
+
+const normalizeTaskAssignedRef = (value) => {
+  if (value === undefined || value === null) return "";
+  const normalized = String(value).trim();
+  if (!normalized) return "";
+  if (EMPTY_ID_VALUES.has(normalized.toLowerCase())) return "";
+  return normalized;
+};
+
+const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+
+const getOptionalAuthPayload = (req) => {
+  const header = req.header("authorization") || "";
+  if (!header.startsWith("Bearer ")) return null;
+  const token = header.replace("Bearer ", "").trim();
+  if (!token) return null;
+  try {
+    return jwt.verify(token, getJwtSecret());
+  } catch {
+    return null;
+  }
 };
 
 router.post("/login", authLimiter, async (req, res) => {
@@ -693,6 +728,84 @@ router.get("/google/callback", async (req, res) => {
     res.redirect(redirectUrl.toString());
   } catch (error) {
     res.status(500).json({ error: "Google OAuth login failed." });
+  }
+});
+
+router.get("/email-task/resolve", async (req, res) => {
+  try {
+    const token = String(req.query?.token || "").trim();
+    if (!token) {
+      return res.status(400).json({ error: "Missing email task token." });
+    }
+
+    let tokenPayload;
+    try {
+      tokenPayload = jwt.verify(token, getJwtSecret());
+    } catch (error) {
+      if (error?.name === "TokenExpiredError") {
+        return res.status(410).json({ error: "This email link has expired." });
+      }
+      return res.status(400).json({ error: "Invalid email task token." });
+    }
+
+    if (!tokenPayload || tokenPayload.purpose !== "email_task_link" || !tokenPayload.taskId) {
+      return res.status(400).json({ error: "Invalid email task token." });
+    }
+
+    const task = await Task.findById(String(tokenPayload.taskId).trim())
+      .select(
+        "_id title description status category deadline requesterName requesterDepartment requesterEmail assignedToId assignedTo assignedToName createdAt updatedAt"
+      )
+      .lean();
+
+    if (!task) {
+      return res.status(404).json({ error: "Task not found." });
+    }
+
+    const viewerPayload = getOptionalAuthPayload(req);
+    const viewerRole = String(viewerPayload?.role || "").trim().toLowerCase();
+    const viewerId = String(viewerPayload?.sub || "").trim();
+    const viewerEmail = normalizeEmail(viewerPayload?.email);
+    const assignedRef = normalizeTaskAssignedRef(task.assignedToId || task.assignedTo);
+    const assignedEmail = assignedRef.includes("@") ? normalizeEmail(assignedRef) : "";
+    const isAssignedDesigner =
+      viewerRole === "designer" &&
+      (
+        (viewerId && assignedRef && viewerId === assignedRef) ||
+        (viewerEmail && assignedEmail && viewerEmail === assignedEmail)
+      );
+    const isMainDesigner =
+      viewerRole === "designer" &&
+      isMainDesignerUser({ role: "designer", email: viewerEmail });
+    const canOpenTask = viewerRole === "treasurer" || isMainDesigner || isAssignedDesigner;
+
+    const preview = {
+      id: task._id?.toString?.() || "",
+      title: task.title || "Task",
+      description: task.description || "",
+      status: task.status || "pending",
+      category: task.category || "",
+      deadline: task.deadline || null,
+      requesterName: task.requesterName || "",
+      requesterDepartment: task.requesterDepartment || "",
+      requesterEmail: task.requesterEmail || "",
+      assignedToName: task.assignedToName || "",
+      updatedAt: task.updatedAt || task.createdAt || null
+    };
+
+    return res.json({
+      taskId: preview.id,
+      preview,
+      canOpenTask,
+      openPath: preview.id ? `/task/${preview.id}` : "/dashboard",
+      viewer: {
+        isAuthenticated: Boolean(viewerPayload),
+        role: viewerRole || "",
+        email: viewerEmail || ""
+      }
+    });
+  } catch {
+    return res.status(500).json({ error: "Failed to resolve email task link." });
   }
 });
 

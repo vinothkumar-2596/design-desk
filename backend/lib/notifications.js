@@ -3,8 +3,11 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { spawn } from "child_process";
+import jwt from "jsonwebtoken";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const getJwtSecret = () => process.env.JWT_SECRET || "dev-secret";
+const EMAIL_TASK_LINK_TTL = process.env.EMAIL_TASK_LINK_TTL || "30d";
 
 const normalizeEnvValue = (value) => {
   if (!value) return "";
@@ -64,6 +67,28 @@ const getLocalLogoPath = () => {
     path.resolve(__dirname, "../../client/public/favicon.png"),
     path.resolve(__dirname, "../../client/public/logo.png"),
   ]);
+};
+
+const buildEmailTaskUrl = ({ baseUrl, taskId, emailType, fallbackUrl }) => {
+  const frontendBase = normalizeEnvValue(baseUrl);
+  const normalizedTaskId = String(taskId || "").trim();
+  if (!frontendBase || !normalizedTaskId) return normalizeEnvValue(fallbackUrl);
+  try {
+    const token = jwt.sign(
+      {
+        purpose: "email_task_link",
+        taskId: normalizedTaskId,
+        emailType: String(emailType || "").trim().toUpperCase(),
+      },
+      getJwtSecret(),
+      { expiresIn: EMAIL_TASK_LINK_TTL }
+    );
+    const url = new URL("/email-task", frontendBase);
+    url.searchParams.set("token", token);
+    return url.toString();
+  } catch {
+    return normalizeEnvValue(fallbackUrl);
+  }
 };
 
 const normalizeWhatsAppNumber = (value) => {
@@ -555,9 +580,30 @@ export const sendFinalFilesEmail = async ({
   const displayAssigner = assignedByName || "A manager";
   const safeAssignmentMessage = assignmentMessage ? String(assignmentMessage).trim() : "";
   const fileItems = Array.isArray(files) ? files : [];
+  const isDriveDocumentUrl = (value) =>
+    /(^https?:\/\/)?([a-z0-9-]+\.)*(drive|docs)\.google\.com(\/|$)/i.test(String(value || "").trim());
+  const attachmentCandidates = fileItems
+    .map((file) => ({
+      name: String(file?.name || "").trim() || "Document",
+      url: String(file?.url || "").trim(),
+    }))
+    .filter((file) => file.url);
+  const driveAttachmentCandidates = attachmentCandidates.filter((file) =>
+    isDriveDocumentUrl(file.url)
+  );
+  const assignmentAttachmentItems =
+    driveAttachmentCandidates.length > 0 ? driveAttachmentCandidates : attachmentCandidates;
+  const hasAssignmentAttachments =
+    isTaskAssignedEmail && assignmentAttachmentItems.length > 0;
   const brandColor = process.env.BRAND_PRIMARY_HEX || "#34429D";
   const brandSoft = process.env.BRAND_PRIMARY_SOFT || "#EEF1FF";
   const baseUrl = normalizeEnvValue(process.env.FRONTEND_URL);
+  const resolvedTaskUrl = buildEmailTaskUrl({
+    baseUrl,
+    taskId: taskDetails?.id,
+    emailType: email_type,
+    fallbackUrl: taskUrl,
+  });
   const logoUrl =
     normalizeEnvValue(process.env.BRAND_LOGO_URL) ||
     (baseUrl ? `${baseUrl.replace(/\/$/, "")}/favicon.png` : "");
@@ -570,11 +616,11 @@ export const sendFinalFilesEmail = async ({
     : taskDetails?.requesterEmail || "";
   const detailItems = [
     { label: "Task", value: safeTitle },
-    { label: "Task ID", value: taskDetails?.id },
+    ...(!isTaskAssignedEmail ? [{ label: "Task ID", value: taskDetails?.id }] : []),
     { label: "Status", value: humanize(taskDetails?.status) },
     { label: "Category", value: humanize(taskDetails?.category) },
     { label: "Designer", value: displayDesigner },
-    { label: "Submitted", value: formatDateTime(submittedAt) },
+    ...(!isTaskAssignedEmail ? [{ label: "Submitted", value: formatDateTime(submittedAt) }] : []),
     {
       label: "Deadline",
       value: isAssignmentLifecycleEmail
@@ -605,8 +651,17 @@ export const sendFinalFilesEmail = async ({
   if (detailItems.length > 0) {
     lines.push("", "Details:", ...detailItems.map((item) => `${item.label}: ${item.value}`));
   }
-  if (taskUrl) {
-    lines.push("", `View task: ${taskUrl}`);
+  if (hasAssignmentAttachments) {
+    lines.push(
+      "",
+      "Attached document links:",
+      ...assignmentAttachmentItems.map(
+        (file, index) => `${index + 1}. ${file.name} - ${file.url}`
+      )
+    );
+  }
+  if (resolvedTaskUrl && !isTaskAssignedEmail) {
+    lines.push("", `View task: ${resolvedTaskUrl}`);
   }
 
   const fileRows =
@@ -636,9 +691,9 @@ export const sendFinalFilesEmail = async ({
           </tr>
         `;
 
-  const taskCta = taskUrl
+  const taskCta = resolvedTaskUrl && !isTaskAssignedEmail
     ? `
-        <a href="${taskUrl}" style="display:inline-block;padding:12px 20px;background:${brandColor};color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:14px;">
+        <a href="${resolvedTaskUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 20px;background:${brandColor};color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:14px;">
           View Task
         </a>
       `
@@ -650,8 +705,41 @@ export const sendFinalFilesEmail = async ({
       ? `<img src="${logoUrl}" width="36" height="36" alt="${brandName}" style="display:block;margin:0 auto;" />`
       : "";
 
-  const viewInBrowser = taskUrl
-    ? `<a href="${taskUrl}" style="color:${brandColor};text-decoration:none;">View this email in your browser</a>`
+  const viewInBrowser = resolvedTaskUrl && !isTaskAssignedEmail
+    ? `<a href="${resolvedTaskUrl}" target="_blank" rel="noopener noreferrer" style="color:${brandColor};text-decoration:none;">View this email in your browser</a>`
+    : "";
+
+  const assignmentAttachmentRows = hasAssignmentAttachments
+    ? assignmentAttachmentItems
+        .map((file, index) => {
+          const title = file.name || `Document ${index + 1}`;
+          return `
+              <tr>
+                <td style="padding:10px 0;border-top:1px solid #e6e9f2;">
+                  <div style="font-size:13px;color:#111827;font-weight:600;">${title}</div>
+                  <a href="${file.url}" target="_blank" rel="noopener noreferrer" style="font-size:12px;color:${brandColor};text-decoration:none;word-break:break-all;">${file.url}</a>
+                </td>
+              </tr>
+            `;
+        })
+        .join("")
+    : "";
+
+  const assignmentAttachmentSection = hasAssignmentAttachments
+    ? `
+          <tr>
+            <td style="padding:0 32px 24px;">
+              <div style="background:${brandSoft};border-radius:16px;padding:20px;text-align:left;border:1px solid #e6e9f2;">
+                <div style="font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
+                  Attached Documents
+                </div>
+                <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:12px;">
+                  ${assignmentAttachmentRows}
+                </table>
+              </div>
+            </td>
+          </tr>
+        `
     : "";
 
   const detailRows =
@@ -704,9 +792,14 @@ export const sendFinalFilesEmail = async ({
               You have been assigned <strong>${safeTitle}</strong>. Review the task details below and start work.
               ${safeAssignmentMessage ? `<br /><br /><strong>Message:</strong> ${safeAssignmentMessage}` : ""}
             </p>
+            ${taskCta
+      ? `
             <div style="margin-top:16px;">
               ${taskCta}
             </div>
+            `
+      : ""
+    }
           </div>
         </div>
       </div>
@@ -778,6 +871,7 @@ export const sendFinalFilesEmail = async ({
                   </div>
                 </td>
               </tr>
+              ${isTaskAssignedEmail ? assignmentAttachmentSection : ""}
               ${isAssignmentLifecycleEmail
       ? ""
       : `
