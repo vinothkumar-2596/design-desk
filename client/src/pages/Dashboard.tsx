@@ -97,8 +97,8 @@ const buildFallbackDesigners = (
             : null;
         })
         .filter(Boolean) as Array<
-        [string, { id: string; name: string; email: string; role: 'designer' }]
-      >
+          [string, { id: string; name: string; email: string; role: 'designer' }]
+        >
     ).values()
   );
 
@@ -555,8 +555,8 @@ export default function Dashboard() {
                 isEmergencyApproval
               );
             }
-      )
-      .map((entry) => ({ ...entry, taskId: task.id, taskTitle: task.title, task }))
+          )
+          .map((entry) => ({ ...entry, taskId: task.id, taskTitle: task.title, task }))
       )
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [hydratedTasks, user.role]);
@@ -843,11 +843,10 @@ export default function Dashboard() {
     >
       <div className="space-y-8 relative z-10 pt-2">
         <div
-          className={`sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-1.5 border-b transition-all duration-200 ${
-            showStickyHeader
+          className={`sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-1.5 border-b transition-all duration-200 ${showStickyHeader
               ? 'bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,251,255,0.94))] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(247,251,255,0.84))] backdrop-blur-xl backdrop-saturate-125 border-white/30 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.94),rgba(8,16,39,0.9))] dark:supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(8,16,39,0.84),rgba(8,16,39,0.8))] dark:border-white/10'
               : 'bg-transparent border-transparent backdrop-blur-0 shadow-none'
-          }`}
+            }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -1096,26 +1095,26 @@ export default function Dashboard() {
               {assignSuccessInfo
                 ? `Assignment submitted for "${assignSuccessInfo.taskTitle}".`
                 : assigningTask
-                ? `Assign a designer for "${assigningTask.title}" and notify everyone in CC.`
-                : 'Assign a designer and send an email notification.'}
+                  ? `Assign a designer for "${assigningTask.title}" and notify everyone in CC.`
+                  : 'Assign a designer and send an email notification.'}
             </DialogDescription>
           </DialogHeader>
 
           {assignSuccessInfo ? (
-            <div className="rounded-xl border border-[#D9E6FF] bg-[#F5F8FF] p-4">
+            <div className="rounded-xl border border-[#D9E6FF] bg-[#F5F8FF] p-4 dark:border-[#2A3C6B]/70 dark:bg-[#0F1D39]/80">
               <div className="flex items-start gap-3">
-                <div className="mt-0.5 rounded-full bg-[#EAF0FF] p-1.5 text-[#34429D]">
+                <div className="mt-0.5 rounded-full bg-[#EAF0FF] p-1.5 text-[#34429D] dark:bg-[#1A315E] dark:text-[#AFC5FF]">
                   <CheckCircle2 className="h-4 w-4" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-semibold text-[#1E2A5A]">
+                  <p className="text-sm font-semibold text-[#1E2A5A] dark:text-[#E8EEFF]">
                     Assignment confirmed
                   </p>
-                  <p className="text-sm text-[#2B3F86]">
+                  <p className="text-sm text-[#2B3F86] dark:text-[#C4D3FF]">
                     <span className="font-medium">{assignSuccessInfo.taskTitle}</span> has been assigned to{' '}
                     <span className="font-medium">{assignSuccessInfo.designerName}</span>.
                   </p>
-                  <p className="text-xs text-[#4B5FA8]">
+                  <p className="text-xs text-[#4B5FA8] dark:text-[#94A9E8]">
                     Email notification sent{assignSuccessInfo.ccCount > 0 ? ` to ${assignSuccessInfo.ccCount} CC recipient(s).` : '.'}
                   </p>
                 </div>
@@ -1123,76 +1122,76 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-4 py-1">
-            <div className="space-y-2">
-              <Label htmlFor="assign-designer-select">Assign Designer</Label>
-              <Select
-                value={selectedDesignerId}
-                onValueChange={setSelectedDesignerId}
-                disabled={isLoadingDesigners || isAssigningDesigner}
-              >
-                <SelectTrigger id="assign-designer-select">
-                  <SelectValue
-                    placeholder={isLoadingDesigners ? 'Loading designers...' : 'Select designer'}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {designerOptions.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      No designers available.
-                    </div>
-                  ) : (
-                    designerOptions.map((designer) => (
-                      <SelectItem key={designer.id} value={designer.id}>
-                        {designer.name} ({getDesignerScopeLabel(designer.designerScope)}{designer.portalId ? ` • ${designer.portalId}` : ''})
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="assign-designer-select">Assign Designer</Label>
+                <Select
+                  value={selectedDesignerId}
+                  onValueChange={setSelectedDesignerId}
+                  disabled={isLoadingDesigners || isAssigningDesigner}
+                >
+                  <SelectTrigger id="assign-designer-select">
+                    <SelectValue
+                      placeholder={isLoadingDesigners ? 'Loading designers...' : 'Select designer'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {designerOptions.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No designers available.
+                      </div>
+                    ) : (
+                      designerOptions.map((designer) => (
+                        <SelectItem key={designer.id} value={designer.id}>
+                          {designer.name} ({getDesignerScopeLabel(designer.designerScope)}{designer.portalId ? ` • ${designer.portalId}` : ''})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="assign-cc-input">CC Email(s)</Label>
-              <Input
-                id="assign-cc-input"
-                type="email"
-                value={ccInput}
-                onChange={(event) => setCcInput(event.target.value)}
-                onKeyDown={handleCcInputKeyDown}
-                onBlur={() => addCcEmail(ccInput)}
-                placeholder="Type email and press Enter"
-                disabled={isAssigningDesigner}
-              />
-              {ccEmails.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {ccEmails.map((email) => (
-                    <Badge key={email} variant="secondary" className="flex items-center gap-1">
-                      {email}
-                      <button
-                        type="button"
-                        onClick={() => removeCcEmail(email)}
-                        className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-muted/70"
-                        aria-label={`Remove ${email}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="assign-cc-input">CC Email(s)</Label>
+                <Input
+                  id="assign-cc-input"
+                  type="email"
+                  value={ccInput}
+                  onChange={(event) => setCcInput(event.target.value)}
+                  onKeyDown={handleCcInputKeyDown}
+                  onBlur={() => addCcEmail(ccInput)}
+                  placeholder="Type email and press Enter"
+                  disabled={isAssigningDesigner}
+                />
+                {ccEmails.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {ccEmails.map((email) => (
+                      <Badge key={email} variant="secondary" className="flex items-center gap-1">
+                        {email}
+                        <button
+                          type="button"
+                          onClick={() => removeCcEmail(email)}
+                          className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-muted/70"
+                          aria-label={`Remove ${email}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="assign-message">Message (optional)</Label>
-              <Textarea
-                id="assign-message"
-                value={assignmentMessage}
-                onChange={(event) => setAssignmentMessage(event.target.value)}
-                placeholder="Add an optional assignment note"
-                rows={4}
-                disabled={isAssigningDesigner}
-              />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="assign-message">Message (optional)</Label>
+                <Textarea
+                  id="assign-message"
+                  value={assignmentMessage}
+                  onChange={(event) => setAssignmentMessage(event.target.value)}
+                  placeholder="Add an optional assignment note"
+                  rows={4}
+                  disabled={isAssigningDesigner}
+                />
+              </div>
             </div>
           )}
 

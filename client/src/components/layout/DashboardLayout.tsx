@@ -523,7 +523,8 @@ export function DashboardLayout({
         pollingRef.current = null;
       }
     };
-  }, [apiUrl, userId, isRealtimeConnected, fetchNotifications]);
+  }, [apiUrl, userId, isRealtimeConnected, fetchNotifications]);
+
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -532,7 +533,8 @@ export function DashboardLayout({
       contentScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search]);
+
 
   const taskIndex = useMemo(() => {
     const byId = new Map<string, any>();
@@ -1024,7 +1026,7 @@ export function DashboardLayout({
                         'h-6 w-6 border-2 border-white shadow-sm bg-white/90 dark:border-white/10 dark:bg-slate-900/80',
                         isSelf && 'ring-2 ring-primary/40'
                       )}
-                      fallbackClassName="bg-primary/10 text-primary text-[9px] font-semibold"
+                      fallbackClassName="bg-primary/10 text-primary dark:text-[white] text-[9px] font-semibold"
                     />
                   </span>
                 </TooltipTrigger>
@@ -1609,7 +1611,7 @@ function DashboardShell({
       hideGrid={hideGrid}
       className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] dark:bg-background p-4 md:p-6"
     >
-      <div className="flex h-[calc(100vh-2rem)] gap-4 md:gap-6 relative z-10">
+      <div className="flex min-h-[calc(100vh-2rem)] gap-4 md:gap-6 relative z-10">
         <div
           className="relative flex-shrink-0"
           style={{ width: 'var(--app-sidebar-width, 18rem)' }}

@@ -308,6 +308,7 @@ export default function TaskDetail() {
   const [approvalDecisionInFlight, setApprovalDecisionInFlight] = useState<ApprovalDecision | null>(null);
   const sizeFetchRef = useRef(new Set<string>());
   const addAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const finalUploadInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -2541,6 +2542,11 @@ export default function TaskDetail() {
     }
   };
 
+  const openFinalFilePicker = () => {
+    if (isUploadingFinal) return;
+    finalUploadInputRef.current?.click();
+  };
+
   const handleFinalUploadDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     if (isUploadingFinal) return;
@@ -3843,11 +3849,18 @@ export default function TaskDetail() {
                   >
                     <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] dark:bg-muted/60 blur-2xl" />
                     <div className="relative">
-                      <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
-                      <p className="text-xs text-muted-foreground">
-                        {isFinalUploadDragging ? 'Drop files to upload' : 'Drag and drop or click to upload'}
-                      </p>
+                      <button
+                        type="button"
+                        onClick={openFinalFilePicker}
+                        disabled={isUploadingFinal}
+                        className="mx-auto flex flex-col items-center rounded-xl px-3 py-2 transition hover:bg-[#F4F8FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-70 dark:hover:bg-muted/50"
+                      >
+                        <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                        <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
+                        <p className="text-xs text-muted-foreground">
+                          {isFinalUploadDragging ? 'Drop files to upload' : 'Drag and drop or click to upload'}
+                        </p>
+                      </button>
                       <div className="mt-3 text-left">
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                           Version note (optional)
@@ -3881,6 +3894,7 @@ export default function TaskDetail() {
                         type="file"
                         multiple
                         onChange={handleFinalUpload}
+                        ref={finalUploadInputRef}
                         className="hidden"
                         id="final-file-upload"
                         disabled={isUploadingFinal}
@@ -4548,8 +4562,8 @@ export default function TaskDetail() {
             </Button>
             <div className="mt-6 border-t border-border/60 pt-4 pb-2 text-center text-[11px] text-muted-foreground">
               For assistance, please contact the coordinator at{' '}
-              <a href="tel:+910000000000" className="font-medium text-foreground/80 hover:text-foreground">
-                +91 0000000000
+              <a href="tel:+919360960019" className="font-medium text-foreground/80 hover:text-foreground">
+                +91 9360960019
               </a>{' '}
               or{' '}
               <a

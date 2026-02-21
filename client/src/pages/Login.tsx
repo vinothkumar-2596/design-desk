@@ -565,7 +565,7 @@ export default function Login() {
                     setResetPhone(e.target.value);
                     setOtpVerified(false);
                   }}
-                  placeholder="9003776002"
+                  placeholder="Enter phone number"
                   className={glassInputClass}
                 />
                 <Button
