@@ -17,6 +17,10 @@ const router = express.Router();
 const getJwtSecret = () => process.env.JWT_SECRET || "dev-secret";
 const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 const REFRESH_COOKIE_NAME = process.env.REFRESH_COOKIE_NAME || "refreshToken";
+const GOOGLE_REDIRECT_ENV_KEYS = [
+  "GOOGLE_CALLBACK_URL",
+  "GOOGLE_OAUTH_REDIRECT_URI",
+];
 
 const hashToken = (value) => {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -65,11 +69,40 @@ const getRefreshTokenFromRequest = (req) => {
   return cookies[REFRESH_COOKIE_NAME] || null;
 };
 
+const getGoogleRedirectUri = () => {
+  const invalidRedirectKeys = [];
+  let redirectUri = "";
+  for (const key of GOOGLE_REDIRECT_ENV_KEYS) {
+    const value = String(process.env[key] || "").trim();
+    if (!value) continue;
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        invalidRedirectKeys.push(key);
+        continue;
+      }
+      redirectUri = value;
+      break;
+    } catch {
+      invalidRedirectKeys.push(key);
+    }
+  }
+  if (redirectUri) {
+    return redirectUri;
+  }
+  if (invalidRedirectKeys.length > 0) {
+    throw new Error(
+      `Google OAuth redirect URI is invalid in: ${invalidRedirectKeys.join(", ")}`
+    );
+  }
+  throw new Error("Google OAuth is not configured");
+};
+
 const getGoogleClient = () => {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI;
-  if (!clientId || !clientSecret || !redirectUri) {
+  const redirectUri = getGoogleRedirectUri();
+  if (!clientId || !clientSecret) {
     throw new Error("Google OAuth is not configured");
   }
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
@@ -612,6 +645,7 @@ router.post("/password/change", requireAuth, authLimiter, async (req, res) => {
 
 router.get("/google/start", (req, res) => {
   try {
+    const redirectUri = getGoogleRedirectUri();
     const role = normalizeGoogleRole(req.query.role);
     const frontendOrigin = normalizeRequestedFrontendOrigin(req.query.origin);
     const stateToken = jwt.sign(
@@ -626,8 +660,9 @@ router.get("/google/start", (req, res) => {
       prompt: "select_account",
       state: stateToken,
     });
-    res.json({ url });
+    res.json({ url, redirectUri });
   } catch (error) {
+    console.error("Google OAuth start failed:", error?.message || error);
     res.status(500).json({ error: "Google OAuth is not configured." });
   }
 });
@@ -727,6 +762,7 @@ router.get("/google/callback", async (req, res) => {
     redirectUrl.searchParams.set("openerOrigin", frontendOrigin);
     res.redirect(redirectUrl.toString());
   } catch (error) {
+    console.error("Google OAuth callback failed:", error?.message || error);
     res.status(500).json({ error: "Google OAuth login failed." });
   }
 });

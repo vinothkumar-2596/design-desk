@@ -19,6 +19,11 @@ const app = express();
 const server = http.createServer(app);
 const port = process.env.PORT || 10000;
 
+if (process.env.NODE_ENV === 'production') {
+  // Render terminates TLS at the edge; trust X-Forwarded-* headers from that proxy.
+  app.set('trust proxy', 1);
+}
+
 // Socket.io Initialization
 initSocket(server);
 
