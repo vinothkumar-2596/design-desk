@@ -380,12 +380,9 @@ export default function Login() {
           <div className="relative w-full max-w-md animate-fade-in">
             {/* Mobile Logo */}
             <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
-              <div
-                className="h-10 w-10 rounded-xl flex items-center justify-center p-1"
-                style={{ backgroundColor: 'rgb(21, 30, 60)' }}
-              >
-                <img src="/favicon.png" alt="DesignDesk" className="h-full w-full object-contain" />
-              </div>
+                <div className="h-10 w-10 rounded-xl flex items-center justify-center border border-[#D9E6FF] bg-[#F5F8FF] p-1">
+                  <img src="/favicon.png" alt="DesignDesk" className="h-full w-full object-contain" />
+                </div>
               <div>
                 <h1 className="text-xl font-bold">DesignDesk</h1>
                 <p className="text-xs text-muted-foreground">Task Portal</p>
