@@ -20,6 +20,11 @@ export type TaskCategory =
 export type TaskUrgency = 'low' | 'intermediate' | 'normal' | 'urgent';
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+export type FinalDeliverableReviewStatus =
+  | 'not_submitted'
+  | 'pending'
+  | 'approved'
+  | 'rejected';
 
 export interface User {
   id: string;
@@ -90,12 +95,86 @@ export interface FinalDeliverableFile {
   uploadedBy: string;
 }
 
+export interface FinalDeliverableAnnotationPoint {
+  x: number;
+  y: number;
+}
+
+export interface FinalDeliverableAnnotationStroke {
+  id: string;
+  color?: string;
+  width?: number;
+  points: FinalDeliverableAnnotationPoint[];
+}
+
+export type FinalDeliverableAnnotationShapeKind =
+  | 'pen'
+  | 'highlighter'
+  | 'arrow'
+  | 'rect'
+  | 'ellipse'
+  | 'text'
+  | 'blur_rect'
+  | 'highlight_rect';
+
+export interface FinalDeliverableAnnotationShape {
+  id: string;
+  kind: FinalDeliverableAnnotationShapeKind;
+  color?: string;
+  width?: number;
+  opacity?: number;
+  points?: FinalDeliverableAnnotationPoint[];
+  startX?: number;
+  startY?: number;
+  endX?: number;
+  endY?: number;
+  x?: number;
+  y?: number;
+  text?: string;
+  fontSize?: number;
+  fillColor?: string;
+}
+
+export interface FinalDeliverableAnnotationThreadMessage {
+  id: string;
+  text: string;
+  author?: string;
+  createdAt?: string;
+}
+
+export interface FinalDeliverableAnnotationComment {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  thread?: FinalDeliverableAnnotationThreadMessage[];
+}
+
+export interface FinalDeliverableReviewAnnotation {
+  id: string;
+  fileId: string;
+  fileName: string;
+  fileUrl: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  strokes?: FinalDeliverableAnnotationStroke[];
+  shapes?: FinalDeliverableAnnotationShape[];
+  comments?: FinalDeliverableAnnotationComment[];
+  createdAt?: string;
+  createdBy?: string;
+}
+
 export interface FinalDeliverableVersion {
   id: string;
   version: number;
   uploadedAt: Date;
   uploadedBy: string;
   note?: string;
+  reviewStatus?: 'pending' | 'approved' | 'rejected';
+  reviewedBy?: string;
+  reviewedAt?: Date;
+  reviewNote?: string;
+  reviewAnnotations?: FinalDeliverableReviewAnnotation[];
   files: FinalDeliverableFile[];
 }
 
@@ -141,6 +220,10 @@ export interface Task {
   designVersions?: DesignVersion[];
   activeDesignVersionId?: string;
   finalDeliverableVersions?: FinalDeliverableVersion[];
+  finalDeliverableReviewStatus?: FinalDeliverableReviewStatus;
+  finalDeliverableReviewedBy?: string;
+  finalDeliverableReviewedAt?: Date;
+  finalDeliverableReviewNote?: string;
   comments: TaskComment[];
   createdAt: Date;
   updatedAt: Date;

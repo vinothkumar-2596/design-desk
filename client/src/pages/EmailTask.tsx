@@ -200,7 +200,7 @@ export default function EmailTask() {
               ) : (
                 <span>
                   You are not signed in. Preview is visible, but full task access is limited to
-                  assigned designers, main designers, and treasurer.
+                  assigned designers, Design Leads, and treasurer.
                 </span>
               )}
             </div>

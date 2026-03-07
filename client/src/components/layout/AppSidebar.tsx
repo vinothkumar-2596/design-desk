@@ -210,8 +210,8 @@ export function AppSidebar() {
     return cn(
       'flex w-full items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200',
       isActive
-        ? 'border-none bg-primary/75 bg-gradient-to-br from-white/20 via-primary/80 to-primary/90 text-primary-foreground shadow-[0_22px_44px_-26px_hsl(var(--primary)/0.5)] backdrop-blur-2xl dark:bg-primary/70 dark:text-primary-foreground'
-        : 'border border-transparent text-[#475569] hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:shadow-[0_16px_34px_-22px_rgba(30,58,138,0.35)] hover:backdrop-blur-xl dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground dark:hover:border-border',
+        ? 'border-none bg-primary/75 bg-gradient-to-br from-white/20 via-primary/80 to-primary/90 text-primary-foreground backdrop-blur-2xl dark:bg-primary/70 dark:text-primary-foreground'
+        : 'border border-transparent text-[#475569] hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:backdrop-blur-xl dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground dark:hover:border-border',
       collapsed && 'justify-center px-2'
     );
   };
@@ -219,7 +219,7 @@ export function AppSidebar() {
   const renderCollapsedTooltip = (label: string) => {
     if (!collapsed) return null;
     return (
-      <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
+      <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
         {label}
       </span>
     );
@@ -244,7 +244,7 @@ export function AppSidebar() {
   return (
     <aside
       className={cn(
-        'group/sidebar z-40 flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-[0_24px_60px_-40px_rgba(15,23,42,0.4)] transition-all duration-300 h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
+        'group/sidebar z-40 flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none transition-all duration-300 h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
         collapsed ? 'w-20' : 'w-72'
       )}
     >
@@ -261,7 +261,7 @@ export function AppSidebar() {
           )}
           aria-label="Go to dashboard"
         >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-white/85 via-[#EAF2FF]/80 to-[#DDE9FF]/70 border border-[#C9D7FF] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)] backdrop-blur dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80 dark:shadow-none">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-white/85 via-[#EAF2FF]/80 to-[#DDE9FF]/70 border border-[#C9D7FF] backdrop-blur dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80 dark:shadow-none">
             <img
               src="/favicon.png"
               alt="DesignDesk"
@@ -364,7 +364,7 @@ export function AppSidebar() {
             <div className="mt-2 flex items-center gap-2">
               {quickAccessItems.map((item) => {
                 const tooltip = (
-                  <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border pl-4 pr-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
+                  <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border pl-4 pr-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
                     {item.label}
                   </span>
                 );
@@ -465,7 +465,7 @@ export function AppSidebar() {
 
           {(user.role === 'staff' || user.role === 'treasurer') && (
             <div className="relative group hover:z-20">
-              <span className="pointer-events-none absolute -top-9 left-1/2 z-[120] -translate-x-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 group-hover:-translate-y-0.5">
+              <span className="pointer-events-none absolute -top-9 left-1/2 z-[120] -translate-x-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:-translate-y-0.5">
                 Create New Request
               </span>
               <Link
@@ -487,10 +487,10 @@ export function AppSidebar() {
 
       {collapsed && (
         <div className="px-3 pb-3 space-y-3">
-          <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border px-2 py-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.35)]">
+          <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border px-2 py-2 shadow-none">
             {quickAccessItems.map((item) => {
               const tooltip = (
-                <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
+                <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
                   {item.label}
                 </span>
               );
@@ -585,7 +585,7 @@ export function AppSidebar() {
           </div>
           {(user.role === 'staff' || user.role === 'treasurer') && (
             <div className="relative group hover:z-20">
-              <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 shadow-sm transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
+              <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
                 Create New Request
               </span>
               <Link

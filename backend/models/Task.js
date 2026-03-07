@@ -61,13 +61,78 @@ const FinalDeliverableFileSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const FinalDeliverableReviewAnnotationPointSchema = new mongoose.Schema(
+  {
+    x: { type: Number, default: 0 },
+    y: { type: Number, default: 0 }
+  },
+  { _id: false }
+);
+
+const FinalDeliverableReviewAnnotationStrokeSchema = new mongoose.Schema(
+  {
+    id: { type: String, default: "" },
+    color: { type: String, default: "#ef4444" },
+    width: { type: Number, default: 2 },
+    points: { type: [FinalDeliverableReviewAnnotationPointSchema], default: [] }
+  },
+  { _id: false }
+);
+
+const FinalDeliverableReviewAnnotationCommentSchema = new mongoose.Schema(
+  {
+    id: { type: String, default: "" },
+    x: { type: Number, default: 0 },
+    y: { type: Number, default: 0 },
+    text: { type: String, default: "" },
+    thread: {
+      type: [
+        {
+          id: { type: String, default: "" },
+          text: { type: String, default: "" },
+          author: { type: String, default: "" },
+          createdAt: { type: Date, default: Date.now },
+        }
+      ],
+      default: []
+    }
+  },
+  { _id: false }
+);
+
+const FinalDeliverableReviewAnnotationSchema = new mongoose.Schema(
+  {
+    id: { type: String, default: "" },
+    fileId: { type: String, default: "" },
+    fileName: { type: String, default: "" },
+    fileUrl: { type: String, default: "" },
+    imageWidth: { type: Number },
+    imageHeight: { type: Number },
+    strokes: { type: [FinalDeliverableReviewAnnotationStrokeSchema], default: [] },
+    shapes: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    comments: { type: [FinalDeliverableReviewAnnotationCommentSchema], default: [] },
+    createdAt: { type: Date, default: Date.now },
+    createdBy: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
 const FinalDeliverableVersionSchema = new mongoose.Schema(
   {
     version: { type: Number, required: true },
     uploadedAt: { type: Date, default: Date.now },
     uploadedBy: { type: String, default: "" },
     note: { type: String, default: "" },
-    files: { type: [FinalDeliverableFileSchema], default: [] }
+    files: { type: [FinalDeliverableFileSchema], default: [] },
+    reviewStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "approved",
+    },
+    reviewedBy: { type: String, default: "" },
+    reviewedAt: { type: Date },
+    reviewNote: { type: String, default: "" },
+    reviewAnnotations: { type: [FinalDeliverableReviewAnnotationSchema], default: [] },
   },
   { _id: true }
 );
@@ -141,6 +206,14 @@ const TaskSchema = new mongoose.Schema(
     designVersions: { type: [DesignVersionSchema], default: [] },
     activeDesignVersionId: { type: String, default: "" },
     finalDeliverableVersions: { type: [FinalDeliverableVersionSchema], default: [] },
+    finalDeliverableReviewStatus: {
+      type: String,
+      enum: ["not_submitted", "pending", "approved", "rejected"],
+      default: "not_submitted",
+    },
+    finalDeliverableReviewedBy: { type: String, default: "" },
+    finalDeliverableReviewedAt: { type: Date },
+    finalDeliverableReviewNote: { type: String, default: "" },
     comments: { type: [TaskCommentSchema], default: [] }
   },
   { timestamps: true }

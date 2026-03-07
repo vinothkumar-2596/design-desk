@@ -236,6 +236,300 @@ const ensureFinalDeliverableVersions = async (task) => {
   return task;
 };
 
+const FINAL_DELIVERABLE_REVIEW_STATUSES = new Set([
+  "not_submitted",
+  "pending",
+  "approved",
+  "rejected",
+]);
+
+const normalizeFinalDeliverableReviewStatus = (value, fallback = "not_submitted") => {
+  const normalized = normalizeValue(value);
+  if (FINAL_DELIVERABLE_REVIEW_STATUSES.has(normalized)) {
+    return normalized;
+  }
+  return fallback;
+};
+
+const clampUnitInterval = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  if (numeric <= 0) return 0;
+  if (numeric >= 1) return 1;
+  return Number(numeric.toFixed(4));
+};
+
+const sanitizeReviewAnnotationText = (value, maxLength = 500) =>
+  String(value || "").trim().slice(0, maxLength);
+
+const sanitizeFinalDeliverableReviewAnnotations = (value) => {
+  if (!Array.isArray(value)) return [];
+  const SHAPE_KINDS = new Set([
+    "pen",
+    "highlighter",
+    "arrow",
+    "rect",
+    "ellipse",
+    "text",
+    "blur_rect",
+    "highlight_rect",
+  ]);
+  return value
+    .slice(0, 25)
+    .map((entry, index) => {
+      const fileId = String(entry?.fileId || "").trim();
+      const fileName = String(entry?.fileName || "").trim();
+      const fileUrl = String(entry?.fileUrl || "").trim();
+
+      const comments = Array.isArray(entry?.comments)
+        ? entry.comments
+          .slice(0, 100)
+          .map((comment, commentIndex) => {
+            const thread = Array.isArray(comment?.thread)
+              ? comment.thread
+                .slice(0, 60)
+                .map((message, messageIndex) => {
+                  const text = sanitizeReviewAnnotationText(message?.text, 300);
+                  if (!text) return null;
+                  const createdAtCandidate = new Date(message?.createdAt || "");
+                  return {
+                    id: String(message?.id || `thread-${index}-${commentIndex}-${messageIndex}`),
+                    text,
+                    author: String(message?.author || "").trim().slice(0, 120),
+                    createdAt: Number.isNaN(createdAtCandidate.getTime())
+                      ? new Date()
+                      : createdAtCandidate,
+                  };
+                })
+                .filter((message) => Boolean(message))
+              : [];
+
+            const fallbackText = sanitizeReviewAnnotationText(comment?.text, 300);
+            const normalizedThread = thread.length > 0
+              ? thread
+              : (fallbackText
+                ? [
+                  {
+                    id: `thread-${index}-${commentIndex}-0`,
+                    text: fallbackText,
+                    author: "",
+                    createdAt: new Date(),
+                  }
+                ]
+                : []);
+            const topLevelText =
+              normalizedThread[normalizedThread.length - 1]?.text || fallbackText;
+            if (!topLevelText) return null;
+            return {
+              id: String(comment?.id || `comment-${index}-${commentIndex}`),
+              x: clampUnitInterval(comment?.x),
+              y: clampUnitInterval(comment?.y),
+              text: topLevelText,
+              thread: normalizedThread,
+            };
+          })
+          .filter((comment) => Boolean(comment && comment.text))
+        : [];
+
+      const strokes = Array.isArray(entry?.strokes)
+        ? entry.strokes
+          .slice(0, 60)
+          .map((stroke, strokeIndex) => {
+            const points = Array.isArray(stroke?.points)
+              ? stroke.points
+                .slice(0, 2000)
+                .map((point) => ({
+                  x: clampUnitInterval(point?.x),
+                  y: clampUnitInterval(point?.y),
+                }))
+              : [];
+            return {
+              id: String(stroke?.id || `stroke-${index}-${strokeIndex}`),
+              color: String(stroke?.color || "#ef4444").trim().slice(0, 20),
+              width: Number.isFinite(Number(stroke?.width))
+                ? Math.max(1, Math.min(12, Number(stroke.width)))
+                : 2,
+              points,
+            };
+          })
+          .filter((stroke) => Array.isArray(stroke.points) && stroke.points.length >= 2)
+        : [];
+
+      const shapes = Array.isArray(entry?.shapes)
+        ? entry.shapes
+          .slice(0, 300)
+          .map((shape, shapeIndex) => {
+            const kind = String(shape?.kind || "").trim().toLowerCase();
+            if (!SHAPE_KINDS.has(kind)) return null;
+            const base = {
+              id: String(shape?.id || `shape-${index}-${shapeIndex}`),
+              kind,
+              color: String(shape?.color || "#ef4444").trim().slice(0, 20),
+              width: Number.isFinite(Number(shape?.width))
+                ? Math.max(1, Math.min(20, Number(shape.width)))
+                : 2,
+              opacity: Number.isFinite(Number(shape?.opacity))
+                ? Math.max(0.1, Math.min(1, Number(shape.opacity)))
+                : 1,
+            };
+            if (kind === "pen" || kind === "highlighter") {
+              const points = Array.isArray(shape?.points)
+                ? shape.points
+                  .slice(0, 3000)
+                  .map((point) => ({
+                    x: clampUnitInterval(point?.x),
+                    y: clampUnitInterval(point?.y),
+                  }))
+                : [];
+              if (points.length < 2) return null;
+              return {
+                ...base,
+                points,
+              };
+            }
+            if (kind === "text") {
+              const text = sanitizeReviewAnnotationText(shape?.text, 200);
+              if (!text) return null;
+              return {
+                ...base,
+                x: clampUnitInterval(shape?.x),
+                y: clampUnitInterval(shape?.y),
+                text,
+                fontSize: Number.isFinite(Number(shape?.fontSize))
+                  ? Math.max(10, Math.min(96, Number(shape.fontSize)))
+                  : 24,
+                fillColor: String(shape?.fillColor || "").trim().slice(0, 20),
+              };
+            }
+            return {
+              ...base,
+              startX: clampUnitInterval(shape?.startX),
+              startY: clampUnitInterval(shape?.startY),
+              endX: clampUnitInterval(shape?.endX),
+              endY: clampUnitInterval(shape?.endY),
+            };
+          })
+          .filter((shape) => Boolean(shape))
+        : [];
+
+      if (shapes.length > 0 && strokes.length === 0) {
+        shapes.forEach((shape, shapeIndex) => {
+          if ((shape?.kind !== "pen" && shape?.kind !== "highlighter") || !Array.isArray(shape?.points)) {
+            return;
+          }
+          if (shape.points.length < 2) return;
+          strokes.push({
+            id: String(shape.id || `shape-stroke-${index}-${shapeIndex}`),
+            color: String(shape.color || "#ef4444"),
+            width: Number.isFinite(Number(shape.width))
+              ? Math.max(1, Math.min(12, Number(shape.width)))
+              : 2,
+            points: shape.points.map((point) => ({
+              x: clampUnitInterval(point?.x),
+              y: clampUnitInterval(point?.y),
+            })),
+          });
+        });
+      }
+
+      const imageWidth = Number.isFinite(Number(entry?.imageWidth))
+        ? Math.max(0, Number(entry.imageWidth))
+        : undefined;
+      const imageHeight = Number.isFinite(Number(entry?.imageHeight))
+        ? Math.max(0, Number(entry.imageHeight))
+        : undefined;
+
+      const createdAtCandidate = new Date(entry?.createdAt || "");
+      const createdAt = Number.isNaN(createdAtCandidate.getTime())
+        ? new Date()
+        : createdAtCandidate;
+      const createdBy = String(entry?.createdBy || "").trim().slice(0, 120);
+
+      return {
+        id: String(entry?.id || `annotation-${index}`),
+        fileId,
+        fileName,
+        fileUrl,
+        imageWidth,
+        imageHeight,
+        comments,
+        strokes,
+        shapes,
+        createdAt,
+        createdBy,
+      };
+    })
+    .filter((annotation) => {
+      const hasFeedback =
+        (Array.isArray(annotation.comments) && annotation.comments.length > 0) ||
+        (Array.isArray(annotation.strokes) && annotation.strokes.length > 0) ||
+        (Array.isArray(annotation.shapes) && annotation.shapes.length > 0);
+      if (!hasFeedback) return false;
+      return Boolean(annotation.fileId || annotation.fileUrl);
+    });
+};
+
+const isMainDesignerActor = (user) =>
+  normalizeTaskRole(user?.role) === "designer" && isMainDesignerUser(user);
+
+const requiresMainDesignerFinalReview = (user) => {
+  if (!hasMainDesignerConfig()) return false;
+  const role = normalizeTaskRole(user?.role);
+  if (role !== "designer") return false;
+  return !isMainDesignerActor(user);
+};
+
+const resolveFinalDeliverableReviewState = (task) => {
+  const versions = normalizeFinalDeliverableVersions(task);
+  const explicitStatus = normalizeFinalDeliverableReviewStatus(
+    task?.finalDeliverableReviewStatus,
+    ""
+  );
+  if (explicitStatus) {
+    return {
+      status: explicitStatus,
+      reviewedBy: String(task?.finalDeliverableReviewedBy || ""),
+      reviewedAt: task?.finalDeliverableReviewedAt || undefined,
+      reviewNote: String(task?.finalDeliverableReviewNote || ""),
+    };
+  }
+  if (versions.length === 0) {
+    return {
+      status: "not_submitted",
+      reviewedBy: "",
+      reviewedAt: undefined,
+      reviewNote: "",
+    };
+  }
+  const latestVersion = versions[0] || {};
+  return {
+    status: normalizeFinalDeliverableReviewStatus(latestVersion?.reviewStatus, "approved"),
+    reviewedBy: String(latestVersion?.reviewedBy || ""),
+    reviewedAt: latestVersion?.reviewedAt || undefined,
+    reviewNote: String(latestVersion?.reviewNote || ""),
+  };
+};
+
+const buildTaskPayloadForViewer = (task, viewer) => {
+  const payload = typeof task?.toJSON === "function" ? task.toJSON() : { ...(task || {}) };
+  payload.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
+  const reviewState = resolveFinalDeliverableReviewState(task);
+  payload.finalDeliverableReviewStatus = reviewState.status;
+  payload.finalDeliverableReviewedBy = reviewState.reviewedBy;
+  payload.finalDeliverableReviewedAt = reviewState.reviewedAt;
+  payload.finalDeliverableReviewNote = reviewState.reviewNote;
+
+  const viewerRole = normalizeTaskRole(viewer?.role);
+  if (viewerRole === "staff" && reviewState.status !== "approved") {
+    payload.finalDeliverableVersions = [];
+    payload.files = Array.isArray(payload.files)
+      ? payload.files.filter((file) => normalizeValue(file?.type) !== "output")
+      : [];
+  }
+
+  return payload;
+};
+
 const resolveAssignedUser = async ({
   assignedToId,
   assignedTo,
@@ -623,6 +917,8 @@ const ensureTaskAccess = async (req, res, next) => {
       req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/assign");
     const isFinalDeliverablesWrite =
       req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/final-deliverables");
+    const isFinalDeliverablesReviewWrite =
+      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/final-deliverables/review");
     const isFinalDeliverableNoteWrite =
       req.method === "PATCH" && typeof req.path === "string" && req.path.endsWith("/note");
     const isAcceptWrite =
@@ -695,10 +991,13 @@ const ensureTaskAccess = async (req, res, next) => {
         Object.keys(bodyUpdates).length === 0 ||
         Object.keys(bodyUpdates).every((key) => completionWriteUpdateKeys.has(key));
       const canMainDesignerFinalizeWrite =
-        userRole === "designer" &&
-        isMainDesigner &&
+        (
+          (userRole === "designer" && isMainDesigner) ||
+          userRole === "admin"
+        ) &&
         (
           isFinalDeliverablesWrite ||
+          isFinalDeliverablesReviewWrite ||
           isFinalDeliverableNoteWrite ||
           (
             isChangeWrite &&
@@ -779,6 +1078,7 @@ const ensureTaskAccess = async (req, res, next) => {
         isChangeWrite ||
         isAssignDesignerWrite ||
         isFinalDeliverablesWrite ||
+        isFinalDeliverablesReviewWrite ||
         isFinalDeliverableNoteWrite ||
         isAcceptWrite ||
         isCommentsSeenWrite)
@@ -937,7 +1237,7 @@ router.get("/designers", async (req, res) => {
     const canViewAssignableDesigners =
       role === "admin" || (role === "designer" && isMainDesignerUser(req.user));
     if (!canViewAssignableDesigners) {
-      return res.status(403).json({ error: "Only the main designer can view assignable designers." });
+      return res.status(403).json({ error: "Only the Design Lead can view assignable designers." });
     }
 
     const designers = await getActiveDesignerUsers();
@@ -1239,8 +1539,7 @@ router.get("/:id", ensureTaskAccess, async (req, res) => {
     task = await hydrateMissingFileMeta(task);
     const accessContext =
       req.taskAccessContext || await resolveTaskAccessContext(task, req.user);
-    const payload = typeof task.toJSON === "function" ? task.toJSON() : task;
-    payload.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
+    const payload = buildTaskPayloadForViewer(task, req.user);
     payload.accessMode = req.taskAccessMode || accessContext?.mode || "full";
     payload.viewOnly = payload.accessMode === "view_only";
     if (accessContext?.assignedDesignerEmail) {
@@ -1268,7 +1567,7 @@ router.get("/:id/changes", ensureTaskAccess, async (req, res) => {
 router.get("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
   try {
     const task = req.task;
-    const versions = normalizeFinalDeliverableVersions(task);
+    const versions = buildTaskPayloadForViewer(task, req.user).finalDeliverableVersions || [];
     res.json(versions);
   } catch (error) {
     res.status(400).json({ error: "Invalid task id." });
@@ -1298,9 +1597,7 @@ router.patch("/:id/final-deliverables/:versionId/note", ensureTaskAccess, async 
 
     const oldNote = String(targetVersion.note || "");
     if (oldNote === note) {
-      const payload = typeof task.toJSON === "function" ? task.toJSON() : task;
-      payload.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
-      return res.json(payload);
+      return res.json(buildTaskPayloadForViewer(task, req.user));
     }
 
     targetVersion.note = note;
@@ -1327,19 +1624,21 @@ router.patch("/:id/final-deliverables/:versionId/note", ensureTaskAccess, async 
 
     const io = getSocket();
     if (io) {
-      const payloadTask = typeof task.toJSON === "function" ? task.toJSON() : task;
-      payloadTask.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
-      const updatedTaskId = payloadTask?.id || task.id || task._id?.toString?.();
+      const updatedTaskId = task.id || task._id?.toString?.();
       const updatePayload = {
         taskId: updatedTaskId,
-        task: payloadTask
+        task: buildTaskPayloadForViewer(task, { role: "staff" })
       };
       io.to(updatedTaskId).emit("task:updated", updatePayload);
+      if (userId) {
+        io.to(String(userId)).emit("task:updated", {
+          taskId: updatedTaskId,
+          task: buildTaskPayloadForViewer(task, req.user),
+        });
+      }
     }
 
-    const responsePayload = typeof task.toJSON === "function" ? task.toJSON() : task;
-    responsePayload.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
-    res.json(responsePayload);
+    res.json(buildTaskPayloadForViewer(task, req.user));
   } catch (error) {
     console.error("Final deliverable note update error:", error?.message || error);
     res.status(400).json({ error: "Failed to update final deliverable note." });
@@ -1363,6 +1662,13 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
 
     let task = req.task;
     task = await ensureFinalDeliverableVersions(task);
+    const previousReviewState = resolveFinalDeliverableReviewState(task);
+    const uploadedAt = new Date();
+    const reviewRequired = requiresMainDesignerFinalReview(req.user);
+    const nextReviewStatus = reviewRequired ? "pending" : "approved";
+    const nextReviewedBy = reviewRequired ? "" : (resolvedUserName || req.user?.email || "");
+    const nextReviewedAt = reviewRequired ? undefined : uploadedAt;
+    const nextReviewNote = "";
     const existingVersions = Array.isArray(task.finalDeliverableVersions)
       ? task.finalDeliverableVersions
       : [];
@@ -1371,7 +1677,6 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
       0
     );
     const nextVersion = maxVersion + 1;
-    const uploadedAt = new Date();
     const versionFiles = files.map((file) => ({
       name: file?.name || "",
       url: file?.url || "",
@@ -1387,7 +1692,12 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
       uploadedAt,
       uploadedBy: userId || "",
       note,
-      files: versionFiles
+      files: versionFiles,
+      reviewStatus: nextReviewStatus,
+      reviewedBy: nextReviewedBy,
+      reviewedAt: nextReviewedAt,
+      reviewNote: nextReviewNote,
+      reviewAnnotations: [],
     };
 
     const outputFiles = versionFiles.map((file) => ({
@@ -1412,6 +1722,19 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
       userRole: userRole || "",
       createdAt: uploadedAt
     }));
+    changeEntries.push({
+      type: "status",
+      field: "final_deliverable_review",
+      oldValue: previousReviewState.status,
+      newValue: nextReviewStatus,
+      note: reviewRequired
+        ? `Final deliverables submitted for Design Lead review (v${nextVersion}).`
+        : `Final deliverables approved (v${nextVersion}).`,
+      userId: userId || "",
+      userName: resolvedUserName || "",
+      userRole: userRole || "",
+      createdAt: uploadedAt
+    });
 
     const updateDoc = {
       $push: {
@@ -1419,7 +1742,13 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
         files: { $each: outputFiles },
         changeHistory: { $each: changeEntries }
       },
-      $set: { updatedAt: uploadedAt }
+      $set: {
+        updatedAt: uploadedAt,
+        finalDeliverableReviewStatus: nextReviewStatus,
+        finalDeliverableReviewedBy: nextReviewedBy,
+        finalDeliverableReviewedAt: nextReviewedAt || null,
+        finalDeliverableReviewNote: nextReviewNote,
+      }
     };
 
     const updatedTask = await Task.findByIdAndUpdate(taskId, updateDoc, {
@@ -1490,7 +1819,7 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
       url: file.url
     }));
 
-    if (resolvedRequesterEmail && requesterPrefs.emailNotifications) {
+    if (!reviewRequired && resolvedRequesterEmail && requesterPrefs.emailNotifications) {
       const emailSent = await sendFinalFilesEmail({
         to: resolvedRequesterEmail,
         taskTitle: updatedTask.title,
@@ -1513,7 +1842,7 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
       }
     }
 
-    if (requesterUserId) {
+    if (!reviewRequired && requesterUserId) {
       createNotification({
         userId: requesterUserId,
         title: `Final files uploaded: ${updatedTask.title}`,
@@ -1529,28 +1858,276 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
         });
     }
 
+    const designers = await getActiveDesignerUsers();
+    const { mainDesigners } = splitDesignersByScope(designers);
+    const mainDesignerUserIds = mainDesigners
+      .map((designer) => designer._id?.toString?.() || "")
+      .filter((id) => Boolean(id) && id !== userId);
+
+    if (reviewRequired && mainDesignerUserIds.length > 0) {
+      createNotificationsForUsers(mainDesignerUserIds, {
+        title: `Review required: ${updatedTask.title}`,
+        message: `${resolvedUserName || "Junior designer"} submitted final deliverables (v${nextVersion}).`,
+        type: "task",
+        link: taskLink,
+        taskId: updatedTask.id || updatedTask._id?.toString?.(),
+        eventId: `final-review:${taskId}:${uploadedAt.toISOString()}`
+      })
+        .then((notes) => emitNotifications(notes))
+        .catch((error) => {
+          console.error("Final review notification error:", error?.message || error);
+        });
+    }
+
     const io = getSocket();
     if (io) {
-      const payloadTask = typeof updatedTask.toJSON === "function" ? updatedTask.toJSON() : updatedTask;
-      payloadTask.finalDeliverableVersions = normalizeFinalDeliverableVersions(updatedTask);
-      const updatedTaskId = payloadTask?.id || updatedTask.id || updatedTask._id?.toString?.();
-      const updatePayload = {
+      const updatedTaskId = updatedTask.id || updatedTask._id?.toString?.();
+      const staffPayload = buildTaskPayloadForViewer(updatedTask, { role: "staff" });
+      io.to(updatedTaskId).emit("task:updated", {
         taskId: updatedTaskId,
-        task: payloadTask
-      };
-      io.to(updatedTaskId).emit("task:updated", updatePayload);
+        task: staffPayload
+      });
+
+      const fullPayload = buildTaskPayloadForViewer(updatedTask, { role: "designer" });
+      if (userId) {
+        io.to(String(userId)).emit("task:updated", {
+          taskId: updatedTaskId,
+          task: fullPayload
+        });
+      }
+      if (mainDesignerUserIds.length > 0) {
+        mainDesignerUserIds.forEach((designerId) => {
+          io.to(String(designerId)).emit("task:updated", {
+            taskId: updatedTaskId,
+            task: fullPayload
+          });
+        });
+      }
       if (requesterUserId) {
-        io.to(String(requesterUserId)).emit("task:updated", updatePayload);
+        io.to(String(requesterUserId)).emit("task:updated", {
+          taskId: updatedTaskId,
+          task: staffPayload
+        });
       }
     }
 
-    const responsePayload =
-      typeof updatedTask.toJSON === "function" ? updatedTask.toJSON() : updatedTask;
-    responsePayload.finalDeliverableVersions = normalizeFinalDeliverableVersions(updatedTask);
-    res.json(responsePayload);
+    res.json(buildTaskPayloadForViewer(updatedTask, req.user));
   } catch (error) {
     console.error("Final deliverable upload error:", error?.message || error);
     res.status(400).json({ error: "Failed to upload final deliverables." });
+  }
+});
+
+router.post("/:id/final-deliverables/review", ensureTaskAccess, async (req, res) => {
+  try {
+    const normalizedRole = normalizeTaskRole(req.user?.role);
+    const canReviewFinalDeliverables =
+      normalizedRole === "admin" || (normalizedRole === "designer" && isMainDesignerActor(req.user));
+    if (!canReviewFinalDeliverables) {
+      return res.status(403).json({ error: "Only the Design Lead can review final deliverables." });
+    }
+
+    const decision = normalizeValue(req.body?.decision);
+    if (decision !== "approved" && decision !== "rejected") {
+      return res.status(400).json({ error: "Decision must be approved or rejected." });
+    }
+    const reviewNote = String(req.body?.note || "").trim();
+    const reviewAnnotations = sanitizeFinalDeliverableReviewAnnotations(req.body?.annotations);
+    const hasReviewAnnotations = reviewAnnotations.length > 0;
+    if (decision === "rejected" && !reviewNote && !hasReviewAnnotations) {
+      return res.status(400).json({ error: "Add review note or annotations before requesting updates." });
+    }
+
+    let task = req.task;
+    task = await ensureFinalDeliverableVersions(task);
+    const versions = Array.isArray(task.finalDeliverableVersions) ? task.finalDeliverableVersions : [];
+    if (versions.length === 0) {
+      return res.status(400).json({ error: "No final deliverables available for review." });
+    }
+
+    const targetVersion = versions.reduce((latest, current) => {
+      if (!latest) return current;
+      return Number(current?.version || 0) > Number(latest?.version || 0) ? current : latest;
+    }, null);
+    if (!targetVersion) {
+      return res.status(400).json({ error: "No final deliverables available for review." });
+    }
+
+    const previousReviewState = resolveFinalDeliverableReviewState(task);
+    const reviewedAt = new Date();
+    const reviewerName = req.user?.name || req.user?.email || "Main Designer";
+    targetVersion.reviewStatus = decision;
+    targetVersion.reviewedBy = reviewerName;
+    targetVersion.reviewedAt = reviewedAt;
+    targetVersion.reviewNote = reviewNote;
+    targetVersion.reviewAnnotations = decision === "rejected" ? reviewAnnotations : [];
+
+    task.finalDeliverableReviewStatus = decision;
+    task.finalDeliverableReviewedBy = reviewerName;
+    task.finalDeliverableReviewedAt = reviewedAt;
+    task.finalDeliverableReviewNote =
+      reviewNote ||
+      (decision === "rejected" && hasReviewAnnotations
+        ? "Design Lead annotated the deliverables with requested updates."
+        : "");
+    task.updatedAt = reviewedAt;
+    const annotationSummary = hasReviewAnnotations
+      ? ` Includes ${reviewAnnotations.length} annotated file${reviewAnnotations.length === 1 ? "" : "s"}.`
+      : "";
+    task.changeHistory.push({
+      type: "status",
+      field: "final_deliverable_review",
+      oldValue: previousReviewState.status,
+      newValue: decision,
+      note:
+        (reviewNote ? `${reviewNote}${annotationSummary}` : "") ||
+        (decision === "approved"
+          ? `Final deliverables approved by ${reviewerName}.`
+          : `Final deliverables rejected by ${reviewerName}.${annotationSummary}`),
+      userId: getUserId(req) || "",
+      userName: reviewerName,
+      userRole: req.user?.role || "",
+      createdAt: reviewedAt
+    });
+    task.markModified("finalDeliverableVersions");
+    task.markModified("changeHistory");
+    await task.save();
+
+    req.auditTargetId = task.id || task._id?.toString?.() || req.params.id;
+
+    await Activity.create({
+      taskId: task._id,
+      taskTitle: task.title,
+      action: "updated",
+      userId: getUserId(req) || "",
+      userName: reviewerName
+    });
+
+    const taskId = task.id || task._id?.toString?.() || "";
+    const taskLink = buildTaskLink(taskId);
+    const filesForNotification = Array.isArray(targetVersion.files)
+      ? targetVersion.files.map((file) => ({
+        name: file?.name || "",
+        url: file?.url || ""
+      }))
+      : [];
+
+    let requesterUserId =
+      task.requesterId ||
+      (task.requesterEmail ? await resolveUserIdByEmail(task.requesterEmail) : "");
+    if (!requesterUserId) {
+      const history = Array.isArray(task.changeHistory) ? task.changeHistory : [];
+      const createdEntry = history.find((entry) => entry?.field === "created");
+      requesterUserId = createdEntry?.userId || "";
+    }
+
+    let requesterEmail = task.requesterEmail || "";
+    if (!requesterEmail && requesterUserId) {
+      const requesterUser = await User.findById(requesterUserId);
+      requesterEmail = requesterUser?.email || "";
+    }
+
+    const requesterPrefs = await resolveNotificationPreferences({
+      userId: requesterUserId,
+      email: requesterEmail
+    });
+
+    const assignedDesignerId = normalizeId(task.assignedToId);
+    if (assignedDesignerId) {
+      createNotification({
+        userId: assignedDesignerId,
+        title: `Final files ${decision}: ${task.title}`,
+        message:
+          decision === "approved"
+            ? `${reviewerName} approved your final deliverables.`
+            : `${reviewerName} requested updates on your final deliverables.`,
+        type: "task",
+        link: taskLink,
+        taskId,
+        eventId: `final-review:${taskId}:${decision}:${reviewedAt.toISOString()}`
+      })
+        .then((note) => emitNotification(note))
+        .catch((error) => {
+          console.error("Designer review notification error:", error?.message || error);
+        });
+    }
+
+    if (decision === "approved" && requesterUserId) {
+      createNotification({
+        userId: requesterUserId,
+        title: `Final files approved: ${task.title}`,
+        message: `${reviewerName} approved the final deliverables.`,
+        type: "file",
+        link: taskLink,
+        taskId,
+        eventId: `final-approved:${taskId}:${reviewedAt.toISOString()}`
+      })
+        .then((note) => emitNotification(note))
+        .catch((error) => {
+          console.error("Requester approval notification error:", error?.message || error);
+        });
+    }
+
+    if (decision === "approved" && requesterEmail && requesterPrefs.emailNotifications) {
+      const baseUrl = process.env.FRONTEND_URL || "";
+      const taskUrl = baseUrl
+        ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}`
+        : undefined;
+      const emailSent = await sendFinalFilesEmail({
+        to: requesterEmail,
+        taskTitle: task.title,
+        files: filesForNotification,
+        designerName: task.assignedToName || "Designer",
+        taskUrl,
+        submittedAt: targetVersion.uploadedAt || reviewedAt,
+        taskDetails: {
+          id: task.id || task._id?.toString?.() || task._id,
+          status: task.status,
+          category: task.category,
+          deadline: task.deadline,
+          requesterName: task.requesterName,
+          requesterEmail: requesterEmail,
+          requesterDepartment: task.requesterDepartment,
+        },
+      });
+      if (!emailSent) {
+        console.warn("Final files approval email failed to send.");
+      }
+    }
+
+    const io = getSocket();
+    if (io) {
+      const staffPayload = buildTaskPayloadForViewer(task, { role: "staff" });
+      const fullPayload = buildTaskPayloadForViewer(task, { role: "designer" });
+      io.to(taskId).emit("task:updated", {
+        taskId,
+        task: staffPayload
+      });
+      const reviewerUserId = getUserId(req);
+      if (reviewerUserId) {
+        io.to(String(reviewerUserId)).emit("task:updated", {
+          taskId,
+          task: fullPayload
+        });
+      }
+      if (assignedDesignerId) {
+        io.to(String(assignedDesignerId)).emit("task:updated", {
+          taskId,
+          task: fullPayload
+        });
+      }
+      if (requesterUserId) {
+        io.to(String(requesterUserId)).emit("task:updated", {
+          taskId,
+          task: staffPayload
+        });
+      }
+    }
+
+    return res.json(buildTaskPayloadForViewer(task, req.user));
+  } catch (error) {
+    console.error("Final deliverable review error:", error?.message || error);
+    return res.status(400).json({ error: "Failed to review final deliverables." });
   }
 });
 
@@ -1586,13 +2163,21 @@ router.patch("/:id", ensureTaskAccess, async (req, res) => {
 
     const io = getSocket();
     if (io) {
-      io.to(task.id || task._id?.toString?.()).emit("task:updated", {
-        taskId: task.id || task._id?.toString?.(),
-        task
+      const updatedTaskId = task.id || task._id?.toString?.();
+      io.to(updatedTaskId).emit("task:updated", {
+        taskId: updatedTaskId,
+        task: buildTaskPayloadForViewer(task, { role: "staff" })
       });
+      const actorId = getUserId(req);
+      if (actorId) {
+        io.to(String(actorId)).emit("task:updated", {
+          taskId: updatedTaskId,
+          task: buildTaskPayloadForViewer(task, req.user),
+        });
+      }
     }
 
-    res.json(task);
+    res.json(buildTaskPayloadForViewer(task, req.user));
   } catch (error) {
     res.status(400).json({ error: "Failed to update task." });
   }
@@ -1813,7 +2398,7 @@ router.post("/:id/assign", ensureTaskAccess, async (req, res) => {
       role === "admin" || (role === "designer" && isMainDesignerUser(req.user));
 
     if (!canAssign) {
-      return res.status(403).json({ error: "Only the main designer can assign tasks." });
+      return res.status(403).json({ error: "Only the Design Lead can assign tasks." });
     }
 
     const resolvedAssignment = await resolveAssignedUser({
@@ -1902,7 +2487,7 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
     const canAssign =
       role === "admin" || (role === "designer" && isMainDesignerUser(req.user));
     if (!canAssign) {
-      return res.status(403).json({ error: "Only the main designer can assign designers." });
+      return res.status(403).json({ error: "Only the Design Lead can assign designers." });
     }
 
     const assignedDesignerRaw = req.body?.assigned_designer_id;
@@ -1922,6 +2507,18 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
 
     const assignmentMessage =
       typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    const deadlineInput =
+      typeof req.body?.deadline === "string" ? req.body.deadline.trim() : "";
+    if (!deadlineInput) {
+      return res.status(400).json({ error: "deadline is required." });
+    }
+    const parsedAssignmentDeadline = /^\d{4}-\d{2}-\d{2}$/.test(deadlineInput)
+      ? new Date(`${deadlineInput}T12:00:00.000Z`)
+      : new Date(deadlineInput);
+    if (Number.isNaN(parsedAssignmentDeadline.getTime())) {
+      return res.status(400).json({ error: "Invalid deadline date." });
+    }
+
     const assignedDesignerInput = assignedDesignerRaw.trim();
     const inputLooksLikeEmail = assignedDesignerInput.includes("@");
     const resolvedAssignment = await resolveAssignedUser({
@@ -1953,6 +2550,15 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
 
     const task = req.task;
     const previousCcEmails = extractTaskCcEmails(task);
+    const formatIsoDate = (value) => {
+      if (!value) return "";
+      const parsed = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(parsed.getTime())) return "";
+      return parsed.toISOString().slice(0, 10);
+    };
+    const previousDeadline = formatIsoDate(task?.deadline);
+    const nextDeadline = formatIsoDate(parsedAssignmentDeadline);
+    const deadlineChanged = previousDeadline !== nextDeadline;
     const assignedAt = new Date();
     const assignedBy = req.user?.name || req.user?.email || "Manager";
     const assignedById = getUserId(req);
@@ -1962,53 +2568,69 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
       assignedDesignerEmail.split("@")[0] ||
       "";
 
+    const assignmentChangeEntries = [
+      {
+        type: "update",
+        field: "assigned_designer",
+        oldValue: task.assignedToName || task.assignedToId || "",
+        newValue: assignedDesignerName || assignedDesignerEmail,
+        note: assignmentMessage || `Assigned by ${assignedBy}.`,
+        userId: assignedById || "",
+        userName: assignedBy || "",
+        userRole: role || "",
+        createdAt: assignedAt
+      },
+      {
+        type: "status",
+        field: "task_status",
+        oldValue: task.status || "",
+        newValue: "Assigned",
+        note: assignmentMessage || "",
+        userId: assignedById || "",
+        userName: assignedBy || "",
+        userRole: role || "",
+        createdAt: assignedAt
+      },
+      {
+        type: "update",
+        field: "cc_emails",
+        oldValue: JSON.stringify(previousCcEmails),
+        newValue: JSON.stringify(ccEmails),
+        note: ccEmails.length > 0
+          ? `CC recipients: ${ccEmails.join(", ")}`
+          : "CC recipients cleared.",
+        userId: assignedById || "",
+        userName: assignedBy || "",
+        userRole: role || "",
+        createdAt: assignedAt
+      }
+    ];
+    if (deadlineChanged) {
+      assignmentChangeEntries.push({
+        type: "update",
+        field: "deadline",
+        oldValue: previousDeadline,
+        newValue: nextDeadline,
+        note: `Assignment deadline set to ${nextDeadline}.`,
+        userId: assignedById || "",
+        userName: assignedBy || "",
+        userRole: role || "",
+        createdAt: assignedAt
+      });
+    }
+
     const updatedTask = await Task.findByIdAndUpdate(
       req.params.id,
       {
         $set: {
           assignedToId: resolvedAssignment.assignedToId,
           assignedToName: assignedDesignerName,
-          status: "assigned"
+          status: "assigned",
+          deadline: parsedAssignmentDeadline,
         },
         $push: {
           changeHistory: {
-            $each: [
-              {
-                type: "update",
-                field: "assigned_designer",
-                oldValue: task.assignedToName || task.assignedToId || "",
-                newValue: assignedDesignerName || assignedDesignerEmail,
-                note: assignmentMessage || `Assigned by ${assignedBy}.`,
-                userId: assignedById || "",
-                userName: assignedBy || "",
-                userRole: role || "",
-                createdAt: assignedAt
-              },
-              {
-                type: "status",
-                field: "task_status",
-                oldValue: task.status || "",
-                newValue: "Assigned",
-                note: assignmentMessage || "",
-                userId: assignedById || "",
-                userName: assignedBy || "",
-                userRole: role || "",
-                createdAt: assignedAt
-              },
-              {
-                type: "update",
-                field: "cc_emails",
-                oldValue: JSON.stringify(previousCcEmails),
-                newValue: JSON.stringify(ccEmails),
-                note: ccEmails.length > 0
-                  ? `CC recipients: ${ccEmails.join(", ")}`
-                  : "CC recipients cleared.",
-                userId: assignedById || "",
-                userName: assignedBy || "",
-                userRole: role || "",
-                createdAt: assignedAt
-              }
-            ]
+            $each: assignmentChangeEntries
           }
         }
       },
@@ -2035,7 +2657,7 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
     createNotification({
       userId: resolvedAssignment.assignedToId,
       title: `Task assigned: ${updatedTask.title}`,
-      message: `${assignedBy} assigned this task to you.`,
+      message: `${assignedBy} assigned this task to you. Deadline: ${nextDeadline || "Not set"}.`,
       type: "task",
       link: taskLink,
       taskId,
@@ -2372,8 +2994,10 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
     });
 
     const finalFileChanges = sanitizedChanges.filter(isFinalFileChange);
+    const finalDeliverableReviewState = resolveFinalDeliverableReviewState(updatedTask);
+    const canShareFinalFilesWithStaff = finalDeliverableReviewState.status === "approved";
 
-    if (finalFileChanges.length > 0) {
+    if (finalFileChanges.length > 0 && canShareFinalFilesWithStaff) {
       const baseUrl = process.env.FRONTEND_URL || "";
       const taskUrl = baseUrl
         ? `${baseUrl.replace(/\/$/, "")}/task/${updatedTask.id || updatedTask._id}`
@@ -2529,7 +3153,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
         });
     };
 
-    if (finalFileChanges.length > 0 && requesterUserId) {
+    if (finalFileChanges.length > 0 && canShareFinalFilesWithStaff && requesterUserId) {
       notifyUser(requesterUserId, {
         title: `Final files uploaded: ${updatedTask.title}`,
         message: `${resolvedUserName || "Designer"} shared final deliverables.`,
@@ -2647,22 +3271,37 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
 
     const io = getSocket();
     if (io) {
-      const payloadTask = typeof updatedTask.toJSON === "function" ? updatedTask.toJSON() : updatedTask;
-      const updatedTaskId = payloadTask?.id || updatedTask.id || updatedTask._id?.toString?.();
-      const updatePayload = {
+      const updatedTaskId = updatedTask.id || updatedTask._id?.toString?.();
+      const staffPayload = buildTaskPayloadForViewer(updatedTask, { role: "staff" });
+      const fullPayload = buildTaskPayloadForViewer(updatedTask, { role: "designer" });
+      io.to(updatedTaskId).emit("task:updated", {
         taskId: updatedTaskId,
-        task: payloadTask,
-      };
-      io.to(updatedTaskId).emit("task:updated", updatePayload);
+        task: staffPayload,
+      });
       if (requesterUserId) {
-        io.to(String(requesterUserId)).emit("task:updated", updatePayload);
+        io.to(String(requesterUserId)).emit("task:updated", {
+          taskId: updatedTaskId,
+          task: staffPayload,
+        });
       }
-      const requesterEmail = payloadTask?.requesterEmail || updatedTask.requesterEmail || task.requesterEmail;
+      const requesterEmail = updatedTask.requesterEmail || task.requesterEmail;
       if (requesterEmail) {
-        io.to(String(requesterEmail)).emit("task:updated", updatePayload);
+        io.to(String(requesterEmail)).emit("task:updated", {
+          taskId: updatedTaskId,
+          task: staffPayload,
+        });
       }
       if (designerUserId) {
-        io.to(String(designerUserId)).emit("task:updated", updatePayload);
+        io.to(String(designerUserId)).emit("task:updated", {
+          taskId: updatedTaskId,
+          task: fullPayload,
+        });
+      }
+      if (userId) {
+        io.to(String(userId)).emit("task:updated", {
+          taskId: updatedTaskId,
+          task: buildTaskPayloadForViewer(updatedTask, req.user),
+        });
       }
       console.log(`Emitted task:updated for ${updatedTaskId}`);
     }
@@ -2684,7 +3323,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       req.auditAction = "EMERGENCY_OVERRIDE";
     }
 
-    res.json(updatedTask);
+    res.json(buildTaskPayloadForViewer(updatedTask, req.user));
   } catch (error) {
     console.error("Failed to record change:", error);
     res.status(400).json({ error: "Failed to record change." });

@@ -56,6 +56,8 @@ import {
   ApprovalStatus,
   DesignVersion,
   FinalDeliverableFile,
+  FinalDeliverableReviewAnnotation,
+  FinalDeliverableReviewStatus,
   FinalDeliverableVersion,
   TaskChange,
   TaskComment,
@@ -68,6 +70,7 @@ import { createSocket } from '@/lib/socket';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { pushScheduleNotification } from '@/lib/designerSchedule';
 import { GridBackground } from '@/components/ui/background';
+import { ImageAnnotationDialog } from '@/components/tasks/ImageAnnotationDialog';
 import { isMainDesigner } from '@/lib/designerAccess';
 
 type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
@@ -204,6 +207,44 @@ type PendingFinalFile = {
   mime?: string;
   thumbnailUrl?: string;
 };
+type OutputDisplayFile = {
+  id: string;
+  name: string;
+  url: string;
+  type: 'output';
+  uploadedAt: Date;
+  uploadedBy: string;
+  size?: number;
+  mime?: string;
+  thumbnailUrl?: string;
+};
+const getReviewAnnotationFileKey = (value?: { fileId?: string; fileUrl?: string; id?: string; url?: string }) => {
+  const byId = String(value?.fileId || value?.id || '').trim();
+  if (byId) return byId;
+  return String(value?.fileUrl || value?.url || '').trim();
+};
+const hasReviewAnnotationContent = (annotation?: FinalDeliverableReviewAnnotation | null) => {
+  if (!annotation) return false;
+  const comments = Array.isArray(annotation.comments) ? annotation.comments : [];
+  const strokes = Array.isArray(annotation.strokes) ? annotation.strokes : [];
+  const shapes = Array.isArray(annotation.shapes) ? annotation.shapes : [];
+  return comments.length > 0 || strokes.length > 0 || shapes.length > 0;
+};
+const normalizeFinalDeliverableReviewStatus = (
+  value?: string,
+  fallback: FinalDeliverableReviewStatus = 'not_submitted'
+): FinalDeliverableReviewStatus => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (
+    normalized === 'not_submitted' ||
+    normalized === 'pending' ||
+    normalized === 'approved' ||
+    normalized === 'rejected'
+  ) {
+    return normalized;
+  }
+  return fallback;
+};
 const STAFF_EDIT_CHANGE_FIELDS = new Set(['description']);
 const isEditTaskHistoryChange = (entry?: Partial<TaskChange>) => {
   if (!entry) return false;
@@ -223,6 +264,10 @@ const fileRowClass =
   'flex items-center justify-between rounded-lg border border-transparent bg-gradient-to-r from-[#F7FAFF]/90 via-[#EEF4FF]/60 to-[#EAF2FF]/80 px-4 py-1.5 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-xl dark:bg-none dark:bg-slate-900/70 dark:border-slate-700/60 dark:text-slate-200';
 const fileActionButtonClass =
   'border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md dark:hover:border-slate-600/70 dark:hover:bg-slate-800/70 dark:hover:text-slate-100';
+const fileGlassPillButtonClass =
+  'h-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-3 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80';
+const fileGlassIconButtonClass =
+  'h-9 w-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80';
 const badgeGlassClass =
   'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
 const changeHistoryCardClass = 'rounded-lg border border-border/60 bg-secondary/40';
@@ -294,6 +339,11 @@ export default function TaskDetail() {
   const [finalUploadItems, setFinalUploadItems] = useState<UploadItem[]>([]);
   const [showFinalUploadList, setShowFinalUploadList] = useState(true);
   const [pendingFinalFiles, setPendingFinalFiles] = useState<PendingFinalFile[]>([]);
+  const [replaceFinalTarget, setReplaceFinalTarget] = useState<{
+    index: number;
+    name: string;
+    url: string;
+  } | null>(null);
   const [isEmergencyUpdating, setIsEmergencyUpdating] = useState(false);
   const [finalLinkName, setFinalLinkName] = useState('');
   const [finalLinkUrl, setFinalLinkUrl] = useState('');
@@ -310,9 +360,19 @@ export default function TaskDetail() {
   const [isEditAttachmentDragging, setIsEditAttachmentDragging] = useState(false);
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
   const [approvalDecisionInFlight, setApprovalDecisionInFlight] = useState<ApprovalDecision | null>(null);
+  const [finalReviewDecisionInFlight, setFinalReviewDecisionInFlight] =
+    useState<ApprovalDecision | null>(null);
+  const [finalReviewNote, setFinalReviewNote] = useState('');
+  const [annotationDialogOpen, setAnnotationDialogOpen] = useState(false);
+  const [annotationDialogReadOnly, setAnnotationDialogReadOnly] = useState(false);
+  const [annotationTargetFile, setAnnotationTargetFile] = useState<OutputDisplayFile | null>(null);
+  const [draftReviewAnnotationsByFile, setDraftReviewAnnotationsByFile] = useState<
+    Record<string, FinalDeliverableReviewAnnotation>
+  >({});
   const sizeFetchRef = useRef(new Set<string>());
   const addAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const finalUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const replaceFinalFileInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -465,6 +525,9 @@ export default function TaskDetail() {
       deadlineApprovedAt: raw.deadlineApprovedAt ? toDate(raw.deadlineApprovedAt as unknown as string) : undefined,
       emergencyApprovedAt: raw.emergencyApprovedAt ? toDate(raw.emergencyApprovedAt as unknown as string) : undefined,
       emergencyRequestedAt: raw.emergencyRequestedAt ? toDate(raw.emergencyRequestedAt as unknown as string) : undefined,
+      finalDeliverableReviewedAt: raw.finalDeliverableReviewedAt
+        ? toDate(raw.finalDeliverableReviewedAt as unknown as string)
+        : undefined,
       files: raw.files?.map((file, index) => ({
         ...file,
         id: file.id ?? `file-${index}-${file.name || 'attachment'}`,
@@ -503,6 +566,83 @@ export default function TaskDetail() {
           (version as { _id?: string })._id ||
           `final-version-${version.version || index + 1}-${index}`,
         uploadedAt: new Date(version.uploadedAt),
+        reviewedAt: version.reviewedAt ? new Date(version.reviewedAt) : undefined,
+        reviewAnnotations:
+          version.reviewAnnotations?.map((annotation, annotationIndex) => ({
+            ...annotation,
+            id:
+              annotation.id ||
+              `annotation-${index}-${annotationIndex}`,
+            fileId:
+              String(annotation.fileId || '').trim() ||
+              String(annotation.fileUrl || '').trim(),
+            fileName: String(annotation.fileName || '').trim(),
+            fileUrl: String(annotation.fileUrl || '').trim(),
+            comments:
+              annotation.comments?.map((comment, commentIndex) => ({
+                ...comment,
+                id:
+                  comment.id ||
+                  `annotation-comment-${index}-${annotationIndex}-${commentIndex}`,
+                x: Number(comment.x ?? 0),
+                y: Number(comment.y ?? 0),
+                text: String(comment.text || ''),
+                thread:
+                  comment.thread?.map((message, messageIndex) => ({
+                    ...message,
+                    id:
+                      message.id ||
+                      `annotation-thread-${index}-${annotationIndex}-${commentIndex}-${messageIndex}`,
+                    text: String(message.text || ''),
+                    author: String(message.author || ''),
+                    createdAt: String(message.createdAt || ''),
+                  })) ?? [],
+              })) ?? [],
+            shapes:
+              annotation.shapes?.map((shape, shapeIndex) => ({
+                ...shape,
+                id: shape.id || `annotation-shape-${index}-${annotationIndex}-${shapeIndex}`,
+                kind: String(shape.kind || 'pen') as
+                  | 'pen'
+                  | 'highlighter'
+                  | 'arrow'
+                  | 'rect'
+                  | 'ellipse'
+                  | 'text'
+                  | 'blur_rect'
+                  | 'highlight_rect',
+                color: String(shape.color || '#ef4444'),
+                width: Number(shape.width ?? 2),
+                opacity: Number(shape.opacity ?? 1),
+                points:
+                  shape.points?.map((point) => ({
+                    x: Number(point.x ?? 0),
+                    y: Number(point.y ?? 0),
+                  })) ?? [],
+                startX: Number(shape.startX ?? 0),
+                startY: Number(shape.startY ?? 0),
+                endX: Number(shape.endX ?? 0),
+                endY: Number(shape.endY ?? 0),
+                x: Number(shape.x ?? 0),
+                y: Number(shape.y ?? 0),
+                text: String(shape.text || ''),
+                fontSize: Number(shape.fontSize ?? 24),
+                fillColor: String(shape.fillColor || ''),
+              })) ?? [],
+            strokes:
+              annotation.strokes?.map((stroke, strokeIndex) => ({
+                ...stroke,
+                id:
+                  stroke.id ||
+                  `annotation-stroke-${index}-${annotationIndex}-${strokeIndex}`,
+                width: Number(stroke.width ?? 2),
+                points:
+                  stroke.points?.map((point) => ({
+                    x: Number(point.x ?? 0),
+                    y: Number(point.y ?? 0),
+                  })) ?? [],
+              })) ?? [],
+          })) ?? [],
         files:
           version.files?.map((file, fileIndex) => ({
             ...file,
@@ -1023,6 +1163,7 @@ export default function TaskDetail() {
     : !isViewOnlyTask;
   const canDesignerActions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canFinalizeTaskActions = canDesignerActions || (isDesignerRole && isMainDesignerUser);
+  const isStaffRole = user?.role === 'staff';
   const canEditTask = user?.role === 'staff' && !isViewOnlyTask;
   const editTaskActionTooltip = approvalLockedForStaff
     ? 'Editing is temporarily locked while this request is under approval.'
@@ -1122,9 +1263,66 @@ export default function TaskDetail() {
     if (!activeFinalVersion) return;
     setFinalVersionNote(String(activeFinalVersion.note || ''));
   }, [activeFinalVersion?.id]);
+  useEffect(() => {
+    setFinalReviewNote(String(taskState?.finalDeliverableReviewNote || ''));
+  }, [taskState?.id, taskState?.finalDeliverableReviewNote, taskState?.finalDeliverableReviewStatus]);
   const activeFinalVersionNote = String(activeFinalVersion?.note || '').trim();
   const finalDeliverableFiles = activeFinalVersion?.files ?? [];
   const hasFinalDeliverables = sortedFinalDeliverableVersions.length > 0;
+  const finalDeliverableReviewStatus = normalizeFinalDeliverableReviewStatus(
+    taskState?.finalDeliverableReviewStatus,
+    hasFinalDeliverables ? 'approved' : 'not_submitted'
+  );
+  const finalDeliverableReviewNote = String(taskState?.finalDeliverableReviewNote || '').trim();
+  const finalDeliverableReviewedBy = String(taskState?.finalDeliverableReviewedBy || '').trim();
+  const activeFinalVersionReviewAnnotations = useMemo(
+    () =>
+      Array.isArray(activeFinalVersion?.reviewAnnotations)
+        ? activeFinalVersion.reviewAnnotations.filter((annotation) => hasReviewAnnotationContent(annotation))
+        : [],
+    [activeFinalVersion?.id, activeFinalVersion?.reviewAnnotations]
+  );
+  const canMainDesignerReviewFinalDeliverables =
+    isDesignerRole &&
+    isMainDesignerUser &&
+    hasFinalDeliverables &&
+    finalDeliverableReviewStatus === 'pending';
+  const shouldShowStaffFinalReviewState =
+    isStaffRole &&
+    (finalDeliverableReviewStatus === 'pending' || finalDeliverableReviewStatus === 'rejected');
+  const shouldShowJuniorFinalReviewState =
+    isDesignerRole &&
+    !isMainDesignerUser &&
+    (finalDeliverableReviewStatus === 'pending' || finalDeliverableReviewStatus === 'rejected');
+  const shouldAllowViewingRejectedAnnotations =
+    finalDeliverableReviewStatus === 'rejected' &&
+    (isMainDesignerUser || isDesignerRole);
+  const latestFinalVersionId = sortedFinalDeliverableVersions[0]?.id || '';
+  const canReplaceRejectedFinalFile =
+    canDesignerActions &&
+    !isMainDesignerUser &&
+    finalDeliverableReviewStatus === 'rejected' &&
+    Boolean(latestFinalVersionId) &&
+    activeFinalVersion?.id === latestFinalVersionId;
+  useEffect(() => {
+    const nextDrafts: Record<string, FinalDeliverableReviewAnnotation> = {};
+    activeFinalVersionReviewAnnotations.forEach((annotation, index) => {
+      const key = getReviewAnnotationFileKey(annotation);
+      if (!key) return;
+      nextDrafts[key] = {
+        ...annotation,
+        id: annotation.id || `annotation-${index}`,
+      };
+    });
+    setDraftReviewAnnotationsByFile(nextDrafts);
+  }, [activeFinalVersion?.id, activeFinalVersionReviewAnnotations]);
+  const draftReviewAnnotationList = useMemo(
+    () =>
+      Object.values(draftReviewAnnotationsByFile).filter((annotation) =>
+        hasReviewAnnotationContent(annotation)
+      ),
+    [draftReviewAnnotationsByFile]
+  );
   const hasPendingFinalFiles = pendingFinalFiles.length > 0;
   const latestFinalUploadAt = useMemo(() => {
     if (sortedFinalDeliverableVersions.length === 0) return 0;
@@ -1464,7 +1662,7 @@ export default function TaskDetail() {
 
     window.open(fileLinkUrl, '_blank', 'noopener,noreferrer');
   };
-  const toOutputFile = (file: FinalDeliverableFile, index: number) => ({
+  const toOutputFile = (file: FinalDeliverableFile, index: number): OutputDisplayFile => ({
     id: file.id || `final-file-${index}`,
     name: file.name || inferDriveItemNameFromUrl(file.url || ''),
     url: file.url,
@@ -1475,6 +1673,34 @@ export default function TaskDetail() {
     mime: file.mime,
     thumbnailUrl: file.thumbnailUrl,
   });
+  const toPendingFinalFileFromVersionFile = (file: FinalDeliverableFile): PendingFinalFile => ({
+    name: file.name || inferDriveItemNameFromUrl(file.url || ''),
+    url: file.url || '',
+    size: file.size,
+    mime: file.mime,
+    thumbnailUrl: file.thumbnailUrl,
+  });
+  const isAnnotatableImageOutputFile = (file: OutputDisplayFile) => {
+    const mime = String(file.mime || '').trim().toLowerCase();
+    return Boolean(file.url) && (mime.startsWith('image/') || isImageFile(file.name));
+  };
+  const openReviewAnnotationDialog = (file: OutputDisplayFile, readOnly = false) => {
+    setAnnotationTargetFile(file);
+    setAnnotationDialogReadOnly(readOnly);
+    setAnnotationDialogOpen(true);
+  };
+  const handleSaveReviewAnnotation = (annotation: FinalDeliverableReviewAnnotation) => {
+    const key = getReviewAnnotationFileKey(annotation);
+    if (!key) {
+      toast.error('Unable to save annotation for this file.');
+      return;
+    }
+    setDraftReviewAnnotationsByFile((prev) => ({
+      ...prev,
+      [key]: annotation,
+    }));
+    toast.success('Feedback saved for this file.');
+  };
   const renderFilePreview = (file: (typeof taskState)['files'][number]) => {
     const extLabel = getFileExtension(file.name);
     const previewUrl = getPreviewUrl(file);
@@ -1984,6 +2210,54 @@ export default function TaskDetail() {
     }
   };
 
+  const getLatestFinalVersionIdFromTask = (task?: typeof taskState) => {
+    const versions = Array.isArray(task?.finalDeliverableVersions)
+      ? task.finalDeliverableVersions
+      : [];
+    if (versions.length === 0) return '';
+    const latest = versions.reduce((best, current) => {
+      const bestVersion = Number(best?.version ?? 0);
+      const currentVersion = Number(current?.version ?? 0);
+      if (currentVersion > bestVersion) return current;
+      return best;
+    }, versions[0]);
+    return String(latest?.id || '').trim();
+  };
+
+  const submitFinalDeliverableVersion = async ({
+    files,
+    note,
+  }: {
+    files: PendingFinalFile[];
+    note?: string;
+  }) => {
+    if (!taskState || !apiUrl) {
+      throw new Error('Submit requires backend connection.');
+    }
+    const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/final-deliverables`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        files,
+        note: String(note || '').trim(),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to create final deliverable version.');
+    }
+    const hydrated = withAccessMetadata(hydrateTask(data));
+    setTaskState(hydrated);
+    const latestVersionId = getLatestFinalVersionIdFromTask(hydrated);
+    if (latestVersionId) {
+      setSelectedFinalVersionId(latestVersionId);
+    }
+    setPendingFinalFiles([]);
+    setFinalUploadItems([]);
+    setFinalVersionNote('');
+    return hydrated;
+  };
+
   const handleHandoverTask = async () => {
     if (!taskState) return;
     if (!ensureWritableTask({ allowMainDesignerFinalize: true })) return;
@@ -2001,26 +2275,10 @@ export default function TaskDetail() {
     }
     if (hasPendingFinalFiles) {
       try {
-        const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/final-deliverables`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            files: pendingFinalFiles,
-            note: finalVersionNote.trim(),
-          }),
+        await submitFinalDeliverableVersion({
+          files: pendingFinalFiles,
+          note: finalVersionNote.trim(),
         });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(data?.error || 'Failed to create final deliverable version.');
-        }
-        const hydrated = withAccessMetadata(hydrateTask(data));
-        setTaskState(hydrated);
-        if (hydrated?.finalDeliverableVersions?.length) {
-          setSelectedFinalVersionId(hydrated.finalDeliverableVersions[0].id);
-        }
-        setPendingFinalFiles([]);
-        setFinalUploadItems([]);
-        setFinalVersionNote('');
       } catch (error) {
         const message =
           error instanceof Error && error.message
@@ -2036,7 +2294,7 @@ export default function TaskDetail() {
                 } as typeof prev)
               : prev
           );
-          toast.error('Only the assigned designer or main designer can submit this task.');
+          toast.error('Only the assigned designer or Design Lead can submit this task.');
           return;
         }
         toast.error(message);
@@ -2231,6 +2489,128 @@ export default function TaskDetail() {
       toast.success(decision === 'approved' ? 'Request approved.' : 'Request rejected.');
     } finally {
       setApprovalDecisionInFlight(null);
+    }
+  };
+
+  const handleFinalDeliverableReviewDecision = async (decision: ApprovalDecision) => {
+    if (!taskState || !apiUrl) return;
+    if (finalReviewDecisionInFlight) return;
+    if (!canMainDesignerReviewFinalDeliverables) return;
+
+    const reviewNoteValue = finalReviewNote.trim();
+    const reviewAnnotations =
+      decision === 'rejected'
+        ? draftReviewAnnotationList
+            .filter((annotation) => hasReviewAnnotationContent(annotation))
+            .map((annotation, index) => ({
+              ...annotation,
+              id: annotation.id || `annotation-${index}`,
+              fileId:
+                String(annotation.fileId || '').trim() ||
+                String(annotation.fileUrl || '').trim(),
+              fileName: String(annotation.fileName || '').trim(),
+              fileUrl: String(annotation.fileUrl || '').trim(),
+              comments:
+                annotation.comments?.map((comment, commentIndex) => ({
+                  ...comment,
+                  id: comment.id || `comment-${index}-${commentIndex}`,
+                  x: Number(comment.x ?? 0),
+                  y: Number(comment.y ?? 0),
+                  text: String(comment.text || '').trim(),
+                  thread:
+                    comment.thread?.map((message, messageIndex) => ({
+                      ...message,
+                      id: message.id || `thread-${index}-${commentIndex}-${messageIndex}`,
+                      text: String(message.text || '').trim(),
+                      author: String(message.author || '').trim(),
+                      createdAt: String(message.createdAt || ''),
+                    })) ?? [],
+                })) ?? [],
+              shapes:
+                annotation.shapes?.map((shape, shapeIndex) => ({
+                  ...shape,
+                  id: shape.id || `shape-${index}-${shapeIndex}`,
+                  kind: (String(shape.kind || 'pen').trim().toLowerCase() ||
+                    'pen') as
+                    | 'pen'
+                    | 'highlighter'
+                    | 'arrow'
+                    | 'rect'
+                    | 'ellipse'
+                    | 'text'
+                    | 'blur_rect'
+                    | 'highlight_rect',
+                  color: String(shape.color || '#ef4444').trim(),
+                  width: Number(shape.width ?? 2),
+                  opacity: Number(shape.opacity ?? 1),
+                  points:
+                    shape.points?.map((point) => ({
+                      x: Number(point.x ?? 0),
+                      y: Number(point.y ?? 0),
+                    })) ?? [],
+                  startX: Number(shape.startX ?? 0),
+                  startY: Number(shape.startY ?? 0),
+                  endX: Number(shape.endX ?? 0),
+                  endY: Number(shape.endY ?? 0),
+                  x: Number(shape.x ?? 0),
+                  y: Number(shape.y ?? 0),
+                  text: String(shape.text || '').trim(),
+                  fontSize: Number(shape.fontSize ?? 24),
+                  fillColor: String(shape.fillColor || '').trim(),
+                })) ?? [],
+              strokes:
+                annotation.strokes?.map((stroke, strokeIndex) => ({
+                  ...stroke,
+                  id: stroke.id || `stroke-${index}-${strokeIndex}`,
+                  width: Number(stroke.width ?? 2),
+                  points:
+                    stroke.points?.map((point) => ({
+                      x: Number(point.x ?? 0),
+                      y: Number(point.y ?? 0),
+                    })) ?? [],
+                })) ?? [],
+            }))
+        : [];
+
+    if (decision === 'rejected' && !reviewNoteValue && reviewAnnotations.length === 0) {
+      toast.error('Add review note or image annotations before marking update needed.');
+      return;
+    }
+
+    setFinalReviewDecisionInFlight(decision);
+    try {
+      const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/final-deliverables/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision,
+          note: reviewNoteValue,
+          annotations: reviewAnnotations,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to review final deliverables.');
+      }
+      const hydrated = withAccessMetadata(hydrateTask(data));
+      setTaskState(hydrated);
+      setChangeHistory(hydrated?.changeHistory ?? []);
+      setChangeCount(hydrated?.changeCount ?? 0);
+      setApprovalStatus(hydrated?.approvalStatus);
+      persistTask(hydrated);
+      toast.success(
+        decision === 'approved'
+          ? 'Final deliverables approved.'
+          : 'Update requested. Junior designer can re-submit after updates.'
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to review final deliverables.';
+      toast.error(message);
+    } finally {
+      setFinalReviewDecisionInFlight(null);
     }
   };
 
@@ -2557,6 +2937,144 @@ export default function TaskDetail() {
     } finally {
       setIsUploadingFinal(false);
       finalUploadAbortRef.current = null;
+    }
+  };
+
+  const triggerReplaceFinalFile = (file: OutputDisplayFile, index: number) => {
+    if (!canReplaceRejectedFinalFile) return;
+    if (!file.url) {
+      toast.error('Cannot replace this file right now.');
+      return;
+    }
+    setReplaceFinalTarget({
+      index,
+      name: file.name,
+      url: file.url,
+    });
+    replaceFinalFileInputRef.current?.click();
+  };
+
+  const handleReplaceFinalFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+    event.target.value = '';
+    if (!selectedFile) return;
+    if (!taskState) return;
+    if (!replaceFinalTarget) {
+      toast.error('Pick a file to replace first.');
+      return;
+    }
+    if (!canReplaceRejectedFinalFile) {
+      toast.error('Replace is available only for junior designers on update-needed submissions.');
+      return;
+    }
+    if (!ensureWritableTask({ allowMainDesignerFinalize: true })) return;
+
+    const stagedBase =
+      pendingFinalFiles.length > 0
+        ? [...pendingFinalFiles]
+        : finalDeliverableFiles.map((file) => toPendingFinalFileFromVersionFile(file));
+    if (stagedBase.length === 0) {
+      toast.error('No final deliverable files found to replace.');
+      return;
+    }
+
+    let replaceIndex = -1;
+    if (replaceFinalTarget.index >= 0 && replaceFinalTarget.index < stagedBase.length) {
+      replaceIndex = replaceFinalTarget.index;
+    }
+    if (replaceIndex === -1 && replaceFinalTarget.url) {
+      replaceIndex = stagedBase.findIndex(
+        (entry) => String(entry.url || '').trim() === String(replaceFinalTarget.url || '').trim()
+      );
+    }
+    if (replaceIndex === -1 && replaceFinalTarget.name) {
+      replaceIndex = stagedBase.findIndex(
+        (entry) => String(entry.name || '').trim().toLowerCase() ===
+          String(replaceFinalTarget.name || '').trim().toLowerCase()
+      );
+    }
+    if (replaceIndex === -1) {
+      toast.error('Unable to match the selected file for replacement.');
+      return;
+    }
+
+    if (!apiUrl) {
+      toast.error('File upload requires the backend.');
+      return;
+    }
+
+    if (finalUploadAbortRef.current) {
+      finalUploadAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    finalUploadAbortRef.current = controller;
+
+    const uploadId = `replace-${Date.now()}`;
+    setFinalUploadItems([
+      {
+        id: uploadId,
+        name: selectedFile.name,
+        status: 'uploading',
+        progress: 0,
+      },
+    ]);
+    setShowFinalUploadList(true);
+    setIsUploadingFinal(true);
+
+    try {
+      const data = await uploadFinalFileWithProgress({
+        file: selectedFile,
+        taskTitle: taskState.title,
+        uploadId,
+        signal: controller.signal,
+      });
+      const uploadedUrl = resolveUploadedDriveUrl(data);
+      if (!uploadedUrl) {
+        throw new Error('Upload succeeded but file link is missing. Please retry.');
+      }
+      const replacement: PendingFinalFile = {
+        name: selectedFile.name,
+        url: uploadedUrl,
+        size: selectedFile.size,
+        mime: selectedFile.type || data.mimeType || '',
+        thumbnailUrl: data.thumbnailLink,
+      };
+      const nextPending = [...stagedBase];
+      nextPending[replaceIndex] = replacement;
+      setPendingFinalFiles(nextPending);
+      setFinalUploadItems((prev) =>
+        prev.map((item) =>
+          item.id === uploadId ? { ...item, status: 'done', progress: 100 } : item
+        )
+      );
+      try {
+        await submitFinalDeliverableVersion({
+          files: nextPending,
+          note: '',
+        });
+        toast.success(`"${replaceFinalTarget.name}" replaced and submitted.`);
+      } catch (submitError) {
+        const submitMessage =
+          submitError instanceof Error && submitError.message
+            ? submitError.message
+            : 'Replacement uploaded but submit failed.';
+        toast.error(`${submitMessage} You can retry from Submit Revision.`);
+      }
+    } catch (error: any) {
+      const message =
+        error?.name === 'AbortError'
+          ? 'Replacement upload cancelled.'
+          : error?.message || 'File replacement failed.';
+      setFinalUploadItems((prev) =>
+        prev.map((item) =>
+          item.id === uploadId ? { ...item, status: 'error', progress: item.progress ?? 0 } : item
+        )
+      );
+      toast.error(message);
+    } finally {
+      setIsUploadingFinal(false);
+      finalUploadAbortRef.current = null;
+      setReplaceFinalTarget(null);
     }
   };
 
@@ -3220,6 +3738,16 @@ export default function TaskDetail() {
     </div>
   );
 
+  const annotationTargetKey = getReviewAnnotationFileKey(annotationTargetFile || undefined);
+  const annotationForDialog = annotationTargetKey
+    ? draftReviewAnnotationsByFile[annotationTargetKey]
+    : undefined;
+  const annotationPreviewUrl = annotationTargetFile
+    ? getFileActionUrl(annotationTargetFile) ||
+      getPreviewUrl(annotationTargetFile) ||
+      annotationTargetFile.url
+    : '';
+
   return (
     <DashboardLayout hideGrid>
       <div className="space-y-6 max-w-4xl select-none relative z-10">
@@ -3337,7 +3865,7 @@ export default function TaskDetail() {
                         value={editedDescription}
                         onChange={(event) => setEditedDescription(event.target.value)}
                         rows={4}
-                        className="mt-2 select-text"
+                        className="mt-2 select-text text-[15px] leading-7"
                         disabled={approvalLockedForStaff}
                       />
                     </div>
@@ -3449,7 +3977,7 @@ export default function TaskDetail() {
                   </div>
                 ) : (
                   <div className="rounded-lg border border-border/60 bg-secondary/30 p-4">
-                    <p className="text-sm text-muted-foreground">
+                    <p className="whitespace-pre-line text-[15px] leading-7 text-[#5B6E8E] dark:text-slate-300">
                       {taskState.description}
                     </p>
                   </div>
@@ -3638,6 +4166,22 @@ export default function TaskDetail() {
                 </div>
               )}
 
+              {shouldShowStaffFinalReviewState && (
+                <div className="mb-4 rounded-lg border border-[#D9E6FF]/70 bg-[#F7FBFF]/80 px-4 py-3 text-sm text-[#1E2A5A] dark:border-border/70 dark:bg-card/80 dark:text-slate-200">
+                  {finalDeliverableReviewStatus === 'pending'
+                    ? 'Final deliverables are submitted and waiting for Design Lead approval.'
+                    : `Design Lead requested updates before sharing with staff.${finalDeliverableReviewNote ? ` Reason: ${finalDeliverableReviewNote}` : ''}`}
+                </div>
+              )}
+
+              {shouldShowJuniorFinalReviewState && (
+                <div className="mb-4 rounded-lg border border-[#D9E6FF]/70 bg-[#F7FBFF]/80 px-4 py-3 text-sm text-[#1E2A5A] dark:border-border/70 dark:bg-card/80 dark:text-slate-200">
+                  {finalDeliverableReviewStatus === 'pending'
+                    ? 'Waiting for Design Lead approval.'
+                    : `Design Lead marked this submission as update needed.${finalDeliverableReviewNote ? ` Reason: ${finalDeliverableReviewNote}` : ''} Upload updates and submit again.`}
+                </div>
+              )}
+
               {/* Output Files */}
               {sortedFinalDeliverableVersions.length > 0 && (
                 <div className="mb-6 deliverables-highlight">
@@ -3715,6 +4259,26 @@ export default function TaskDetail() {
                           const displayName = isLinkCard
                             ? sanitizeLinkDisplayName(displayFile.name, displayFile.url || '')
                             : toTitleCaseFileName(displayFile.name);
+                          const annotationKey = getReviewAnnotationFileKey(displayFile);
+                          const fileAnnotation = annotationKey
+                            ? draftReviewAnnotationsByFile[annotationKey]
+                            : undefined;
+                          const fileHasReviewFeedback = hasReviewAnnotationContent(fileAnnotation);
+                          const fileCommentCount = Array.isArray(fileAnnotation?.comments)
+                            ? fileAnnotation.comments.length
+                            : 0;
+                          const fileShapeCount = Array.isArray(fileAnnotation?.shapes)
+                            ? fileAnnotation.shapes.length
+                            : Array.isArray(fileAnnotation?.strokes)
+                              ? fileAnnotation.strokes.length
+                              : 0;
+                          const canAnnotateFile =
+                            canMainDesignerReviewFinalDeliverables &&
+                            isAnnotatableImageOutputFile(displayFile);
+                          const canViewFeedbackFile =
+                            fileHasReviewFeedback &&
+                            (canAnnotateFile || shouldAllowViewingRejectedAnnotations);
+                          const canReplaceThisFile = canReplaceRejectedFinalFile && !isLinkCard;
                           return (
                             <div key={displayFile.id} className={fileRowClass}>
                               {isLinkCard ? (
@@ -3744,10 +4308,52 @@ export default function TaskDetail() {
                                         return sizeLabel || '';
                                       })()}
                                     </span>
+                                    {fileHasReviewFeedback && (
+                                      <span className="mt-0.5 block text-[11px] text-[#475FB9] dark:text-[#B8C7FF]">
+                                        {fileCommentCount} comment(s), {fileShapeCount} drawing mark(s)
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               )}
                               <div className="flex shrink-0 items-center gap-2">
+                                {canAnnotateFile && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    className={fileGlassIconButtonClass}
+                                    aria-label={fileHasReviewFeedback ? 'Edit feedback' : 'Annotate file'}
+                                    title={fileHasReviewFeedback ? 'Edit Feedback' : 'Annotate'}
+                                    onClick={() => openReviewAnnotationDialog(displayFile)}
+                                  >
+                                    <Edit3 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {canViewFeedbackFile && !canAnnotateFile && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    className={fileGlassIconButtonClass}
+                                    aria-label="View feedback"
+                                    title="View Feedback"
+                                    onClick={() => openReviewAnnotationDialog(displayFile, true)}
+                                  >
+                                    <MessageSquare className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {canReplaceThisFile && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    className={fileGlassIconButtonClass}
+                                    disabled={isUploadingFinal}
+                                    aria-label="Replace file"
+                                    title="Replace"
+                                    onClick={() => triggerReplaceFinalFile(displayFile, index)}
+                                  >
+                                    <Upload className="h-4 w-4" />
+                                  </Button>
+                                )}
                                 {canRemoveFiles && (
                                   <Button
                                     variant="ghost"
@@ -3783,6 +4389,90 @@ export default function TaskDetail() {
                         })}
                       </div>
                     </>
+                  )}
+                  {(() => {
+                    const reviewStatusLabel =
+                      finalDeliverableReviewStatus === 'pending'
+                        ? 'Pending Approval'
+                        : finalDeliverableReviewStatus === 'rejected'
+                          ? 'Update Needed'
+                          : finalDeliverableReviewStatus === 'approved'
+                            ? 'Approved'
+                            : 'Not Submitted';
+                    const reviewStatusPillClass =
+                      finalDeliverableReviewStatus === 'approved'
+                        ? 'border-emerald-200/80 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-950/30 dark:text-emerald-300'
+                        : finalDeliverableReviewStatus === 'rejected'
+                          ? 'border-[#C9D7FF] bg-[#EEF4FF] text-[#2F4E96] dark:border-[#4D70B4]/70 dark:bg-[#1E3A73]/45 dark:text-[#C7D8FF]'
+                          : finalDeliverableReviewStatus === 'pending'
+                            ? 'border-[#C9D7FF] bg-[#EEF4FF] text-[#2F4E96] dark:border-[#4D70B4]/70 dark:bg-[#1E3A73]/45 dark:text-[#C7D8FF]'
+                            : 'border-slate-200/80 bg-slate-50 text-slate-600 dark:border-slate-600/40 dark:bg-slate-900/40 dark:text-slate-300';
+                    return (
+                      <div className="mt-3 rounded-xl border border-[#D9E6FF]/65 bg-gradient-to-r from-[#F8FBFF]/85 via-[#F3F8FF]/75 to-[#ECF3FF]/85 px-3 py-2.5 supports-[backdrop-filter]:bg-[#F4F8FF]/65 backdrop-blur-md dark:border-border/70 dark:bg-card/75">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                            Review Status
+                          </span>
+                          <span
+                            className={cn(
+                              'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold',
+                              reviewStatusPillClass
+                            )}
+                          >
+                            {reviewStatusLabel}
+                          </span>
+                          {finalDeliverableReviewedBy && finalDeliverableReviewStatus !== 'pending' && (
+                            <span className="text-xs text-muted-foreground">
+                              Reviewed by{' '}
+                              <span className="font-medium text-foreground/90 dark:text-slate-100">
+                                {finalDeliverableReviewedBy}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                        {finalDeliverableReviewNote && (
+                          <div className="mt-2 rounded-md border border-[#D9E6FF]/70 bg-white/80 px-2.5 py-2 text-xs leading-5 text-[#4E5F84] dark:border-border/70 dark:bg-card/80 dark:text-slate-300">
+                            {finalDeliverableReviewNote}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {canMainDesignerReviewFinalDeliverables && (
+                    <div className="mt-3 rounded-lg border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 p-3 dark:border-border/70 dark:bg-card/75">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        Design Lead review
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Annotated files: {draftReviewAnnotationList.length}
+                      </p>
+                      <Textarea
+                        value={finalReviewNote}
+                        onChange={(event) => setFinalReviewNote(event.target.value)}
+                        rows={2}
+                        placeholder="Add review note (or use image annotations) for Update Needed."
+                        className="mt-2 bg-white/90 dark:bg-card/90 dark:border-border dark:text-slate-100 dark:placeholder:text-slate-400"
+                      />
+                      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                        <Button
+                          onClick={() => handleFinalDeliverableReviewDecision('approved')}
+                          disabled={finalReviewDecisionInFlight !== null}
+                          className="h-9 gap-2 rounded-full px-4"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          {finalReviewDecisionInFlight === 'approved' ? 'Approving...' : 'Approve'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => handleFinalDeliverableReviewDecision('rejected')}
+                          disabled={finalReviewDecisionInFlight !== null}
+                          className="h-9 rounded-full px-4"
+                        >
+                          {finalReviewDecisionInFlight === 'rejected' ? 'Marking...' : 'Update Needed'}
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -3928,6 +4618,14 @@ export default function TaskDetail() {
                         ref={finalUploadInputRef}
                         className="hidden"
                         id="final-file-upload"
+                        disabled={isUploadingFinal}
+                      />
+                      <input
+                        type="file"
+                        onChange={handleReplaceFinalFileUpload}
+                        ref={replaceFinalFileInputRef}
+                        className="hidden"
+                        id="replace-final-file-upload"
                         disabled={isUploadingFinal}
                       />
                       <label
@@ -4565,6 +5263,30 @@ export default function TaskDetail() {
           </div>
         </div>
       </div>
+      <ImageAnnotationDialog
+        open={annotationDialogOpen}
+        onOpenChange={(open) => {
+          setAnnotationDialogOpen(open);
+          if (!open) {
+            setAnnotationTargetFile(null);
+            setAnnotationDialogReadOnly(false);
+          }
+        }}
+        readOnly={annotationDialogReadOnly}
+        actorName={user?.name || user?.email || ''}
+        file={
+          annotationTargetFile
+            ? {
+                id: annotationTargetFile.id,
+                name: annotationTargetFile.name,
+                url: annotationTargetFile.url,
+                previewUrl: annotationPreviewUrl,
+              }
+            : null
+        }
+        initialAnnotation={annotationForDialog}
+        onSave={handleSaveReviewAnnotation}
+      />
       <Dialog
         open={showHandoverModal}
         onOpenChange={(open) => {

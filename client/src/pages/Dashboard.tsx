@@ -43,6 +43,8 @@ import {
   Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Calendar as DateCalendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -62,6 +64,19 @@ const roleLabels: Record<string, string> = {
   other: 'Member',
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const toDateInputValue = (value?: Date | string | null) => {
+  if (!value) return '';
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return format(parsed, 'yyyy-MM-dd');
+};
+
+const toTimeInputValue = (value?: Date | string | null) => {
+  if (!value) return '';
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return format(parsed, 'HH:mm');
+};
 
 type DesignerOption = {
   id: string;
@@ -168,6 +183,9 @@ export default function Dashboard() {
   const [ccInput, setCcInput] = useState('');
   const [ccEmails, setCcEmails] = useState<string[]>([]);
   const [assignmentMessage, setAssignmentMessage] = useState('');
+  const [assignmentDeadline, setAssignmentDeadline] = useState('');
+  const [assignmentDeadlineTime, setAssignmentDeadlineTime] = useState('18:00');
+  const [deadlineCalendarOpen, setDeadlineCalendarOpen] = useState(false);
   const [isAssigningDesigner, setIsAssigningDesigner] = useState(false);
   const [showStickyHeader, setShowStickyHeader] = useState(false);
   const [assignSuccessInfo, setAssignSuccessInfo] = useState<{
@@ -214,6 +232,9 @@ export default function Dashboard() {
     setCcInput('');
     setCcEmails([]);
     setAssignmentMessage('');
+    setAssignmentDeadline('');
+    setAssignmentDeadlineTime('18:00');
+    setDeadlineCalendarOpen(false);
     setIsAssigningDesigner(false);
     setAssignSuccessInfo(null);
   };
@@ -235,6 +256,9 @@ export default function Dashboard() {
     setCcInput('');
     setCcEmails([]);
     setAssignmentMessage('');
+    setAssignmentDeadline(toDateInputValue(task.deadline));
+    setAssignmentDeadlineTime(toTimeInputValue(task.deadline) || '18:00');
+    setDeadlineCalendarOpen(false);
     setAssignSuccessInfo(null);
     setIsAssignModalOpen(true);
   };
@@ -351,6 +375,21 @@ export default function Dashboard() {
       toast.error('Assignment API is not configured.');
       return;
     }
+    if (!assignmentDeadline) {
+      toast.error('Select a deadline before assigning.');
+      return;
+    }
+    if (!assignmentDeadlineTime) {
+      toast.error('Select deadline time before assigning.');
+      return;
+    }
+
+    const deadlinePayload = `${assignmentDeadline}T${assignmentDeadlineTime}:00`;
+    const parsedDeadlinePayload = new Date(deadlinePayload);
+    if (Number.isNaN(parsedDeadlinePayload.getTime())) {
+      toast.error('Invalid deadline date and time.');
+      return;
+    }
 
     setIsAssigningDesigner(true);
     try {
@@ -361,6 +400,7 @@ export default function Dashboard() {
           assigned_designer_id: selectedDesignerId,
           cc_emails: ccEmails,
           message: assignmentMessage.trim(),
+          deadline: deadlinePayload,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -401,7 +441,8 @@ export default function Dashboard() {
         normalizedMessage.includes('only designers can assign designers') ||
         normalizedMessage.includes('only designer or admin accounts can assign designers') ||
         normalizedMessage.includes('only designer, treasurer, or admin accounts can assign designers') ||
-        normalizedMessage.includes('only the main designer can assign designers')
+        normalizedMessage.includes('only the main designer can assign designers') ||
+        normalizedMessage.includes('only the design lead can assign designers')
       ) {
         toast.error(
           'Your signed-in account is not authorized to assign designers. Demo role switch changes view only.'
@@ -1192,6 +1233,62 @@ export default function Dashboard() {
                   disabled={isAssigningDesigner}
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="assign-deadline">Deadline</Label>
+                <div className="grid gap-2 md:grid-cols-[1.4fr,1fr]">
+                  <Popover open={deadlineCalendarOpen} onOpenChange={setDeadlineCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        id="assign-deadline"
+                        type="button"
+                        variant="outline"
+                        disabled={isAssigningDesigner}
+                        className="h-10 justify-start border-[#C7D9FF] bg-gradient-to-r from-[#F8FBFF] via-[#F2F7FF] to-[#EAF1FF] text-left font-medium text-[#223067] hover:from-[#EEF5FF] hover:to-[#E2ECFF] dark:border-[#2B3D70] dark:bg-[#121F3D] dark:text-[#D6E2FF]"
+                      >
+                        <Calendar className="mr-2 h-4 w-4 text-[#4863B7] dark:text-[#9FB4FF]" />
+                        {assignmentDeadline ? format(new Date(`${assignmentDeadline}T00:00:00`), 'PPP') : 'Pick deadline date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      className="w-auto border-[#BFD0FF] bg-gradient-to-br from-[#F8FBFF] via-[#F1F6FF] to-[#E7EFFF] p-2 shadow-[0_16px_40px_-24px_rgba(62,92,176,0.55)] dark:border-[#2A3C6D] dark:bg-[#111A33]"
+                    >
+                      <DateCalendar
+                        mode="single"
+                        selected={assignmentDeadline ? new Date(`${assignmentDeadline}T00:00:00`) : undefined}
+                        onSelect={(date) => {
+                          if (!date) return;
+                          setAssignmentDeadline(format(date, 'yyyy-MM-dd'));
+                          setDeadlineCalendarOpen(false);
+                        }}
+                        disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                        className="rounded-lg border border-[#D3E0FF] bg-white/75 p-2 dark:border-[#31497D] dark:bg-[#0E1730]"
+                        classNames={{
+                          caption_label: 'text-sm font-semibold text-[#253977] dark:text-[#C8D7FF]',
+                          head_cell: 'w-9 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[#5D75B9] dark:text-[#9CB3EE]',
+                          nav_button:
+                            'h-7 w-7 border border-[#C7D9FF] bg-white text-[#3B54A6] hover:bg-[#EEF4FF] dark:border-[#33508A] dark:bg-[#15274F] dark:text-[#B4C7FF] dark:hover:bg-[#1B315F]',
+                          day_selected:
+                            'bg-[#3550A8] text-white hover:bg-[#2C4391] focus:bg-[#2C4391] focus:text-white',
+                          day_today:
+                            'bg-[#E1EBFF] text-[#1E2E66] dark:bg-[#29447D] dark:text-[#D9E4FF]',
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <Input
+                    type="time"
+                    value={assignmentDeadlineTime}
+                    onChange={(event) => setAssignmentDeadlineTime(event.target.value)}
+                    disabled={isAssigningDesigner}
+                    className="h-10 border-[#C7D9FF] bg-gradient-to-r from-[#F8FBFF] via-[#F2F7FF] to-[#EAF1FF] font-medium text-[#223067] dark:border-[#2B3D70] dark:bg-[#121F3D] dark:text-[#D6E2FF]"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Set exact deadline date and time for the assigned junior designer.
+                </p>
+              </div>
             </div>
           )}
 
@@ -1213,7 +1310,13 @@ export default function Dashboard() {
                 <Button
                   type="button"
                   onClick={submitAssignDesigner}
-                  disabled={!selectedDesignerId || isAssigningDesigner || isLoadingDesigners}
+                  disabled={
+                    !selectedDesignerId ||
+                    !assignmentDeadline ||
+                    !assignmentDeadlineTime ||
+                    isAssigningDesigner ||
+                    isLoadingDesigners
+                  }
                 >
                   {isAssigningDesigner ? (
                     <>
