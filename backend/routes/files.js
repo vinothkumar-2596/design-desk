@@ -32,13 +32,27 @@ const isDriveAuthFailure = (error) => {
   const apiDescription = String(error?.response?.data?.error_description || "").toLowerCase();
   return (
     message.includes("invalid_grant") ||
+    message.includes("deleted_client") ||
+    message.includes("invalid_client") ||
     message.includes("invalid jwt signature") ||
     message.includes("unauthorized_client") ||
     apiError === "invalid_grant" ||
+    apiError === "deleted_client" ||
+    apiError === "invalid_client" ||
     apiError === "unauthorized_client" ||
     apiDescription.includes("invalid jwt signature") ||
     apiDescription.includes("token has been expired or revoked")
   );
+};
+const buildDriveViewLink = (fileId) => {
+  const normalizedId = String(fileId || "").trim();
+  if (!normalizedId) return "";
+  return `https://drive.google.com/file/d/${encodeURIComponent(normalizedId)}/view?usp=drivesdk`;
+};
+const buildDriveDownloadLink = (fileId) => {
+  const normalizedId = String(fileId || "").trim();
+  if (!normalizedId) return "";
+  return `https://drive.google.com/uc?id=${encodeURIComponent(normalizedId)}&export=download`;
 };
 
 router.post("/upload", upload.single("file"), async (req, res) => {
@@ -89,11 +103,14 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       console.log("AI File metadata saved to MongoDB");
     }
 
+    const webViewLink = file?.webViewLink || buildDriveViewLink(file?.id);
+    const webContentLink = file?.webContentLink || buildDriveDownloadLink(file?.id);
+
     res.json({
       id: file.id,
       name: file.name,
-      webViewLink: file.webViewLink,
-      webContentLink: file.webContentLink,
+      webViewLink,
+      webContentLink,
       size: req.file.size,
       thumbnailLink: file.thumbnailLink,
       extractedContent, // Return extracted content for UI usage

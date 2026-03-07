@@ -3,9 +3,8 @@ import { getDriveAuthUrl, saveDriveToken } from "../lib/drive.js";
 import { requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
-router.use(requireRole(["treasurer"]));
 
-router.get("/auth-url", (_req, res) => {
+router.get("/auth-url", requireRole(["treasurer"]), (_req, res) => {
   try {
     const url = getDriveAuthUrl();
     res.json({ url });
@@ -17,8 +16,18 @@ router.get("/auth-url", (_req, res) => {
 router.get("/callback", async (req, res) => {
   try {
     const { code } = req.query;
+    const oauthError = String(req.query?.error || "").trim();
+    const oauthErrorDescription = String(req.query?.error_description || "").trim();
+
+    if (oauthError) {
+      const suffix = oauthErrorDescription ? `: ${oauthErrorDescription}` : "";
+      return res.status(400).json({ error: `Google OAuth error (${oauthError})${suffix}` });
+    }
+
     if (!code) {
-      return res.status(400).json({ error: "Missing code." });
+      return res
+        .status(400)
+        .json({ error: "Missing OAuth code. Start from /api/drive/auth-url and complete consent." });
     }
     const { tokens, tokenPath } = await saveDriveToken(String(code));
 

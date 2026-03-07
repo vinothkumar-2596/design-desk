@@ -83,6 +83,9 @@ const shouldPromptDriveReconnect = (errorMessage?: string) => {
         normalized.includes('insufficient permissions for the specified parent') ||
         normalized.includes('drive upload folder is not accessible') ||
         normalized.includes('google drive authentication failed') ||
+        normalized.includes('deleted_client') ||
+        normalized.includes('invalid_client') ||
+        normalized.includes('unauthorized_client') ||
         normalized.includes('invalid_grant') ||
         normalized.includes('invalid jwt signature')
     );

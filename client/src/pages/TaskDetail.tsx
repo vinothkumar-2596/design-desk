@@ -190,6 +190,7 @@ type UploadStatus = 'uploading' | 'done' | 'error';
 type ApprovalDecision = 'approved' | 'rejected';
 type UploadItem = { id: string; name: string; status: UploadStatus; progress?: number };
 type FileUploadResponse = {
+  id?: string;
   webViewLink?: string;
   webContentLink?: string;
   mimeType?: string;
@@ -235,6 +236,9 @@ const shouldPromptDriveReconnect = (errorMessage?: string) => {
     normalized.includes('insufficient permissions for the specified parent') ||
     normalized.includes('drive upload folder is not accessible') ||
     normalized.includes('google drive authentication failed') ||
+    normalized.includes('deleted_client') ||
+    normalized.includes('invalid_client') ||
+    normalized.includes('unauthorized_client') ||
     normalized.includes('invalid_grant') ||
     normalized.includes('invalid jwt signature')
   );
@@ -1343,6 +1347,22 @@ export default function TaskDetail() {
       return null;
     }
   };
+  const buildDriveViewUrl = (driveId?: string) => {
+    const normalizedId = String(driveId || '').trim();
+    if (!normalizedId) return '';
+    return `https://drive.google.com/file/d/${encodeURIComponent(normalizedId)}/view?usp=drivesdk`;
+  };
+  const resolveUploadedDriveUrl = (payload?: {
+    webViewLink?: string;
+    webContentLink?: string;
+    id?: string;
+  }) => {
+    const webViewLink = String(payload?.webViewLink || '').trim();
+    if (webViewLink) return webViewLink;
+    const webContentLink = String(payload?.webContentLink || '').trim();
+    if (webContentLink) return webContentLink;
+    return buildDriveViewUrl(payload?.id);
+  };
   const getPreviewUrl = (file: (typeof taskState)['files'][number]) => {
     if (file.thumbnailUrl) return file.thumbnailUrl;
     if (!file.url) return '';
@@ -1422,7 +1442,10 @@ export default function TaskDetail() {
   };
   const handleFileAction = async (file: (typeof taskState)['files'][number]) => {
     const fileLinkUrl = getFileActionUrl(file);
-    if (!fileLinkUrl || fileLinkUrl === '#') return;
+    if (!fileLinkUrl || fileLinkUrl === '#') {
+      toast.error('File link is missing. Refresh the task or re-upload the attachment.');
+      return;
+    }
 
     if (shouldUseLinkIcon(file)) {
       window.open(fileLinkUrl, '_blank', 'noopener,noreferrer');
@@ -2426,9 +2449,13 @@ export default function TaskDetail() {
             uploadId,
             signal: controller.signal,
           });
+          const uploadedUrl = resolveUploadedDriveUrl(data);
+          if (!uploadedUrl) {
+            throw new Error('Upload succeeded but file link is missing. Please retry.');
+          }
           uploadedFiles.push({
             name: file.name,
-            url: data.webViewLink || data.webContentLink || '',
+            url: uploadedUrl,
             size: file.size,
             mime: file.type || data.mimeType || '',
             thumbnailUrl: data.thumbnailLink,
@@ -2754,6 +2781,10 @@ export default function TaskDetail() {
         if (!response.ok) {
           throw new Error(data?.error || 'Upload failed');
         }
+        const uploadedUrl = resolveUploadedDriveUrl(data);
+        if (!uploadedUrl) {
+          throw new Error('Upload succeeded but file link is missing. Please retry.');
+        }
         const baseName =
           uploads.length === 1 && trimmedNameOverride ? trimmedNameOverride : file.name;
         const resolvedName =
@@ -2763,7 +2794,7 @@ export default function TaskDetail() {
         const newFile = {
           id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           name: resolvedName,
-          url: data.webViewLink || data.webContentLink || '',
+          url: uploadedUrl,
           type: selectedType,
           size: file.size,
           thumbnailUrl: data.thumbnailLink,

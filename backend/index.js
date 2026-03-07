@@ -20,7 +20,7 @@ const server = http.createServer(app);
 const port = process.env.PORT || 10000;
 
 if (process.env.NODE_ENV === 'production') {
-  // Render terminates TLS at the edge; trust X-Forwarded-* headers from that proxy.
+  // Cloud platforms terminate TLS at the edge; trust forwarded proxy headers.
   app.set('trust proxy', 1);
 }
 
@@ -49,6 +49,19 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(attachClientMeta);
+
+app.get('/healthz', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'antigravity-api',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/', (req, res) => {
+  res.send('Antigravity API is running!');
+});
+
 app.use(requireAuth);
 app.use(auditWriteActions);
 
@@ -68,10 +81,6 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/drive', driveAuthRoutes);
 app.use('/api/notifications', notificationRoutes);
-
-app.get('/', (req, res) => {
-  res.send('Antigravity API is running!');
-});
 
 // Start Server
 const startServer = async () => {

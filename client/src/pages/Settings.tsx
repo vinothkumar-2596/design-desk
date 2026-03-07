@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/select';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { avatarPresets, getAvatarPreset, getDefaultAvatarValue, toAvatarPresetValue } from '@/lib/avatarPresets';
+import { isJuniorDesigner } from '@/lib/designerAccess';
 import { cn } from '@/lib/utils';
 import { API_URL, authFetch } from '@/lib/api';
 const roleLabelByValue: Record<string, string> = {
@@ -82,6 +83,7 @@ export default function Settings() {
     user?.department?.trim() ||
     roleLabelByValue[String(user?.role || '').toLowerCase()] ||
     'General';
+  const showRequestDefaults = user?.role === 'designer' && !isJuniorDesigner(user);
   const sanitizeName = (value: string) => value.replace(/\d+/g, '');
   useEffect(() => {
     setFullName(user?.name || '');
@@ -382,7 +384,7 @@ export default function Settings() {
         </div>
 
         {/* Request Defaults (Designer only) */}
-        {user?.role === 'designer' && (
+        {showRequestDefaults && (
           <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
             <h2 className="text-lg font-semibold text-foreground premium-heading mb-4 flex items-center gap-2">
               <Briefcase className="h-5 w-5" />

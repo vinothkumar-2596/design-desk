@@ -385,9 +385,28 @@ const shouldPromptDriveReconnect = (errorMessage?: string) => {
     normalized.includes('insufficient permissions for the specified parent') ||
     normalized.includes('drive upload folder is not accessible') ||
     normalized.includes('google drive authentication failed') ||
+    normalized.includes('deleted_client') ||
+    normalized.includes('invalid_client') ||
+    normalized.includes('unauthorized_client') ||
     normalized.includes('invalid_grant') ||
     normalized.includes('invalid jwt signature')
   );
+};
+const buildDriveViewUrl = (driveId?: string) => {
+  const normalizedId = String(driveId || '').trim();
+  if (!normalizedId) return '';
+  return `https://drive.google.com/file/d/${encodeURIComponent(normalizedId)}/view?usp=drivesdk`;
+};
+const resolveUploadedDriveUrl = (data?: {
+  id?: string;
+  webViewLink?: string;
+  webContentLink?: string;
+} | null) => {
+  const webViewLink = String(data?.webViewLink || '').trim();
+  if (webViewLink) return webViewLink;
+  const webContentLink = String(data?.webContentLink || '').trim();
+  if (webContentLink) return webContentLink;
+  return buildDriveViewUrl(data?.id);
 };
 
 function LinearProgressWithLabel(props: LinearProgressProps & { value: number }) {
@@ -691,9 +710,18 @@ export default function NewRequest() {
           data = null;
         }
 
+        const resolvedUrl = resolveUploadedDriveUrl(data);
+        if (!resolvedUrl) {
+          const errorMsg = 'Upload failed: file link missing. Please retry.';
+          updateFile(localId, { uploading: false, error: errorMsg });
+          toast.error('File upload failed', { description: errorMsg });
+          resolve();
+          return;
+        }
+
         updateFile(localId, {
           driveId: data?.id,
-          url: data?.webViewLink || data?.webContentLink,
+          url: resolvedUrl,
           thumbnailUrl: data?.thumbnailLink,
           extractedContent: data?.extractedContent,
           uploading: false,

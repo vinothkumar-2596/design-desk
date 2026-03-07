@@ -230,6 +230,22 @@ const normalizeTaskAssignedRef = (value) => {
 };
 
 const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+const FORCED_DESIGNER_EMAILS = new Set([
+  "chandruvino003@gmail.com",
+  "zaya1432004@gmail.com",
+  "graphics@indbazaar.com",
+].map((entry) => normalizeEmail(entry)));
+
+const enforceDesignerRoleForConfiguredEmails = async (user) => {
+  const normalizedEmail = normalizeEmail(user?.email);
+  if (!normalizedEmail || !FORCED_DESIGNER_EMAILS.has(normalizedEmail)) {
+    return user;
+  }
+  if (user.role === "designer") return user;
+  user.role = "designer";
+  await user.save();
+  return user;
+};
 
 const getOptionalAuthPayload = (req) => {
   const header = req.header("authorization") || "";
@@ -304,21 +320,23 @@ router.post("/login", authLimiter, async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials." });
     }
 
-    const accessToken = signAccessToken(user);
-    const { rawToken, expiresAt } = await createRefreshToken(user, req);
+    const effectiveUser = await enforceDesignerRoleForConfiguredEmails(user);
+
+    const accessToken = signAccessToken(effectiveUser);
+    const { rawToken, expiresAt } = await createRefreshToken(effectiveUser, req);
     setRefreshCookie(res, rawToken, expiresAt);
 
     await logAudit({
-      actorUserId: user._id,
-      actorRole: user.role,
+      actorUserId: effectiveUser._id,
+      actorRole: effectiveUser.role,
       action: "LOGIN_SUCCESS",
-      targetId: user._id.toString(),
+      targetId: effectiveUser._id.toString(),
       ipAddress: req.clientIp || "",
       userAgent: req.userAgent || "",
       meta: { email: normalizedEmail }
     });
 
-    res.json({ token: accessToken, user: user.toJSON() });
+    res.json({ token: accessToken, user: effectiveUser.toJSON() });
   } catch (error) {
     res.status(500).json({ error: "Login failed." });
   }
