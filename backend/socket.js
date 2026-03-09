@@ -4,6 +4,7 @@ let io;
 const presenceByTask = new Map();
 const globalPresence = new Map();
 const globalTyping = new Map();
+const GLOBAL_PRESENCE_RETENTION_MS = 1000 * 60 * 60 * 24;
 
 const ensurePresenceStore = (taskId) => {
   if (!presenceByTask.has(taskId)) {
@@ -40,22 +41,48 @@ const removeSocketFromPresence = (taskId, socketId) => {
   }
 };
 
-const getGlobalPresenceSnapshot = () =>
-  Array.from(globalPresence.values()).map((entry) => ({
-    userId: entry.userId,
-    userName: entry.userName,
-    userRole: entry.userRole,
-    userEmail: entry.userEmail,
-    lastSeenAt: entry.lastSeenAt,
-  }));
+const pruneGlobalPresence = () => {
+  const cutoff = Date.now() - GLOBAL_PRESENCE_RETENTION_MS;
+  for (const [userId, entry] of globalPresence.entries()) {
+    if (entry.isOnline) continue;
+    const lastSeenTime = new Date(entry.lastSeenAt || 0).getTime();
+    if (!Number.isFinite(lastSeenTime) || lastSeenTime < cutoff) {
+      globalPresence.delete(userId);
+    }
+  }
+};
 
-const removeSocketFromGlobalPresence = (userId, socketId) => {
+const getGlobalPresenceSnapshot = () => {
+  pruneGlobalPresence();
+  return Array.from(globalPresence.values())
+    .sort((a, b) => {
+      if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+      const aTime = new Date(a.lastSeenAt || 0).getTime();
+      const bTime = new Date(b.lastSeenAt || 0).getTime();
+      if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) {
+        return bTime - aTime;
+      }
+      return String(a.userName || "").localeCompare(String(b.userName || ""));
+    })
+    .map((entry) => ({
+      userId: entry.userId,
+      userName: entry.userName,
+      userRole: entry.userRole,
+      userEmail: entry.userEmail,
+      avatar: entry.avatar,
+      isOnline: entry.isOnline,
+      lastSeenAt: entry.lastSeenAt,
+    }));
+};
+
+const markGlobalPresenceInactive = (userId, socketId) => {
   if (!userId) return;
   const entry = globalPresence.get(userId);
   if (!entry) return;
   entry.sockets.delete(socketId);
   if (entry.sockets.size === 0) {
-    globalPresence.delete(userId);
+    entry.isOnline = false;
+    entry.lastSeenAt = new Date().toISOString();
   }
 };
 
@@ -184,7 +211,7 @@ export const initSocket = (httpServer) => {
       socket.leave(String(userId));
     });
 
-    socket.on("presence:global:join", ({ userId, userName, userRole, userEmail }) => {
+    socket.on("presence:global:join", ({ userId, userName, userRole, userEmail, avatar }) => {
       if (!userId) return;
       const key = String(userId);
       const now = new Date().toISOString();
@@ -193,12 +220,16 @@ export const initSocket = (httpServer) => {
         userName: userName || "Unknown",
         userRole: userRole || "",
         userEmail: userEmail || "",
+        avatar: avatar || "",
         sockets: new Set(),
+        isOnline: true,
         lastSeenAt: now,
       };
       existing.userName = userName || existing.userName;
       existing.userRole = userRole || existing.userRole;
       existing.userEmail = userEmail || existing.userEmail;
+      existing.avatar = avatar || existing.avatar;
+      existing.isOnline = true;
       existing.lastSeenAt = now;
       existing.sockets.add(socket.id);
       globalPresence.set(key, existing);
@@ -212,7 +243,7 @@ export const initSocket = (httpServer) => {
     socket.on("presence:global:leave", ({ userId }) => {
       const key = userId ? String(userId) : socket.data.globalPresenceUserId;
       if (!key) return;
-      removeSocketFromGlobalPresence(key, socket.id);
+      markGlobalPresenceInactive(key, socket.id);
       removeSocketFromGlobalTyping(key, socket.id);
       socket.leave("presence:global");
       io.to("presence:global").emit("presence:global:update", {
@@ -236,7 +267,7 @@ export const initSocket = (httpServer) => {
         socket.data.presenceTasks.clear();
       }
       if (socket.data.globalPresenceUserId) {
-        removeSocketFromGlobalPresence(socket.data.globalPresenceUserId, socket.id);
+        markGlobalPresenceInactive(socket.data.globalPresenceUserId, socket.id);
         io.to("presence:global").emit("presence:global:update", {
           viewers: getGlobalPresenceSnapshot(),
         });

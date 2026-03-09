@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -82,7 +82,7 @@ const URGENCY_HINTS: Array<{ value: TaskDraft['urgency']; patterns: RegExp[] }> 
 ];
 
 const DEADLINE_PATTERN =
-    /\b(today|tomorrow|tonight|this\s+(?:morning|afternoon|evening|week|month)|next\s+\w+|\d{1,2}[\/\-.]\d{1,2}(?:[\/\-.]\d{2,4})?|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\s+\d{1,2}(?:,?\s+\d{4})?)\b/i;
+    /\b(today|tomorrow|tonight|this\s+(?:morning|afternoon|evening|week|month)|(?:this|next)\s+(?:monday|mon|tuesday|tue|wednesday|wed|thursday|thu|thur|thurs|friday|fri|saturday|sat|sunday|sun)|monday|mon|tuesday|tue|wednesday|wed|thursday|thu|thur|thurs|friday|fri|saturday|sat|sunday|sun|next\s+\w+|\d{1,2}[\/\-.]\d{1,2}(?:[\/\-.]\d{2,4})?|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\s+\d{1,2}(?:,?\s+\d{4})?)\b/i;
 
 const ATTACHMENT_PROVIDED_PATTERNS = [
     /\bi uploaded\b/i,
@@ -475,6 +475,49 @@ const addDays = (date: Date, days: number) => {
     return next;
 };
 
+const WEEKDAY_TO_INDEX: Record<string, number> = {
+    sun: 0,
+    sunday: 0,
+    mon: 1,
+    monday: 1,
+    tue: 2,
+    tuesday: 2,
+    wed: 3,
+    wednesday: 3,
+    thu: 4,
+    thur: 4,
+    thurs: 4,
+    thursday: 4,
+    fri: 5,
+    friday: 5,
+    sat: 6,
+    saturday: 6,
+};
+
+const parseWeekdayToIso = (value: string) => {
+    const match = normalizeSpace(value).match(
+        /\b(?:(this|next)\s+)?(monday|mon|tuesday|tue|wednesday|wed|thursday|thu|thur|thurs|friday|fri|saturday|sat|sunday|sun)\b/i
+    );
+    if (!match) return '';
+
+    const qualifier = String(match[1] || '').toLowerCase();
+    const weekday = String(match[2] || '').toLowerCase();
+    const targetDay = WEEKDAY_TO_INDEX[weekday];
+    if (typeof targetDay !== 'number') return '';
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let delta = targetDay - today.getDay();
+
+    if (qualifier === 'next') {
+        if (delta <= 0) delta += 7;
+    } else if (delta < 0) {
+        delta += 7;
+    }
+
+    return toIsoDateString(addDays(today, delta));
+};
+
 const parseDeadlineToIso = (value: string) => {
     const normalized = normalizeSpace(value).toLowerCase();
     if (!normalized) return '';
@@ -492,6 +535,11 @@ const parseDeadlineToIso = (value: string) => {
 
     if (normalized.includes('next week')) {
         return toIsoDateString(addDays(today, 7));
+    }
+
+    const weekdayIso = parseWeekdayToIso(normalized);
+    if (weekdayIso) {
+        return weekdayIso;
     }
 
     const numericMatch = normalized.match(/(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?/);
@@ -678,9 +726,10 @@ interface TaskBuddyModalProps {
     onOpenUploader?: () => void;
     hasAttachments?: boolean;
     attachmentContext?: string;
+    freeDateSuggestions?: Date[];
 }
 
-export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage, onOpenUploader, hasAttachments, attachmentContext }: TaskBuddyModalProps) {
+export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage, onOpenUploader, hasAttachments, attachmentContext, freeDateSuggestions = [] }: TaskBuddyModalProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -705,6 +754,28 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
     const uploadFollowUpMessage =
         'I uploaded the attachments. Please review them and continue with the next missing question, or prepare the draft if everything is now available.';
     const MAX_ATTACHMENT_CONTEXT_CHARS = 2500;
+    const formattedFreeDateSuggestions = useMemo(
+        () =>
+            freeDateSuggestions
+                .map((date) => {
+                    const normalized = new Date(date);
+                    if (Number.isNaN(normalized.getTime())) return null;
+                    return {
+                        label: normalized.toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                        }),
+                        value: normalized.toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                        }),
+                    };
+                })
+                .filter(Boolean) as Array<{ label: string; value: string }>,
+        [freeDateSuggestions]
+    );
 
     const getScrollViewport = () =>
         scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
@@ -821,7 +892,11 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
         } : null;
         const nextConversation = provisionalUserMessage ? [...messages, provisionalUserMessage] : messages;
         const wizardState = buildWizardState(nextConversation, Boolean(hasAttachments));
-        const liveTaskContext = buildLiveTaskContext(wizardState, Boolean(hasAttachments));
+        const freeDateContext =
+            formattedFreeDateSuggestions.length > 0
+                ? `\nAVAILABLE FREE DATES:\n- ${formattedFreeDateSuggestions.map((entry) => entry.value).join('\n- ')}`
+                : '';
+        const liveTaskContext = `${buildLiveTaskContext(wizardState, Boolean(hasAttachments))}${freeDateContext}`;
         const payloadText = trimmedInput || 'Continue with the next missing step.';
         const userTextBase = systemEvent
             ? `${systemEvent}\n\n${liveTaskContext}\n\n${payloadText}`
@@ -1223,6 +1298,11 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
         "Need a social media campaign graphic request",
         "Create an event LED backdrop design request"
     ];
+    const latestDeadlineQuestionId =
+        [...messages]
+            .reverse()
+            .find((message) => message.role === 'assistant' && inferQuestionSlot(message.content) === 'deadline')
+            ?.id || '';
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -1302,6 +1382,27 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                                                         </Button>
                                                     </div>
                                                 )}
+                                                {message.role === 'assistant' &&
+                                                    message.id === latestDeadlineQuestionId &&
+                                                    inferQuestionSlot(message.content) === 'deadline' &&
+                                                    formattedFreeDateSuggestions.length > 0 && (
+                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                            {formattedFreeDateSuggestions.map((suggestion) => (
+                                                                <Button
+                                                                    key={suggestion.value}
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    onClick={() => {
+                                                                        void handleSend(suggestion.value);
+                                                                    }}
+                                                                    className="border-primary/20 text-primary hover:bg-primary/5"
+                                                                >
+                                                                    {suggestion.label}
+                                                                </Button>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                             </div>
                                         </div>
                                     </div>

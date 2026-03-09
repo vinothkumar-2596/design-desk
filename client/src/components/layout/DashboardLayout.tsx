@@ -3,7 +3,7 @@ import { AppSidebar } from './AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import {
   Bell,
   ArrowUpRight,
@@ -69,10 +69,25 @@ type GlobalViewer = {
   userEmail?: string;
   lastSeenAt?: string;
   avatar?: string;
+  isOnline?: boolean;
 };
 
 const EMAIL_SEND_PENDING_KEY = 'designhub:gmail-send-pending';
 const EMAIL_SEND_PENDING_MAX_AGE_MS = 1000 * 60 * 60 * 24;
+
+const formatViewerLastSeenLabel = (lastSeenAt?: string) => {
+  if (!lastSeenAt) return 'Unavailable';
+  const parsed = new Date(lastSeenAt);
+  if (!Number.isFinite(parsed.getTime())) return 'Unavailable';
+  return `Last seen ${formatDistanceToNow(parsed, { addSuffix: true })}`;
+};
+
+const formatViewerLastSeenExact = (lastSeenAt?: string) => {
+  if (!lastSeenAt) return '';
+  const parsed = new Date(lastSeenAt);
+  if (!Number.isFinite(parsed.getTime())) return '';
+  return format(parsed, 'MMM d, h:mm a');
+};
 
 export function DashboardLayout({
   children,
@@ -443,6 +458,7 @@ export function DashboardLayout({
           userRole: viewer.userRole,
           userEmail: viewer.userEmail,
           avatar: viewer.avatar || (viewer.userId === userId ? user?.avatar : undefined),
+          isOnline: viewer.isOnline !== false,
           lastSeenAt: viewer.lastSeenAt,
         }))
       );
@@ -560,6 +576,12 @@ export function DashboardLayout({
     list.sort((a, b) => {
       if (isCurrentUserViewer(a)) return -1;
       if (isCurrentUserViewer(b)) return 1;
+      if (Boolean(a.isOnline) !== Boolean(b.isOnline)) return a.isOnline ? -1 : 1;
+      const aTime = new Date(a.lastSeenAt || 0).getTime();
+      const bTime = new Date(b.lastSeenAt || 0).getTime();
+      if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) {
+        return bTime - aTime;
+      }
       return (a.userName || '').localeCompare(b.userName || '');
     });
     return list;
@@ -567,9 +589,12 @@ export function DashboardLayout({
 
   const globalPresenceSummary = useMemo(() => {
     const visible = globalPresenceList.slice(0, 4);
+    const onlineCount = globalPresenceList.filter((viewer) => viewer.isOnline).length;
     return {
       visible,
       extraCount: Math.max(0, globalPresenceList.length - visible.length),
+      onlineCount,
+      total: globalPresenceList.length,
     };
   }, [globalPresenceList]);
 
@@ -988,9 +1013,13 @@ export function DashboardLayout({
         }
         return `${firstOtherName} and ${others.length - 1} others are typing...`;
       })()
-      : 'Currently viewing';
+      : globalPresenceSummary.onlineCount === 0
+        ? 'Last seen'
+        : globalPresenceSummary.onlineCount < globalPresenceSummary.total
+          ? 'Viewing / recent'
+          : 'Currently viewing';
     return (
-      <div className="hidden sm:flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-slate-900/70 dark:border-white/10 dark:text-white px-3 py-1.5 shadow-sm">
+      <div className="hidden sm:flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-slate-900/70 dark:border-white/10 dark:text-white px-3 py-1.5 shadow-none">
         <span
           className={
             (isTyping
@@ -1016,18 +1045,27 @@ export function DashboardLayout({
               viewer.userRole
                 ? viewer.userRole.charAt(0).toUpperCase() + viewer.userRole.slice(1)
                 : 'User';
+            const isOnline = Boolean(viewer.isOnline);
+            const lastSeenText = isOnline
+              ? 'Available now'
+              : formatViewerLastSeenLabel(viewer.lastSeenAt);
+            const lastSeenExact = isOnline ? '' : formatViewerLastSeenExact(viewer.lastSeenAt);
             return (
               <Tooltip key={viewer.userId}>
                 <TooltipTrigger asChild>
                   <span
-                    className={cn('inline-flex rounded-full', isSelf ? '' : 'presence-highlight')}
+                    className={cn(
+                      'relative inline-flex rounded-full',
+                      isSelf ? '' : 'presence-highlight'
+                    )}
                   >
                     <UserAvatar
                       name={viewer.userName}
                       avatar={avatarSrc}
                       className={cn(
                         'h-6 w-6 border-2 border-white shadow-sm bg-white/90 dark:border-white/10 dark:bg-slate-900/80',
-                        isSelf && 'ring-2 ring-primary/40'
+                        isSelf && 'ring-2 ring-primary/40',
+                        !isOnline && 'opacity-70'
                       )}
                       fallbackClassName="bg-primary/10 text-primary dark:text-[white] text-[9px] font-semibold"
                     />
@@ -1039,6 +1077,17 @@ export function DashboardLayout({
                     {isSelf ? ' (you)' : ''}
                   </div>
                   <div className="text-[11px] text-muted-foreground">{labelRole}</div>
+                  <div
+                    className={cn(
+                      'text-[11px] font-medium',
+                      isOnline ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
+                    )}
+                  >
+                    {lastSeenText}
+                  </div>
+                  {!isOnline && lastSeenExact && (
+                    <div className="text-[10px] text-muted-foreground/80">{lastSeenExact}</div>
+                  )}
                   {viewer.userEmail && (
                     <div className="text-[11px] text-muted-foreground">{viewer.userEmail}</div>
                   )}
@@ -1687,7 +1736,7 @@ function DashboardShell({
         <main className="flex-1 min-w-0 flex justify-center">
           <div
             ref={shellCardRef}
-            className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] dark:shadow-[0_24px_60px_-40px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden"
+            className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-none flex flex-col overflow-hidden"
           >
             <div
               ref={headerRef}
@@ -1700,7 +1749,7 @@ function DashboardShell({
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="relative min-w-[150px] flex-1 max-w-[220px] sm:max-w-[280px] md:max-w-md" ref={searchContainerRef}>
-                  <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-card/80 dark:border-border px-3 py-2 shadow-sm">
+                  <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-card/80 dark:border-border px-3 py-2 shadow-none">
                     <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
                     <div className="relative flex-1">
                       {showPlaceholder && (

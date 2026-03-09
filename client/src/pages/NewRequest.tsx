@@ -363,6 +363,11 @@ const createGmailComposeUrl = (to: string, subject: string, body: string) =>
   )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 const INDIAN_MOBILE_REGEX = /^\+91[6-9]\d{9}$/;
 const INDIAN_PREFIX = '+91 ';
+const FREE_DATE_SUGGESTION_COUNT = 6;
+const isWeekendDate = (value: Date) => {
+  const day = startOfDay(value).getDay();
+  return day === 0 || day === 6;
+};
 const formatIndianPhoneInput = (value?: string) => {
   const digitsOnly = String(value || '').replace(/\D/g, '');
   const local = digitsOnly.startsWith('91') ? digitsOnly.slice(2) : digitsOnly;
@@ -524,6 +529,30 @@ export default function NewRequest() {
     }
     return candidate;
   };
+  const freeDateSuggestions = useMemo(() => {
+    const suggestions: Date[] = [];
+    let candidate = startOfDay(isEmergency ? todayDate : minDeadlineDate);
+    let attempts = 0;
+
+    while (suggestions.length < FREE_DATE_SUGGESTION_COUNT && attempts < 90) {
+      const blocked =
+        !isEmergency &&
+        invalidRanges.some((range) =>
+          isWithinInterval(candidate, {
+            start: startOfDay(range.start),
+            end: startOfDay(range.end),
+          })
+        );
+      if (!blocked && !isWeekendDate(candidate)) {
+        suggestions.push(candidate);
+      }
+      candidate = addDays(candidate, 1);
+      attempts += 1;
+    }
+
+    return suggestions;
+  }, [invalidRanges, isEmergency, minDeadlineDate, todayDate]);
+  const selectedDeadlineKey = deadline ? format(startOfDay(deadline), 'yyyy-MM-dd') : '';
 
   useEffect(() => {
     if (!apiUrl) {
@@ -1407,6 +1436,38 @@ export default function NewRequest() {
                   ? 'Emergency requests can bypass the 3-day minimum (today onward only)'
                   : 'Minimum 3 days from today'}
               </p>
+              {freeDateSuggestions.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    Suggested Free Dates
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {freeDateSuggestions.map((suggestedDate) => {
+                      const suggestionKey = format(suggestedDate, 'yyyy-MM-dd');
+                      const isSelected = selectedDeadlineKey === suggestionKey;
+                      return (
+                        <button
+                          key={suggestionKey}
+                          type="button"
+                          onClick={() => {
+                            setHasDeadlineInteracted(true);
+                            setDeadline(suggestedDate);
+                          }}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${isSelected
+                            ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                            : 'border-[#D9E6FF] bg-white/75 text-foreground hover:border-[#B7C8FF] hover:bg-[#F4F8FF] dark:border-slate-700/60 dark:bg-slate-900/60 dark:hover:border-slate-500/60 dark:hover:bg-slate-900/80'
+                            }`}
+                        >
+                          {format(suggestedDate, 'EEE, MMM d')}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    These dates are currently open based on designer availability.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -1610,6 +1671,7 @@ export default function NewRequest() {
         onOpenUploader={openExistingUploader}
         hasAttachments={readyAttachments.length > 0}
         attachmentContext={taskBuddyAttachmentContext}
+        freeDateSuggestions={freeDateSuggestions}
       />
     </DashboardLayout >
   );
