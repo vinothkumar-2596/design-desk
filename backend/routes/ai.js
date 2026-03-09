@@ -7,6 +7,21 @@ import { requireRole } from "../middleware/auth.js";
 const router = express.Router();
 router.use(requireRole(["staff", "designer", "treasurer"]));
 
+const toPositiveInt = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+};
+
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "models/gemini-2.5-flash-lite";
+const GEMINI_MAX_HISTORY_MESSAGES = toPositiveInt(process.env.GEMINI_MAX_HISTORY_MESSAGES, 6);
+const GEMINI_RATE_LIMIT_COOLDOWN_MS = toPositiveInt(process.env.GEMINI_RATE_LIMIT_COOLDOWN_MS, 60 * 1000);
+const GEMINI_QUOTA_COOLDOWN_MS = toPositiveInt(process.env.GEMINI_QUOTA_COOLDOWN_MS, 30 * 60 * 1000);
+const GEMINI_AUTH_COOLDOWN_MS = toPositiveInt(process.env.GEMINI_AUTH_COOLDOWN_MS, 6 * 60 * 60 * 1000);
+
+const geminiKeyCooldowns = new Map();
+let geminiKeyCursor = 0;
+const isDevMode = process.env.NODE_ENV !== "production";
+
 const GEMINI_READY_RESPONSE_CONTRACT = `When ready, respond ONLY in this format:
 
 STATUS: READY
@@ -42,6 +57,261 @@ const normalizeChatHistory = (messages) => {
             parts: String(msg?.parts || "").trim(),
         }))
         .filter((msg) => Boolean(msg.parts));
+};
+
+const prepareGeminiHistory = (messages) => {
+    const normalized = normalizeChatHistory(messages);
+    if (normalized.length === 0) {
+        return [];
+    }
+
+    const merged = [];
+    for (const message of normalized) {
+        const previous = merged[merged.length - 1];
+        if (previous && previous.role === message.role) {
+            previous.parts = `${previous.parts}\n\n${message.parts}`.trim();
+            continue;
+        }
+        merged.push({ ...message });
+    }
+
+    // The current user message is sent separately via chat.sendMessage(...),
+    // so keep history ending on the previous assistant/model turn when possible.
+    if (merged.length > 0 && merged[merged.length - 1].role === "user") {
+        merged.pop();
+    }
+
+    const trimmed = merged.slice(-GEMINI_MAX_HISTORY_MESSAGES);
+    while (trimmed.length > 0 && trimmed[0].role !== "user") {
+        trimmed.shift();
+    }
+
+    return trimmed;
+};
+
+const splitEnvKeys = (value) =>
+    String(value || "")
+        .split(/[\n,]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+
+const dedupeKeys = (keys) => {
+    const seen = new Set();
+    return keys.filter((key) => {
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+};
+
+const rotateList = (items, startIndex) => {
+    if (!Array.isArray(items) || items.length === 0) {
+        return [];
+    }
+    const normalizedStart = ((startIndex % items.length) + items.length) % items.length;
+    return [...items.slice(normalizedStart), ...items.slice(0, normalizedStart)];
+};
+
+const getMaskedKey = (apiKey) => {
+    const value = String(apiKey || "").trim();
+    if (!value) return "<missing>";
+    if (value.length <= 8) return "****";
+    return `${value.slice(0, 4)}...${value.slice(-4)}`;
+};
+
+const getConfiguredGeminiKeys = () =>
+    dedupeKeys([
+        ...splitEnvKeys(process.env.GEMINI_API_KEYS),
+        String(process.env.GEMINI_API_KEY || "").trim(),
+        String(process.env.VITE_GEMINI_API_KEY || "").trim(),
+        String(process.env.GOOGLE_API_KEY || "").trim(),
+    ].filter(Boolean));
+
+const getGeminiKeyPool = () => {
+    const configuredKeys = getConfiguredGeminiKeys();
+    if (configuredKeys.length === 0) {
+        return {
+            keys: [],
+            nextRetryAt: 0,
+            total: 0,
+        };
+    }
+
+    const now = Date.now();
+    const orderedKeys = rotateList(configuredKeys, geminiKeyCursor);
+    const availableKeys = [];
+    let nextRetryAt = 0;
+
+    for (const key of orderedKeys) {
+        const cooldownEntry = geminiKeyCooldowns.get(key);
+        if (!cooldownEntry || cooldownEntry.until <= now) {
+            if (cooldownEntry) {
+                geminiKeyCooldowns.delete(key);
+            }
+            availableKeys.push(key);
+            continue;
+        }
+
+        if (!nextRetryAt || cooldownEntry.until < nextRetryAt) {
+            nextRetryAt = cooldownEntry.until;
+        }
+    }
+
+    return {
+        keys: availableKeys,
+        nextRetryAt,
+        total: configuredKeys.length,
+    };
+};
+
+const markGeminiKeyCooldown = (apiKey, cooldownMs, reason) => {
+    if (!apiKey || !cooldownMs) {
+        return;
+    }
+    geminiKeyCooldowns.set(apiKey, {
+        until: Date.now() + cooldownMs,
+        reason,
+    });
+};
+
+const advanceGeminiKeyCursor = (apiKey) => {
+    const configuredKeys = getConfiguredGeminiKeys();
+    if (configuredKeys.length === 0) {
+        geminiKeyCursor = 0;
+        return;
+    }
+    const index = configuredKeys.indexOf(apiKey);
+    geminiKeyCursor = index === -1 ? (geminiKeyCursor + 1) % configuredKeys.length : (index + 1) % configuredKeys.length;
+};
+
+const classifyGeminiError = (error) => {
+    const message = error instanceof Error ? error.message : "Unknown Gemini error";
+    const lower = message.toLowerCase();
+    const statusHint = Number(error?.status || error?.statusCode || error?.response?.status || 0) || 0;
+
+    const isQuotaExhaustedError =
+        lower.includes("exceeded your current quota") ||
+        lower.includes("insufficient quota") ||
+        (lower.includes("quota") && (lower.includes("exceeded") || lower.includes("billing")));
+    const isRateLimitError =
+        statusHint === 429 ||
+        lower.includes("429") ||
+        lower.includes("rate limit") ||
+        lower.includes("too many requests");
+    const isLeakedKeyError =
+        lower.includes("reported as leaked") ||
+        lower.includes("key was reported as leaked") ||
+        lower.includes("use another api key");
+    const isAuthError =
+        !isLeakedKeyError &&
+        (
+            statusHint === 401 ||
+            statusHint === 403 ||
+            lower.includes("403") ||
+            lower.includes("api key") ||
+            lower.includes("forbidden") ||
+            lower.includes("permission") ||
+            lower.includes("authentication")
+        );
+
+    const code = isLeakedKeyError
+        ? "AI_KEY_LEAKED"
+        : isQuotaExhaustedError
+            ? "AI_QUOTA_EXHAUSTED"
+            : isRateLimitError
+                ? "AI_QUOTA_EXCEEDED"
+                : isAuthError
+                    ? "AI_AUTH_UNAVAILABLE"
+                    : "AI_UNAVAILABLE";
+
+    return {
+        message,
+        lower,
+        statusHint,
+        code,
+        isQuotaExhaustedError,
+        isRateLimitError,
+        isLeakedKeyError,
+        isAuthError,
+    };
+};
+
+const getGeminiCooldownMs = (errorInfo) => {
+    if (errorInfo.isLeakedKeyError) {
+        return GEMINI_AUTH_COOLDOWN_MS;
+    }
+    if (errorInfo.isQuotaExhaustedError) {
+        return GEMINI_QUOTA_COOLDOWN_MS;
+    }
+    if (errorInfo.isRateLimitError) {
+        return GEMINI_RATE_LIMIT_COOLDOWN_MS;
+    }
+    if (errorInfo.isAuthError) {
+        return GEMINI_AUTH_COOLDOWN_MS;
+    }
+    return 0;
+};
+
+const shouldExposeAiErrorDetail = (req) => {
+    if (isDevMode) {
+        return true;
+    }
+    const origin = String(req?.headers?.origin || "");
+    const referer = String(req?.headers?.referer || "");
+    const candidate = origin || referer;
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(candidate);
+};
+
+const withDevDetail = (req, payload, detail) => {
+    if (!shouldExposeAiErrorDetail(req) || !detail) {
+        return payload;
+    }
+    return {
+        ...payload,
+        detail,
+    };
+};
+
+const runGeminiWithKey = async ({ apiKey, recentMessages, systemPrompt, userMessage }) => {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+
+    const chat = model.startChat({
+        history: recentMessages.map((msg) => ({
+            role: msg.role,
+            parts: [{ text: msg.parts }],
+        })),
+        generationConfig: {
+            temperature: 0.1,
+            topP: 0.6,
+            topK: 10,
+            maxOutputTokens: 320,
+        },
+    });
+
+    const prompt = buildGeminiPrompt(systemPrompt, userMessage);
+    const result = await chat.sendMessage(prompt);
+    const response = result.response;
+    const text = response.text();
+    const readyPayload = extractReadyPayload(text);
+
+    if (readyPayload) {
+        return {
+            ready: true,
+            data: readyPayload,
+            provider: "gemini",
+            model: GEMINI_MODEL,
+        };
+    }
+
+    return {
+        ready: false,
+        message: text,
+        provider: "gemini",
+        model: GEMINI_MODEL,
+    };
 };
 
 const buildOllamaFallbackPrompt = (systemPrompt, messages, userMessage) => {
@@ -224,79 +494,76 @@ router.post("/gemini", async (req, res) => {
         return res.status(400).json({ error: "userMessage is required" });
     }
 
-    const apiKey =
-        process.env.GEMINI_API_KEY ||
-        process.env.VITE_GEMINI_API_KEY ||
-        process.env.GOOGLE_API_KEY;
-    if (!apiKey) {
+    const configuredKeys = getConfiguredGeminiKeys();
+    if (configuredKeys.length === 0) {
         return res
             .status(503)
             .json({ error: "AI service is temporarily unavailable. Please contact admin.", code: "AI_KEY_MISSING" });
     }
 
+    const recentMessages = prepareGeminiHistory(messages);
+
     try {
-        const normalizedMessages = normalizeChatHistory(messages);
+        const keyPool = getGeminiKeyPool();
+        if (keyPool.keys.length === 0) {
+            try {
+                const fallbackPayload = await runOllamaFallback({ systemPrompt, messages, userMessage });
+                return res.json(fallbackPayload);
+            } catch (fallbackError) {
+                console.error("Ollama fallback failed while all Gemini keys were cooling down:", fallbackError);
+            }
 
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
-
-        const chat = model.startChat({
-            history: normalizedMessages.map((msg) => ({
-                role: msg.role,
-                parts: [{ text: msg.parts }],
-            })),
-            generationConfig: {
-                temperature: 0.7,
-                topP: 0.95,
-                topK: 40,
-                maxOutputTokens: 2048,
-            },
-        });
-
-        const prompt = buildGeminiPrompt(systemPrompt, userMessage);
-        const result = await chat.sendMessage(prompt);
-        const response = result.response;
-        const text = response.text();
-        const readyPayload = extractReadyPayload(text);
-
-        if (readyPayload) {
-            return res.json({
-                ready: true,
-                data: readyPayload,
+            const retryAfterSeconds = keyPool.nextRetryAt
+                ? Math.max(1, Math.ceil((keyPool.nextRetryAt - Date.now()) / 1000))
+                : 60;
+            return res.status(429).json({
+                error: `All Gemini keys are cooling down. Try again in ${retryAfterSeconds} seconds.`,
+                code: "AI_QUOTA_EXCEEDED",
+                retry_after_seconds: retryAfterSeconds,
             });
         }
 
-        return res.json({
-            ready: false,
-            message: text,
-        });
-    } catch (error) {
-        console.error("Gemini proxy error:", error);
-        const message = error instanceof Error ? error.message : "Unknown Gemini error";
-        const lower = message.toLowerCase();
-        const statusHint =
-            Number(error?.status || error?.statusCode || error?.response?.status || 0) || 0;
+        let lastErrorInfo = null;
 
-        const isQuotaExhaustedError =
-            lower.includes("exceeded your current quota") ||
-            lower.includes("insufficient quota") ||
-            (lower.includes("quota") && (lower.includes("exceeded") || lower.includes("billing")));
-        const isRateLimitError =
-            statusHint === 429 ||
-            lower.includes("429") ||
-            lower.includes("rate limit") ||
-            lower.includes("too many requests");
-        const isAuthError =
-            statusHint === 401 ||
-            statusHint === 403 ||
-            lower.includes("403") ||
-            lower.includes("api key") ||
-            lower.includes("forbidden") ||
-            lower.includes("permission") ||
-            lower.includes("authentication") ||
-            lower.includes("leaked");
+        for (const apiKey of keyPool.keys) {
+            try {
+                const payload = await runGeminiWithKey({
+                    apiKey,
+                    recentMessages,
+                    systemPrompt,
+                    userMessage,
+                });
+                advanceGeminiKeyCursor(apiKey);
+                return res.json(payload);
+            } catch (error) {
+                const errorInfo = classifyGeminiError(error);
+                lastErrorInfo = errorInfo;
+                const cooldownMs = getGeminiCooldownMs(errorInfo);
+                if (cooldownMs > 0) {
+                    markGeminiKeyCooldown(apiKey, cooldownMs, errorInfo.code);
+                }
+                console.error(`Gemini proxy error for key ${getMaskedKey(apiKey)}:`, error);
 
-        if (isQuotaExhaustedError || isRateLimitError) {
+                if (
+                    errorInfo.isQuotaExhaustedError ||
+                    errorInfo.isRateLimitError ||
+                    errorInfo.isLeakedKeyError ||
+                    errorInfo.isAuthError
+                ) {
+                    continue;
+                }
+
+                break;
+            }
+        }
+
+        if (!lastErrorInfo) {
+            return res
+                .status(503)
+                .json(withDevDetail(req, { error: "AI service is temporarily unavailable. Please try again later.", code: "AI_UNAVAILABLE" }, "No Gemini error was captured before the request failed."));
+        }
+
+        if (lastErrorInfo.isQuotaExhaustedError || lastErrorInfo.isRateLimitError) {
             try {
                 const fallbackPayload = await runOllamaFallback({ systemPrompt, messages, userMessage });
                 return res.json(fallbackPayload);
@@ -304,27 +571,51 @@ router.post("/gemini", async (req, res) => {
                 console.error("Ollama fallback failed:", fallbackError);
             }
 
-            if (isQuotaExhaustedError) {
+            if (lastErrorInfo.isQuotaExhaustedError) {
                 return res.status(429).json({
-                    error: "AI quota exceeded. Update Gemini billing/quota or use a different project key.",
+                    error: "All configured Gemini keys are out of quota. Update billing/quota or add another project key.",
                     code: "AI_QUOTA_EXHAUSTED",
                 });
             }
 
             return res
                 .status(429)
-                .json({ error: "Rate limit. Try again in 1 minute.", code: "AI_QUOTA_EXCEEDED" });
+                .json({ error: "All configured Gemini keys are rate-limited. Try again in 1 minute.", code: "AI_QUOTA_EXCEEDED" });
         }
 
-        if (isAuthError) {
+        if (lastErrorInfo.isLeakedKeyError) {
+            return res.status(503).json({
+                error: "All configured Gemini keys are blocked or invalid. Replace the configured keys.",
+                code: "AI_KEY_LEAKED",
+            });
+        }
+
+        if (lastErrorInfo.isAuthError) {
             return res
                 .status(503)
-                .json({ error: "AI service is temporarily unavailable. Please contact admin.", code: "AI_AUTH_UNAVAILABLE" });
+                .json(withDevDetail(
+                    req,
+                    { error: "All configured Gemini keys are unavailable. Check backend API key configuration.", code: "AI_AUTH_UNAVAILABLE" },
+                    lastErrorInfo.message
+                ));
         }
 
         return res
             .status(503)
-            .json({ error: "AI service is temporarily unavailable. Please try again later.", code: "AI_UNAVAILABLE" });
+            .json(withDevDetail(
+                req,
+                { error: "AI service is temporarily unavailable. Please try again later.", code: "AI_UNAVAILABLE" },
+                lastErrorInfo.message
+            ));
+    } catch (error) {
+        console.error("Gemini multi-key proxy error:", error);
+        return res
+            .status(503)
+            .json(withDevDetail(
+                req,
+                { error: "AI service is temporarily unavailable. Please try again later.", code: "AI_UNAVAILABLE" },
+                error instanceof Error ? error.message : "Unknown Gemini route error"
+            ));
     }
 });
 

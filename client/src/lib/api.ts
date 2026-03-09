@@ -128,3 +128,58 @@ export const authFetch = async (input: RequestInfo | URL, init: RequestInit = {}
     }
     return retryResponse;
 };
+
+type DriveReconnectPayload = {
+    url?: string;
+    connected?: boolean;
+    email?: string;
+    name?: string;
+};
+
+export const getDriveAuthUrl = async (): Promise<DriveReconnectPayload> => {
+    if (!API_URL) {
+        throw new Error('API URL is not configured.');
+    }
+
+    const response = await authFetch(`${API_URL}/api/drive/auth-url`);
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        const message =
+            payload && typeof payload.error === 'string' && payload.error.trim()
+                ? payload.error.trim()
+                : `Failed to get auth URL (HTTP ${response.status})`;
+        throw new Error(message);
+    }
+
+    const url =
+        payload && typeof payload.url === 'string' && payload.url.trim()
+            ? payload.url.trim()
+            : '';
+    const connected = Boolean(payload && payload.connected === true);
+    const email =
+        payload && typeof payload.email === 'string' && payload.email.trim()
+            ? payload.email.trim()
+            : '';
+    const name =
+        payload && typeof payload.name === 'string' && payload.name.trim()
+            ? payload.name.trim()
+            : '';
+
+    if (!url && !connected) {
+        throw new Error('Drive reconnect URL is missing.');
+    }
+
+    return { url, connected, email, name };
+};
+
+export const openDriveReconnectWindow = async (): Promise<string> => {
+    const { url, connected } = await getDriveAuthUrl();
+    if (connected || !url) {
+        return '';
+    }
+    if (typeof window !== 'undefined') {
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+    return url;
+};

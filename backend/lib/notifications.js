@@ -69,6 +69,16 @@ const getLocalLogoPath = () => {
   ]);
 };
 
+const PROJECT_SANS_FONT_URL =
+  "https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap";
+const PROJECT_SANS_FONT_FAMILY = "'Manrope', Helvetica, Arial, sans-serif";
+const EMAIL_FONT_IMPORT_BLOCK = `
+  <link href="${PROJECT_SANS_FONT_URL}" rel="stylesheet" />
+  <style>
+    @import url('${PROJECT_SANS_FONT_URL}');
+  </style>
+`;
+
 const buildEmailTaskUrl = ({ baseUrl, taskId, emailType, fallbackUrl }) => {
   const frontendBase = normalizeEnvValue(baseUrl);
   const normalizedTaskId = String(taskId || "").trim();
@@ -691,10 +701,10 @@ export const sendFinalFilesEmail = async ({
           </tr>
         `;
 
-  const taskCta = resolvedTaskUrl && !isTaskAssignedEmail
+  const taskCta = resolvedTaskUrl
     ? `
-        <a href="${resolvedTaskUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 20px;background:${brandColor};color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:14px;">
-          View Task
+        <a href="${resolvedTaskUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 20px;background:${brandColor};color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:14px;font-family:${PROJECT_SANS_FONT_FAMILY};">
+          ${isTaskAssignedEmail ? "Open Task" : "View Task"}
         </a>
       `
     : "";
@@ -806,7 +816,8 @@ export const sendFinalFilesEmail = async ({
     `;
 
   const html = `
-    <div style="background:#f5f7fb;padding:24px 16px;font-family:Helvetica, Arial, sans-serif;color:#101828;">
+    ${EMAIL_FONT_IMPORT_BLOCK}
+    <div style="background:#f5f7fb;padding:24px 16px;font-family:${PROJECT_SANS_FONT_FAMILY};color:#101828;">
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px;margin:0 auto;">
         ${viewInBrowser
       ? `
@@ -987,7 +998,8 @@ ${resetUrl}
 If you did not request this, you can safely ignore this email.`;
 
   const html = `
-    <div style="background:#f5f7fb;padding:24px 16px;font-family:Helvetica, Arial, sans-serif;color:#101828;">
+    ${EMAIL_FONT_IMPORT_BLOCK}
+    <div style="background:#f5f7fb;padding:24px 16px;font-family:${PROJECT_SANS_FONT_FAMILY};color:#101828;">
       <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;margin:0 auto;">
         <tr>
           <td>
@@ -1004,7 +1016,7 @@ If you did not request this, you can safely ignore this email.`;
                     Click the button below to choose a new password. This link will expire soon for security.
                   </p>
                   <div style="margin-top:18px;">
-                    <a href="${resetUrl}" style="display:inline-block;padding:12px 20px;background:${brandColor};color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:14px;">
+                    <a href="${resetUrl}" style="display:inline-block;padding:12px 20px;background:${brandColor};color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:14px;font-family:${PROJECT_SANS_FONT_FAMILY};">
                       Reset password
                     </a>
                   </div>

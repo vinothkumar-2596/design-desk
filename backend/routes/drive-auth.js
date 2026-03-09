@@ -1,15 +1,26 @@
 import express from "express";
-import { getDriveAuthUrl, saveDriveToken } from "../lib/drive.js";
+import { getDriveAuthUrl, getDriveConnectionInfo, saveDriveToken } from "../lib/drive.js";
 import { requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
 
-router.get("/auth-url", requireRole(["treasurer"]), (_req, res) => {
+router.get("/auth-url", requireRole(["staff", "designer", "treasurer"]), async (_req, res) => {
   try {
+    try {
+      const connection = await getDriveConnectionInfo();
+      return res.json({
+        connected: true,
+        email: connection.email,
+        name: connection.name,
+      });
+    } catch {
+      // No active Drive session. Fall through to OAuth URL generation.
+    }
+
     const url = getDriveAuthUrl();
     res.json({ url });
   } catch (error) {
-    res.status(500).json({ error: "Failed to generate auth URL." });
+    res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate auth URL." });
   }
 });
 

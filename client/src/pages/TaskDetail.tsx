@@ -272,20 +272,14 @@ const badgeGlassClass =
   'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
 const changeHistoryCardClass = 'rounded-lg border border-border/60 bg-secondary/40';
 
-import { API_URL, authFetch, getAuthToken } from '@/lib/api';
+import { API_URL, authFetch, getAuthToken, openDriveReconnectWindow } from '@/lib/api';
 
 const shouldPromptDriveReconnect = (errorMessage?: string) => {
   const normalized = String(errorMessage || '').toLowerCase();
   return (
     normalized.includes('drive oauth not connected') ||
-    normalized.includes('insufficient permissions for the specified parent') ||
-    normalized.includes('drive upload folder is not accessible') ||
-    normalized.includes('google drive authentication failed') ||
-    normalized.includes('deleted_client') ||
-    normalized.includes('invalid_client') ||
-    normalized.includes('unauthorized_client') ||
-    normalized.includes('invalid_grant') ||
-    normalized.includes('invalid jwt signature')
+    normalized.includes('must be set for oauth') ||
+    normalized.includes('missing oauth code')
   );
 };
 
@@ -2887,13 +2881,10 @@ export default function TaskDetail() {
               label: 'Connect',
               onClick: async () => {
                 try {
-                  const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
-                  const data = await res.json();
-                  if (data.url) {
-                    window.open(data.url, '_blank');
-                  }
-                } catch (e) {
-                  console.error(e);
+                  await openDriveReconnectWindow();
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : 'Failed to get auth URL';
+                  toast.error('Drive reconnect failed', { description: message });
                 }
               }
             },
@@ -2918,13 +2909,10 @@ export default function TaskDetail() {
               label: 'Connect',
               onClick: async () => {
                 try {
-                  const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
-                  const data = await res.json();
-                  if (data.url) {
-                    window.open(data.url, '_blank');
-                  }
-                } catch (e) {
-                  console.error(e);
+                  await openDriveReconnectWindow();
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : 'Failed to get auth URL';
+                  toast.error('Drive reconnect failed', { description: message });
                 }
               }
             },
@@ -3345,22 +3333,19 @@ export default function TaskDetail() {
     } catch (error: any) {
       const errorMsg = error.message || "Upload failed";
       if (shouldPromptDriveReconnect(errorMsg)) {
-        toast.error('Google Drive Disconnected', {
-          description: 'Reconnect Drive access and try uploading again.',
-          action: {
-            label: 'Connect',
-            onClick: async () => {
-              try {
-                const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
-                const data = await res.json();
-                if (data.url) {
-                  window.open(data.url, '_blank');
+          toast.error('Google Drive Disconnected', {
+            description: 'Reconnect Drive access and try uploading again.',
+            action: {
+              label: 'Connect',
+              onClick: async () => {
+                try {
+                  await openDriveReconnectWindow();
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : 'Failed to get auth URL';
+                  toast.error('Drive reconnect failed', { description: message });
                 }
-              } catch (e) {
-                console.error(e);
               }
-            }
-          },
+            },
           duration: 10000,
         });
       } else {

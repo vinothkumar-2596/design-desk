@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowRight,
+  BriefcaseBusiness,
+  Building2,
+  Clock3,
+  LockKeyhole,
+  ShieldCheck,
+  UserRound,
+  type LucideIcon,
+} from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { API_URL, authFetch } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 type EmailTaskPreview = {
   id: string;
@@ -30,6 +41,19 @@ type EmailTaskResolveResponse = {
   };
 };
 
+const glassPanelClass =
+  "bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF]/35 ring-0 rounded-[30px] shadow-none dark:bg-card dark:border-border/55 dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent";
+const glassCardClass =
+  "rounded-2xl border border-[#D9E6FF]/65 bg-gradient-to-br from-white/88 via-[#F5F9FF]/78 to-[#EAF2FF]/72 supports-[backdrop-filter]:bg-[#F5F9FF]/62 backdrop-blur-xl shadow-none dark:border-slate-700/60 dark:bg-slate-900/60 dark:supports-[backdrop-filter]:bg-slate-900/52";
+const glassMetaClass =
+  "rounded-2xl border border-[#D5E2FB]/80 bg-white/80 supports-[backdrop-filter]:bg-white/55 backdrop-blur-md p-4 dark:border-border/60 dark:bg-background/70 dark:backdrop-blur-none";
+const glassBadgeClass =
+  "rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none";
+const primaryButtonClass =
+  "h-11 rounded-xl border border-white/20 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 px-5 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl transition-all duration-200 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)]";
+const secondaryButtonClass =
+  "h-11 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-5 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80";
+
 const humanize = (value: string) =>
   String(value || "")
     .trim()
@@ -48,6 +72,28 @@ const formatDateTime = (value?: string | null) => {
     minute: "2-digit",
   });
 };
+
+type MetaItemProps = {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+};
+
+function MetaItem({ icon: Icon, label, value }: MetaItemProps) {
+  return (
+    <div className={glassMetaClass}>
+      <div className="flex items-center gap-2 text-[#5C7098] dark:text-slate-400">
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[#D9E6FF]/85 bg-gradient-to-br from-white/90 via-[#EEF4FF]/85 to-[#E2ECFF]/75 supports-[backdrop-filter]:bg-white/65 backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-900/75">
+          <Icon className="h-4 w-4" />
+        </span>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">{label}</p>
+      </div>
+      <p className="mt-3 text-[15px] font-semibold leading-6 text-[#13264C] dark:text-slate-100">
+        {value}
+      </p>
+    </div>
+  );
+}
 
 export default function EmailTask() {
   const navigate = useNavigate();
@@ -109,125 +155,303 @@ export default function EmailTask() {
     };
   }, [navigate, token]);
 
+  const preview = data?.preview ?? null;
+  const viewerIsAuthenticated = Boolean(data?.viewer?.isAuthenticated);
+  const viewerRole = String(data?.viewer?.role || "").trim().toLowerCase();
+  const isAuthorizedRole = viewerRole === "designer" || viewerRole === "treasurer";
+
   const loginRedirectPath = useMemo(() => {
     const path = data?.openPath || (data?.taskId ? `/task/${data.taskId}` : "/dashboard");
     return `/login?redirect=${encodeURIComponent(path)}`;
   }, [data?.openPath, data?.taskId]);
 
-  const viewerRole = String(data?.viewer?.role || "").trim().toLowerCase();
-  const isAuthorizedRole = viewerRole === "designer" || viewerRole === "treasurer";
+  const headerDescription = useMemo(() => {
+    if (isLoading) {
+      return "Validating the secure link and preparing your branded task preview.";
+    }
+    if (error) {
+      return "This access link could not be verified. You can still return to the workspace from the main app.";
+    }
+    if (viewerIsAuthenticated && data?.canOpenTask) {
+      return "Verified access detected. The full task workspace will open when permissions allow.";
+    }
+    if (viewerIsAuthenticated) {
+      return "You are signed in. Preview access is active while full task access depends on your role permissions.";
+    }
+    return "Secure preview of the assigned task. Sign in with an approved account to continue into the full workspace.";
+  }, [data?.canOpenTask, error, isLoading, viewerIsAuthenticated]);
+
+  const requesterLabel = preview
+    ? [preview.requesterName || "N/A", preview.requesterDepartment || "", preview.requesterEmail || ""]
+        .filter(Boolean)
+        .join(" | ")
+    : "N/A";
+
+  const previewMeta = preview
+    ? [
+        {
+          icon: UserRound,
+          label: "Assigned To",
+          value: preview.assignedToName || "Not assigned",
+        },
+        {
+          icon: Clock3,
+          label: "Deadline",
+          value: formatDateTime(preview.deadline),
+        },
+        {
+          icon: Building2,
+          label: "Requester",
+          value: requesterLabel,
+        },
+        {
+          icon: BriefcaseBusiness,
+          label: "Last Updated",
+          value: formatDateTime(preview.updatedAt),
+        },
+      ]
+    : [];
+
+  const noticeToneClass =
+    viewerIsAuthenticated && data?.canOpenTask
+      ? "border-[#BFD6FF]/80 bg-gradient-to-r from-[#F6FAFF]/90 via-[#EEF4FF]/80 to-[#EAF2FF]/88 text-[#21407D] dark:border-sky-500/25 dark:bg-slate-900/65 dark:text-sky-100"
+      : "border-dashed border-[#C7D7FF] bg-[#F4F8FF]/78 text-[#516483] dark:border-[#33508A]/65 dark:bg-[#102348]/70 dark:text-slate-300";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F5F8FF] via-white to-[#EEF4FF] px-4 py-10 text-foreground dark:from-[#0A1530] dark:via-[#0B1A39] dark:to-[#09162E]">
-      <div className="mx-auto w-full max-w-2xl rounded-2xl border border-[#D9E6FF] bg-white/92 p-6 shadow-sm dark:border-[#2A3C6B]/70 dark:bg-[#0E1D3A]/88">
-        {isLoading ? (
-          <div className="space-y-2">
-            <p className="text-lg font-semibold">Opening task link...</p>
-            <p className="text-sm text-muted-foreground">Please wait.</p>
-          </div>
-        ) : error ? (
-          <div className="space-y-3">
-            <p className="text-lg font-semibold">Task link unavailable</p>
-            <p className="text-sm text-muted-foreground">{error}</p>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild>
-                <Link to="/login">Go to Login</Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link to="/">Go to Home</Link>
-              </Button>
-            </div>
-          </div>
-        ) : data?.preview ? (
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Email Task Preview
-              </p>
-              <h1 className="text-2xl font-bold">{data.preview.title}</h1>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">{humanize(data.preview.status)}</Badge>
-                {data.preview.category ? (
-                  <Badge variant="outline">{humanize(data.preview.category)}</Badge>
-                ) : null}
-              </div>
-            </div>
+    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(221,233,255,0.92),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(238,244,255,0.88),_transparent_24%),linear-gradient(180deg,#F7FAFF_0%,#EEF4FF_100%)] px-4 py-8 text-foreground dark:bg-[radial-gradient(circle_at_top_left,rgba(56,83,145,0.22),transparent_26%),radial-gradient(circle_at_top_right,rgba(20,40,87,0.28),transparent_24%),linear-gradient(180deg,#081024_0%,#09162E_100%)] sm:py-12">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-16 top-0 h-56 w-56 rounded-full bg-[#DDE9FF]/55 blur-3xl dark:bg-[#28406D]/25" />
+        <div className="absolute right-[-6rem] top-20 h-72 w-72 rounded-full bg-[#EAF2FF]/70 blur-3xl dark:bg-[#1B335F]/25" />
+        <div className="absolute bottom-[-5rem] left-1/3 h-64 w-64 rounded-full bg-white/65 blur-3xl dark:bg-[#102348]/22" />
+      </div>
 
-            <div className="grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <p className="text-xs text-muted-foreground">Assigned To</p>
-                <p className="font-medium">{data.preview.assignedToName || "Not assigned"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Deadline</p>
-                <p className="font-medium">{formatDateTime(data.preview.deadline)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Requester</p>
-                <p className="font-medium">
-                  {data.preview.requesterName || "N/A"}
-                  {data.preview.requesterDepartment
-                    ? ` (${data.preview.requesterDepartment})`
-                    : ""}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Last Updated</p>
-                <p className="font-medium">{formatDateTime(data.preview.updatedAt)}</p>
-              </div>
-            </div>
-
-            {data.preview.description ? (
-              <div>
-                <p className="text-xs text-muted-foreground">Summary</p>
-                <p className="mt-1 rounded-xl border border-[#D9E6FF] bg-[#F7FAFF] p-3 text-sm dark:border-[#2A3C6B]/70 dark:bg-[#0C1A35]/85">
-                  {data.preview.description}
-                </p>
-              </div>
-            ) : null}
-
-            <div className="rounded-xl border border-dashed border-[#C7D7FF] bg-[#F4F8FF] p-3 text-sm text-muted-foreground dark:border-[#33508A]/65 dark:bg-[#102348]/70">
-              {data.viewer?.isAuthenticated ? (
-                data.canOpenTask ? (
-                  <span>Redirecting to the task...</span>
-                ) : (
-                  <span>
-                    You are signed in
-                    {isAuthorizedRole ? "" : " with a role that cannot open this task from email"}.
-                    This preview is available, but full task access is restricted.
-                  </span>
-                )
-              ) : (
-                <span>
-                  You are not signed in. Preview is visible, but full task access is limited to
-                  assigned designers, Design Leads, and treasurer.
+      <div className="relative mx-auto w-full max-w-5xl">
+        <div className={cn(glassPanelClass, "overflow-hidden")}>
+          <div className="relative border-b border-[#D9E6FF]/70 px-6 py-6 sm:px-8 sm:py-7 dark:border-slate-700/60">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.9),_transparent_38%),linear-gradient(135deg,rgba(255,255,255,0.28),rgba(230,241,255,0.06))] opacity-90 dark:bg-[radial-gradient(circle_at_top_right,rgba(96,165,250,0.09),transparent_36%),linear-gradient(135deg,rgba(15,23,42,0.18),rgba(30,41,59,0.08))]" />
+            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex items-start gap-4">
+                <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#C9D7FF] bg-gradient-to-br from-white/88 via-[#EAF2FF]/84 to-[#DDE9FF]/74 backdrop-blur-xl dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80">
+                  <img src="/favicon.png" alt="DesignDesk" className="h-9 w-9 object-contain" />
                 </span>
-              )}
-            </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#60749C] dark:text-slate-400">
+                    DesignDesk Secure Access
+                  </p>
+                  <h1 className="text-3xl font-semibold tracking-tight text-[#12254C] premium-headline dark:text-slate-50">
+                    Email Task Preview
+                  </h1>
+                  <p className="max-w-2xl text-sm leading-7 text-[#5B6B8A] premium-body dark:text-slate-300">
+                    {headerDescription}
+                  </p>
+                </div>
+              </div>
 
-            <div className="flex flex-wrap gap-2">
-              {!data.viewer?.isAuthenticated ? (
-                <Button asChild>
-                  <Link to={loginRedirectPath}>Login to Continue</Link>
-                </Button>
-              ) : (
-                <Button asChild>
-                  <Link to="/dashboard">Go to Dashboard</Link>
-                </Button>
-              )}
-              <Button asChild variant="outline">
-                <Link to="/">Home</Link>
-              </Button>
+              <div
+                className={cn(
+                  "inline-flex items-center gap-2 self-start rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] backdrop-blur-xl",
+                  viewerIsAuthenticated
+                    ? "border-[#C9D7FF] bg-white/72 text-[#1E2A5A] dark:border-slate-700/70 dark:bg-slate-900/72 dark:text-slate-100"
+                    : "border-[#D7E4FF] bg-[#F7FAFF]/82 text-[#5E729A] dark:border-slate-700/70 dark:bg-slate-900/72 dark:text-slate-300"
+                )}
+              >
+                {viewerIsAuthenticated ? (
+                  <ShieldCheck className="h-4 w-4" />
+                ) : (
+                  <LockKeyhole className="h-4 w-4" />
+                )}
+                {viewerIsAuthenticated ? "Signed In Preview" : "Preview Only"}
+              </div>
             </div>
           </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-lg font-semibold">Task preview unavailable</p>
-            <p className="text-sm text-muted-foreground">
-              This link did not return any task data.
-            </p>
+
+          <div className="relative px-6 py-6 sm:px-8 sm:py-8">
+            {isLoading ? (
+              <div className={cn(glassCardClass, "p-6 sm:p-7")}>
+                <div className="flex items-start gap-4">
+                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#D9E6FF]/80 bg-white/72 backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/75">
+                    <Clock3 className="h-5 w-5 text-[#3B4BA8]" />
+                  </span>
+                  <div className="space-y-2">
+                    <h2 className="text-xl font-semibold text-[#12254C] premium-headline dark:text-slate-100">
+                      Opening secure task link
+                    </h2>
+                    <p className="text-sm leading-7 text-[#5B6B8A] premium-body dark:text-slate-300">
+                      Please wait while we prepare the protected preview.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : error ? (
+              <div className={cn(glassCardClass, "p-6 sm:p-7")}>
+                <div className="flex items-start gap-4">
+                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#D9E6FF]/80 bg-white/72 backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/75">
+                    <LockKeyhole className="h-5 w-5 text-[#3B4BA8]" />
+                  </span>
+                  <div className="flex-1 space-y-3">
+                    <h2 className="text-xl font-semibold text-[#12254C] premium-headline dark:text-slate-100">
+                      Task link unavailable
+                    </h2>
+                    <p className="text-sm leading-7 text-[#5B6B8A] premium-body dark:text-slate-300">
+                      {error}
+                    </p>
+                    <div className="flex flex-wrap gap-3 pt-1">
+                      <Button asChild className={primaryButtonClass}>
+                        <Link to="/login" className="inline-flex items-center gap-2">
+                          Go to Login
+                          <ArrowRight className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                      <Button asChild variant="outline" className={secondaryButtonClass}>
+                        <Link to="/">Go to Home</Link>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : preview ? (
+              <div className="space-y-6">
+                <div className={cn(glassCardClass, "relative overflow-hidden p-6 sm:p-7")}>
+                  <div className="absolute right-4 top-4 hidden opacity-10 sm:block dark:opacity-[0.08]">
+                    <img src="/favicon.png" alt="" className="h-20 w-20 object-contain" />
+                  </div>
+                  <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_240px]">
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
+                          Task Overview
+                        </p>
+                        <h2 className="text-3xl font-semibold tracking-tight text-[#12254C] premium-headline dark:text-slate-50">
+                          {preview.title}
+                        </h2>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="secondary" className={glassBadgeClass}>
+                          {humanize(preview.status)}
+                        </Badge>
+                        {preview.category ? (
+                          <Badge variant="outline" className={glassBadgeClass}>
+                            {humanize(preview.category)}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <div className={glassMetaClass}>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
+                          Task ID
+                        </p>
+                        <p className="mt-3 text-lg font-semibold text-[#12254C] dark:text-slate-100">
+                          {preview.id}
+                        </p>
+                      </div>
+                      <div className={glassMetaClass}>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
+                          Access
+                        </p>
+                        <p className="mt-3 text-sm font-semibold leading-6 text-[#12254C] dark:text-slate-100">
+                          {viewerIsAuthenticated
+                            ? data?.canOpenTask
+                              ? "Verified for full workspace access"
+                              : "Preview available with restricted role access"
+                            : "Preview available until sign-in"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {previewMeta.map((item) => (
+                    <MetaItem key={item.label} icon={item.icon} label={item.label} value={item.value} />
+                  ))}
+                </div>
+
+                {preview.description ? (
+                  <div className={cn(glassCardClass, "p-6")}>
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#60749C] dark:text-slate-400">
+                      Summary
+                    </p>
+                    <p className="mt-4 whitespace-pre-wrap rounded-2xl border border-[#D9E6FF]/80 bg-white/80 p-4 text-sm leading-7 text-[#243B6A] supports-[backdrop-filter]:bg-white/58 backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/68 dark:text-slate-200">
+                      {preview.description}
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className={cn("rounded-2xl p-4 sm:p-5", glassCardClass, noticeToneClass)}>
+                  <div className="flex items-start gap-3">
+                    {viewerIsAuthenticated ? (
+                      <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />
+                    ) : (
+                      <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0" />
+                    )}
+                    <p className="text-sm leading-7">
+                      {viewerIsAuthenticated ? (
+                        data?.canOpenTask ? (
+                          <span>
+                            Your account is authorized for this task. If automatic redirect does not
+                            complete, use the action below to open the workspace directly.
+                          </span>
+                        ) : (
+                          <span>
+                            You are signed in
+                            {isAuthorizedRole ? "" : " with a role that cannot open this task from email"}.
+                            This preview remains visible, but full task access is restricted.
+                          </span>
+                        )
+                      ) : (
+                        <span>
+                          You are not signed in. Preview is visible, but full task access is limited
+                          to assigned designers, Design Leads, and treasurer.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  {!viewerIsAuthenticated ? (
+                    <Button asChild className={primaryButtonClass}>
+                      <Link to={loginRedirectPath} className="inline-flex items-center gap-2">
+                        Login to Continue
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  ) : data?.canOpenTask && data?.openPath ? (
+                    <Button asChild className={primaryButtonClass}>
+                      <Link to={data.openPath} className="inline-flex items-center gap-2">
+                        Open Task
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button asChild className={primaryButtonClass}>
+                      <Link to="/dashboard" className="inline-flex items-center gap-2">
+                        Go to Dashboard
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  )}
+
+                  <Button asChild variant="outline" className={secondaryButtonClass}>
+                    <Link to="/">Home</Link>
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className={cn(glassCardClass, "p-6 sm:p-7")}>
+                <h2 className="text-xl font-semibold text-[#12254C] premium-headline dark:text-slate-100">
+                  Task preview unavailable
+                </h2>
+                <p className="mt-2 text-sm leading-7 text-[#5B6B8A] premium-body dark:text-slate-300">
+                  This link did not return any task data.
+                </p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

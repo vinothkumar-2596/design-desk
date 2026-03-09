@@ -14,6 +14,8 @@ import { bootstrapDemoUsers } from './lib/bootstrapDemoUsers.js';
 // Load environment variables (always resolve to backend/.env)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '.env') });
+// Local development keeps some shared keys in client/.env. Load it as fallback only.
+dotenv.config({ path: path.resolve(__dirname, '../client/.env'), override: false });
 
 const app = express();
 const server = http.createServer(app);

@@ -382,14 +382,8 @@ const shouldPromptDriveReconnect = (errorMessage?: string) => {
   const normalized = String(errorMessage || '').toLowerCase();
   return (
     normalized.includes('drive oauth not connected') ||
-    normalized.includes('insufficient permissions for the specified parent') ||
-    normalized.includes('drive upload folder is not accessible') ||
-    normalized.includes('google drive authentication failed') ||
-    normalized.includes('deleted_client') ||
-    normalized.includes('invalid_client') ||
-    normalized.includes('unauthorized_client') ||
-    normalized.includes('invalid_grant') ||
-    normalized.includes('invalid jwt signature')
+    normalized.includes('must be set for oauth') ||
+    normalized.includes('missing oauth code')
   );
 };
 const buildDriveViewUrl = (driveId?: string) => {
@@ -424,7 +418,7 @@ function LinearProgressWithLabel(props: LinearProgressProps & { value: number })
   );
 }
 
-import { API_URL, authFetch, getAuthToken } from '@/lib/api';
+import { API_URL, authFetch, getAuthToken, openDriveReconnectWindow } from '@/lib/api';
 
 export default function NewRequest() {
   const navigate = useNavigate();
@@ -453,6 +447,18 @@ export default function NewRequest() {
   const [isDragging, setIsDragging] = useState(false);
   const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
+  const readyAttachments = useMemo(
+    () => files.filter((file) => !file.uploading && !file.error),
+    [files]
+  );
+  const taskBuddyAttachmentContext = useMemo(
+    () =>
+      readyAttachments
+        .map((file) => file.extractedContent || file.name)
+        .filter(Boolean)
+        .join('\n\n'),
+    [readyAttachments]
+  );
 
   const applyAiDraft = (draft: TaskDraft) => {
     setTitle(draft.title);
@@ -463,6 +469,7 @@ export default function NewRequest() {
       const parsedDate = new Date(draft.deadline);
       if (!isNaN(parsedDate.getTime())) {
         setDeadline(parsedDate);
+        setHasDeadlineInteracted(true);
       }
     }
     if (draft.whatsappNumbers && draft.whatsappNumbers.length > 0) {
@@ -665,17 +672,11 @@ export default function NewRequest() {
               action: {
                 label: 'Connect',
                 onClick: async () => {
-                  // Open in new tab
                   try {
-                    const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
-                    const data = await res.json();
-                    if (data.url) {
-                      window.open(data.url, '_blank');
-                    } else {
-                      toast.error("Failed to get auth URL");
-                    }
-                  } catch (e) {
-                    toast.error("Failed to get auth URL");
+                    await openDriveReconnectWindow();
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Failed to get auth URL';
+                    toast.error('Drive reconnect failed', { description: message });
                   }
                 }
               },
@@ -808,7 +809,7 @@ export default function NewRequest() {
     const aiResponse = draft;
     if (aiResponse) {
       applyAiDraft(aiResponse);
-      toast.success('Draft ready. Review & Submit.');
+      toast.success('Draft added to the form. Review it and submit when ready.');
       return;
     }
   };
@@ -1514,16 +1515,10 @@ export default function NewRequest() {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 try {
-                                  const apiUrl = API_URL;
-                                  const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
-                                  const data = await res.json();
-                                  if (data.url) {
-                                    window.open(data.url, '_blank');
-                                  } else {
-                                    toast.error("Failed to get auth URL");
-                                  }
-                                } catch (e) {
-                                  toast.error("Failed to get auth URL");
+                                  await openDriveReconnectWindow();
+                                } catch (error) {
+                                  const message = error instanceof Error ? error.message : 'Failed to get auth URL';
+                                  toast.error('Drive reconnect failed', { description: message });
                                 }
                               }}
                             >
@@ -1613,11 +1608,8 @@ export default function NewRequest() {
         onClose={() => setIsTaskBuddyOpen(false)}
         onTaskCreated={handleTaskBuddyDraft}
         onOpenUploader={openExistingUploader}
-        hasAttachments={files.length > 0}
-        attachmentContext={files
-          .map((file) => file.extractedContent || file.name)
-          .filter(Boolean)
-          .join('\n\n')}
+        hasAttachments={readyAttachments.length > 0}
+        attachmentContext={taskBuddyAttachmentContext}
       />
     </DashboardLayout >
   );

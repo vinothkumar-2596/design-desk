@@ -118,9 +118,15 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   } catch (error) {
     console.error("File upload failed:", error?.message || error);
     if (isDriveAuthFailure(error)) {
+      const detail = String(error?.message || "").trim();
+      const isLocalDev =
+        process.env.NODE_ENV !== "production" ||
+        String(process.env.FRONTEND_URL || "").includes("localhost");
       return res.status(500).json({
         error:
-          "Google Drive authentication failed. Update OAuth env vars (GOOGLE_REFRESH_TOKEN / GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) or service-account env vars (GOOGLE_PROJECT_ID / GOOGLE_PRIVATE_KEY / GOOGLE_CLIENT_EMAIL), then redeploy.",
+          isLocalDev && detail
+            ? `Google Drive authentication failed: ${detail}`
+            : "Google Drive authentication failed. Update OAuth env vars (GOOGLE_REFRESH_TOKEN / GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) or service-account env vars (GOOGLE_PROJECT_ID / GOOGLE_PRIVATE_KEY / GOOGLE_CLIENT_EMAIL), then redeploy.",
       });
     }
     if (isDriveParentPermissionError(error)) {

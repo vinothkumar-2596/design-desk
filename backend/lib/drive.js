@@ -60,10 +60,10 @@ const normalizeServiceAccountCredentials = (credentials) => {
 };
 
 const parseServiceAccountCredentialsFromSplitEnv = () => {
-  const projectId = readEnv("GOOGLE_PROJECT_ID", "GOOGLE_DRIVE_PROJECT_ID");
-  const privateKeyId = readEnv("GOOGLE_PRIVATE_KEY_ID", "GOOGLE_DRIVE_PRIVATE_KEY_ID");
-  const privateKey = readEnv("GOOGLE_PRIVATE_KEY", "GOOGLE_DRIVE_PRIVATE_KEY");
-  const clientEmail = readEnv("GOOGLE_CLIENT_EMAIL", "GOOGLE_DRIVE_CLIENT_EMAIL");
+  const projectId = readEnv("GOOGLE_DRIVE_PROJECT_ID", "GOOGLE_PROJECT_ID");
+  const privateKeyId = readEnv("GOOGLE_DRIVE_PRIVATE_KEY_ID", "GOOGLE_PRIVATE_KEY_ID");
+  const privateKey = readEnv("GOOGLE_DRIVE_PRIVATE_KEY", "GOOGLE_PRIVATE_KEY");
+  const clientEmail = readEnv("GOOGLE_DRIVE_CLIENT_EMAIL", "GOOGLE_CLIENT_EMAIL");
 
   const hasAnyField = Boolean(projectId || privateKeyId || privateKey || clientEmail);
   if (!hasAnyField) {
@@ -133,8 +133,8 @@ const parseServiceAccountCredentialsFromEnv = () => {
 };
 
 const parseOAuthTokenFromSplitEnv = () => {
-  const refreshToken = readEnv("GOOGLE_REFRESH_TOKEN", "GOOGLE_DRIVE_REFRESH_TOKEN");
-  const accessToken = readEnv("GOOGLE_ACCESS_TOKEN", "GOOGLE_DRIVE_ACCESS_TOKEN");
+  const refreshToken = readEnv("GOOGLE_DRIVE_REFRESH_TOKEN", "GOOGLE_REFRESH_TOKEN");
+  const accessToken = readEnv("GOOGLE_DRIVE_ACCESS_TOKEN", "GOOGLE_ACCESS_TOKEN");
 
   const hasAnyField = Boolean(refreshToken || accessToken);
   if (!hasAnyField) {
@@ -209,9 +209,9 @@ const resolveOAuthToken = () => {
 };
 
 const getOAuthClient = () => {
-  const clientId = readEnv("GOOGLE_CLIENT_ID", "GOOGLE_DRIVE_CLIENT_ID");
-  const clientSecret = readEnv("GOOGLE_CLIENT_SECRET", "GOOGLE_DRIVE_CLIENT_SECRET");
-  const redirectUri = readEnv("GOOGLE_REDIRECT_URI", "GOOGLE_DRIVE_REDIRECT_URI");
+  const clientId = readEnv("GOOGLE_DRIVE_CLIENT_ID", "GOOGLE_CLIENT_ID");
+  const clientSecret = readEnv("GOOGLE_DRIVE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET");
+  const redirectUri = readEnv("GOOGLE_DRIVE_REDIRECT_URI", "GOOGLE_REDIRECT_URI");
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error(
       "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI (or GOOGLE_DRIVE_CLIENT_ID/SECRET/REDIRECT_URI) must be set for OAuth."
@@ -240,6 +240,19 @@ export const getDriveAuthUrl = () => {
     include_granted_scopes: true,
     scope: [DRIVE_SCOPE_FULL],
   });
+};
+
+export const getDriveConnectionInfo = async () => {
+  const drive = getDriveClient();
+  const about = await drive.about.get({
+    fields: "user(displayName,emailAddress)",
+    supportsAllDrives: true,
+  });
+
+  return {
+    email: String(about.data?.user?.emailAddress || "").trim(),
+    name: String(about.data?.user?.displayName || "").trim(),
+  };
 };
 
 export const saveDriveToken = async (code) => {

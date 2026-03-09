@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_URL, authFetch } from '@/lib/api';
+import { API_URL, authFetch, openDriveReconnectWindow } from '@/lib/api';
 import {
     Image as ImageIcon,
     Paperclip,
@@ -77,18 +77,12 @@ const PLACEHOLDER_TEXTS = [
 ];
 
 const shouldPromptDriveReconnect = (errorMessage?: string) => {
-    const normalized = String(errorMessage || '').toLowerCase();
-    return (
+  const normalized = String(errorMessage || '').toLowerCase();
+  return (
         normalized.includes('drive oauth not connected') ||
-        normalized.includes('insufficient permissions for the specified parent') ||
-        normalized.includes('drive upload folder is not accessible') ||
-        normalized.includes('google drive authentication failed') ||
-        normalized.includes('deleted_client') ||
-        normalized.includes('invalid_client') ||
-        normalized.includes('unauthorized_client') ||
-        normalized.includes('invalid_grant') ||
-        normalized.includes('invalid jwt signature')
-    );
+        normalized.includes('must be set for oauth') ||
+        normalized.includes('missing oauth code')
+  );
 };
 
 export default function AIMode() {
@@ -338,14 +332,14 @@ export default function AIMode() {
                             className="text-white border-white hover:bg-white hover:text-red-500"
                             onClick={async () => {
                                 try {
-                                    const apiUrl = API_URL;
-                                    const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
-                                    const data = await res.json();
-                                    if (data.url) {
-                                        window.open(data.url, '_blank');
-                                    }
-                                } catch (e) {
-                                    console.error(e);
+                                    await openDriveReconnectWindow();
+                                } catch (error) {
+                                    const message = error instanceof Error ? error.message : 'Failed to get auth URL';
+                                    toast({
+                                        title: "Drive reconnect failed",
+                                        description: message,
+                                        variant: "destructive"
+                                    });
                                 }
                             }}>
                             Connect
@@ -431,14 +425,14 @@ export default function AIMode() {
                             className="text-white border-white hover:bg-white hover:text-red-500"
                             onClick={async () => {
                                 try {
-                                    const apiUrl = API_URL;
-                                    const res = await authFetch(`${apiUrl}/api/drive/auth-url`);
-                                    const data = await res.json();
-                                    if (data.url) {
-                                        window.open(data.url, '_blank');
-                                    }
-                                } catch (e) {
-                                    console.error(e);
+                                    await openDriveReconnectWindow();
+                                } catch (error) {
+                                    const message = error instanceof Error ? error.message : 'Failed to get auth URL';
+                                    toast({
+                                        title: "Drive reconnect failed",
+                                        description: message,
+                                        variant: "destructive"
+                                    });
                                 }
                             }}>
                             Connect
