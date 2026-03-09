@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppSidebar } from './AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate, useNavigate } from 'react-router-dom';
@@ -961,8 +961,11 @@ export function DashboardLayout({
 
   const headerPresenceAction = useMemo(() => {
     if (!user) return null;
-    const isTyping = globalTypingSummary.total > 0;
-    const avatars = isTyping ? globalTypingSummary.visible : globalPresenceSummary.visible;
+    const isTyping = globalTypingSummary.total > 0 || localSelfTyping;
+    const avatars =
+      isTyping && globalTypingSummary.visible.length > 0
+        ? globalTypingSummary.visible
+        : globalPresenceSummary.visible;
     if (avatars.length === 0) return null;
     const extraCount = isTyping ? globalTypingSummary.extraCount : globalPresenceSummary.extraCount;
     const label = isTyping
@@ -1056,9 +1059,11 @@ export function DashboardLayout({
     globalTypingList,
     globalTypingSummary,
     isCurrentUserViewer,
+    localSelfTyping,
     user,
     userId,
   ]);
+  const keepHeaderPinned = globalTypingSummary.total > 0 || localSelfTyping;
 
   useEffect(() => {
     const onOpenGuidelines = () => {
@@ -1190,6 +1195,7 @@ export function DashboardLayout({
       userInitial={user?.name?.charAt(0) || 'U'}
       background={background}
       contentScrollRef={contentScrollRef}
+      keepHeaderPinned={keepHeaderPinned}
       hideGrid={hideGrid}
       onContentScroll={() => {
         if (previewTimeoutRef.current) {
@@ -1325,6 +1331,7 @@ function DashboardShell({
   onContentScroll,
   background,
   contentScrollRef,
+  keepHeaderPinned = false,
   hideGrid = false,
 }: {
   children: ReactNode;
@@ -1333,6 +1340,7 @@ function DashboardShell({
   onContentScroll?: () => void;
   background?: ReactNode;
   contentScrollRef?: React.RefObject<HTMLDivElement>;
+  keepHeaderPinned?: boolean;
   hideGrid?: boolean;
 }) {
   const { query, setQuery, items, scopeLabel } = useGlobalSearch();
@@ -1344,6 +1352,10 @@ function DashboardShell({
   const [isSearchDismissed, setIsSearchDismissed] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
+  const shellCardRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const [fixedHeaderStyle, setFixedHeaderStyle] = useState<CSSProperties | undefined>(undefined);
+  const [headerSpacerHeight, setHeaderSpacerHeight] = useState(0);
 
   const searchValue = query.trim().toLowerCase();
   const filteredItems = useMemo(() => {
@@ -1477,6 +1489,56 @@ function DashboardShell({
     setQuery('');
     setActiveFilter('all');
   }, [location.pathname]);
+
+  const syncPinnedHeaderLayout = useCallback(() => {
+    if (!keepHeaderPinned || !shellCardRef.current || !headerRef.current) {
+      setFixedHeaderStyle(undefined);
+      setHeaderSpacerHeight(0);
+      return;
+    }
+
+    const shellRect = shellCardRef.current.getBoundingClientRect();
+    const headerRect = headerRef.current.getBoundingClientRect();
+
+    setHeaderSpacerHeight(headerRect.height);
+    setFixedHeaderStyle({
+      top: `${Math.max(shellRect.top + 1, 0)}px`,
+      left: `${Math.max(shellRect.left + 1, 0)}px`,
+      width: `${Math.max(shellRect.width - 2, 0)}px`,
+    });
+  }, [keepHeaderPinned]);
+
+  useEffect(() => {
+    if (!keepHeaderPinned) {
+      setFixedHeaderStyle(undefined);
+      setHeaderSpacerHeight(0);
+      return;
+    }
+
+    syncPinnedHeaderLayout();
+
+    const handleLayoutChange = () => {
+      syncPinnedHeaderLayout();
+    };
+
+    window.addEventListener('resize', handleLayoutChange);
+    window.addEventListener('scroll', handleLayoutChange, true);
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' && shellCardRef.current
+        ? new ResizeObserver(() => syncPinnedHeaderLayout())
+        : null;
+
+    if (resizeObserver && shellCardRef.current) {
+      resizeObserver.observe(shellCardRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleLayoutChange);
+      window.removeEventListener('scroll', handleLayoutChange, true);
+      resizeObserver?.disconnect();
+    };
+  }, [keepHeaderPinned, syncPinnedHeaderLayout]);
 
   useEffect(() => {
     const onOpenSearch = () => {
@@ -1623,8 +1685,19 @@ function DashboardShell({
           <AppSidebar />
         </div>
         <main className="flex-1 min-w-0 flex justify-center">
-          <div className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] dark:shadow-[0_24px_60px_-40px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden">
-            <div className="relative z-30 shrink-0 border-b border-[#D9E6FF] bg-white/75 dark:bg-card/80 dark:border-border backdrop-blur-md px-4 md:px-6 py-3">
+          <div
+            ref={shellCardRef}
+            className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] dark:shadow-[0_24px_60px_-40px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden"
+          >
+            <div
+              ref={headerRef}
+              className={cn(
+                "relative z-30 shrink-0 border-b border-[#D9E6FF] bg-white/75 dark:bg-card/80 dark:border-border backdrop-blur-md px-4 md:px-6 py-3",
+                keepHeaderPinned &&
+                  "fixed z-[60] rounded-t-[30px] shadow-none"
+              )}
+              style={keepHeaderPinned ? fixedHeaderStyle : undefined}
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="relative min-w-[150px] flex-1 max-w-[220px] sm:max-w-[280px] md:max-w-md" ref={searchContainerRef}>
                   <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 dark:bg-card/80 dark:border-border px-3 py-2 shadow-sm">
@@ -1731,6 +1804,9 @@ function DashboardShell({
                 </div>
               </div>
             </div>
+            {keepHeaderPinned && headerSpacerHeight > 0 && (
+              <div aria-hidden="true" className="shrink-0" style={{ height: `${headerSpacerHeight}px` }} />
+            )}
             <div
               ref={contentScrollRef}
               data-app-scroll-container="true"

@@ -1174,7 +1174,7 @@ export default function TaskDetail() {
       : `Open edit mode to update task details. Treasurer approval is required after 3 edits (${editsRemainingBeforeTreasurerApproval} remaining).`;
   const canApproveDeadline = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canManageVersions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
-  const canComment = !isViewOnlyTask || user?.role === 'treasurer';
+  const canComment = true;
   const canRemoveFiles = canDesignerActions;
   const minDeadlineDate = addWorkingDays(new Date(), 3);
   const emergencyStatus =

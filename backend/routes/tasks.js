@@ -974,9 +974,8 @@ const ensureTaskAccess = async (req, res, next) => {
         ["treasurer", "admin"].includes(userRole) &&
         hasManagerApprovalChanges &&
         hasOnlyManagerApprovalUpdates;
-      const canManagerCommentWrite =
+      const canVisibleUserCommentWrite =
         isCommentWrite &&
-        isManagerRole(userRole) &&
         accessContext.mode !== "none";
       const completionWriteFields = new Set(["status"]);
       const completionWriteUpdateKeys = new Set(["status", "updatedAt"]);
@@ -1043,7 +1042,7 @@ const ensureTaskAccess = async (req, res, next) => {
         return next();
       }
 
-      if (canManagerCommentWrite) {
+      if (canVisibleUserCommentWrite) {
         req.task = task;
         req.taskAccessMode = accessContext.mode;
         req.taskAccessContext = accessContext;
