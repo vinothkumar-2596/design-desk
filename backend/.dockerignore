@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log*
+.dockerignore
+.git
+.gitignore
+.env
+.env.*
+credentials
+server/credentials
+whatsapp/whatsapp_session
+whatsapp/__pycache__
+**/__pycache__
+*.pyc
+*.log
