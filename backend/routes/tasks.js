@@ -51,6 +51,7 @@ const normalizeId = (value) => {
   return normalized;
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const EXCLUDED_ASSIGNABLE_DESIGNER_EMAILS = new Set(["designer.portal@designhub.com"]);
 const isObjectIdLike = (value) => mongoose.Types.ObjectId.isValid(String(value || ""));
 const resolveAssignedIdentifier = (task) => {
   const assignedToId = normalizeId(task?.assignedToId);
@@ -117,7 +118,8 @@ const getUserIdsByRole = async (roles = []) => {
 const getActiveDesignerUsers = async () =>
   User.find({
     role: "designer",
-    isActive: { $ne: false }
+    isActive: { $ne: false },
+    email: { $nin: Array.from(EXCLUDED_ASSIGNABLE_DESIGNER_EMAILS) }
   })
     .sort({ name: 1, email: 1 })
     .select("_id name email role");
@@ -1265,7 +1267,7 @@ router.get("/designers", async (req, res) => {
   }
 });
 
-router.post("/", requireRole(["staff", "treasurer"]), async (req, res) => {
+router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, res) => {
   try {
     const now = new Date();
     const actorId = getUserId(req);

@@ -202,7 +202,12 @@ export function TaskCard({
     <AnimatedCard
       containerClassName={cn(
         'h-full transition-all duration-300 dark:transition-none',
-        isHighlighted && 'ring-1 ring-[#D9E6FF] dark:ring-border'
+        isHighlighted &&
+          'bg-[linear-gradient(135deg,rgba(99,102,241,0.7),rgba(56,189,248,0.58),rgba(244,114,182,0.68))] p-[1px] shadow-[0_0_0_1px_rgba(99,102,241,0.2)]'
+      )}
+      innerClassName={cn(
+        'h-full',
+        isHighlighted && 'border-transparent dark:border-transparent'
       )}
       className="p-6 h-full flex flex-col"
     >

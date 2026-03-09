@@ -78,6 +78,51 @@ const toTimeInputValue = (value?: Date | string | null) => {
   return format(parsed, 'HH:mm');
 };
 
+const DEADLINE_HOURS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
+const DEADLINE_MINUTES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'));
+const DEADLINE_PERIODS = ['AM', 'PM'] as const;
+const assignPanelClassName =
+  'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border-0 ring-1 ring-black/5 shadow-none dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:ring-white/5';
+const assignFieldClassName =
+  'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF] shadow-none dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus-visible:ring-primary/40 dark:focus-visible:border-slate-500/60';
+const assignSelectContentClassName =
+  'border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:text-slate-100 dark:supports-[backdrop-filter]:bg-slate-900/70';
+
+const parseTimeParts = (value?: string | null) => {
+  const normalized = String(value || '').trim();
+  const match = normalized.match(/^(\d{2}):(\d{2})$/);
+  if (!match) {
+    return { hour: '06', minute: '00', period: 'PM' as const };
+  }
+
+  const rawHour = Number(match[1]);
+  const minute = match[2];
+  const period = rawHour >= 12 ? 'PM' : 'AM';
+  const hour12 = rawHour % 12 || 12;
+
+  return {
+    hour: String(hour12).padStart(2, '0'),
+    minute,
+    period,
+  };
+};
+
+const toTwentyFourHourTime = (
+  hour: string,
+  minute: string,
+  period: (typeof DEADLINE_PERIODS)[number]
+) => {
+  const normalizedHour = Number(hour);
+  if (!Number.isFinite(normalizedHour) || normalizedHour < 1 || normalizedHour > 12) {
+    return '';
+  }
+
+  const safeMinute = /^\d{2}$/.test(minute) ? minute : '00';
+  let hours24 = normalizedHour % 12;
+  if (period === 'PM') hours24 += 12;
+  return `${String(hours24).padStart(2, '0')}:${safeMinute}`;
+};
+
 type DesignerOption = {
   id: string;
   name: string;
@@ -202,6 +247,7 @@ export default function Dashboard() {
     );
   }
   const canAssignDesigner = isMainDesigner(user);
+  const deadlineTimeParts = parseTimeParts(assignmentDeadlineTime);
 
   const hydrateTask = (raw: typeof mockTasks[number]) => {
     if (!raw) return raw;
@@ -1129,7 +1175,7 @@ export default function Dashboard() {
 
       </div>
       <Dialog open={isAssignModalOpen} onOpenChange={handleAssignModalChange}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className={`sm:max-w-xl ${assignPanelClassName} dark:border-0`}>
           <DialogHeader>
             <DialogTitle>Assign Designer</DialogTitle>
             <DialogDescription>
@@ -1170,12 +1216,12 @@ export default function Dashboard() {
                   onValueChange={setSelectedDesignerId}
                   disabled={isLoadingDesigners || isAssigningDesigner}
                 >
-                  <SelectTrigger id="assign-designer-select">
+                  <SelectTrigger id="assign-designer-select" className={assignFieldClassName}>
                     <SelectValue
                       placeholder={isLoadingDesigners ? 'Loading designers...' : 'Select designer'}
                     />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className={assignSelectContentClassName}>
                     {designerOptions.length === 0 ? (
                       <div className="px-3 py-2 text-sm text-muted-foreground">
                         No designers available.
@@ -1202,6 +1248,7 @@ export default function Dashboard() {
                   onBlur={() => addCcEmail(ccInput)}
                   placeholder="Type email and press Enter"
                   disabled={isAssigningDesigner}
+                  className={assignFieldClassName}
                 />
                 {ccEmails.length > 0 && (
                   <div className="flex flex-wrap gap-2">
@@ -1231,12 +1278,13 @@ export default function Dashboard() {
                   placeholder="Add an optional assignment note"
                   rows={4}
                   disabled={isAssigningDesigner}
+                  className={`resize-none ${assignFieldClassName}`}
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="assign-deadline">Deadline</Label>
-                <div className="grid gap-2 md:grid-cols-[1.4fr,1fr]">
+                <div className="grid gap-3 md:grid-cols-[1.45fr,1fr] md:items-center">
                   <Popover open={deadlineCalendarOpen} onOpenChange={setDeadlineCalendarOpen}>
                     <PopoverTrigger asChild>
                       <Button
@@ -1244,7 +1292,7 @@ export default function Dashboard() {
                         type="button"
                         variant="outline"
                         disabled={isAssigningDesigner}
-                        className="h-10 justify-start border-[#C7D9FF] bg-gradient-to-r from-[#F8FBFF] via-[#F2F7FF] to-[#EAF1FF] text-left font-medium text-[#223067] hover:from-[#EEF5FF] hover:to-[#E2ECFF] dark:border-[#2B3D70] dark:bg-[#121F3D] dark:text-[#D6E2FF]"
+                        className={`h-10 justify-start text-left font-medium ${assignFieldClassName}`}
                       >
                         <Calendar className="mr-2 h-4 w-4 text-[#4863B7] dark:text-[#9FB4FF]" />
                         {assignmentDeadline ? format(new Date(`${assignmentDeadline}T00:00:00`), 'PPP') : 'Pick deadline date'}
@@ -1252,7 +1300,7 @@ export default function Dashboard() {
                     </PopoverTrigger>
                     <PopoverContent
                       align="start"
-                      className="w-auto border-[#BFD0FF] bg-gradient-to-br from-[#F8FBFF] via-[#F1F6FF] to-[#E7EFFF] p-2 shadow-[0_16px_40px_-24px_rgba(62,92,176,0.55)] dark:border-[#2A3C6D] dark:bg-[#111A33]"
+                      className="w-auto border-[#C9D7FF] bg-[#F2F6FF]/95 p-2 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:supports-[backdrop-filter]:bg-slate-900/70"
                     >
                       <DateCalendar
                         mode="single"
@@ -1263,10 +1311,12 @@ export default function Dashboard() {
                           setDeadlineCalendarOpen(false);
                         }}
                         disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                        className="rounded-lg border border-[#D3E0FF] bg-white/75 p-2 dark:border-[#31497D] dark:bg-[#0E1730]"
+                        className="rounded-lg border border-[#D9E6FF] bg-white/75 p-2 dark:border-slate-700/60 dark:bg-slate-900/60"
                         classNames={{
                           caption_label: 'text-sm font-semibold text-[#253977] dark:text-[#C8D7FF]',
                           head_cell: 'w-9 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[#5D75B9] dark:text-[#9CB3EE]',
+                          cell: 'h-9 w-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20',
+                          day: 'h-9 w-9 rounded-md border border-transparent p-0 font-medium text-[#223067] hover:bg-[#EAF1FF] hover:text-[#223067] aria-selected:opacity-100 dark:text-[#D6E2FF] dark:hover:bg-[#1A315E] dark:hover:text-[#D6E2FF]',
                           nav_button:
                             'h-7 w-7 border border-[#C7D9FF] bg-white text-[#3B54A6] hover:bg-[#EEF4FF] dark:border-[#33508A] dark:bg-[#15274F] dark:text-[#B4C7FF] dark:hover:bg-[#1B315F]',
                           day_selected:
@@ -1277,13 +1327,83 @@ export default function Dashboard() {
                       />
                     </PopoverContent>
                   </Popover>
-                  <Input
-                    type="time"
-                    value={assignmentDeadlineTime}
-                    onChange={(event) => setAssignmentDeadlineTime(event.target.value)}
-                    disabled={isAssigningDesigner}
-                    className="h-10 border-[#C7D9FF] bg-gradient-to-r from-[#F8FBFF] via-[#F2F7FF] to-[#EAF1FF] font-medium text-[#223067] dark:border-[#2B3D70] dark:bg-[#121F3D] dark:text-[#D6E2FF]"
-                  />
+                  <div className="rounded-xl border border-[#D9E6FF] bg-white/75 px-3 py-2 backdrop-blur-lg dark:border-slate-700/60 dark:bg-slate-900/60">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6B82C3] dark:text-[#8FA7E6]">
+                          Time
+                        </p>
+                        <p className="mt-0.5 text-sm font-semibold tracking-tight text-[#223067] dark:text-[#D6E2FF]">
+                          {deadlineTimeParts.hour}:{deadlineTimeParts.minute} {deadlineTimeParts.period}
+                        </p>
+                      </div>
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/75 text-[#4863B7] ring-1 ring-[#D7E2FF] dark:bg-slate-800/70 dark:text-slate-200 dark:ring-slate-700/60">
+                        <Clock className="h-3.5 w-3.5" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Select
+                        value={deadlineTimeParts.hour}
+                        onValueChange={(value) =>
+                          setAssignmentDeadlineTime(
+                            toTwentyFourHourTime(value, deadlineTimeParts.minute, deadlineTimeParts.period)
+                          )
+                        }
+                        disabled={isAssigningDesigner}
+                      >
+                        <SelectTrigger className={`h-9 rounded-lg font-semibold ${assignFieldClassName}`}>
+                          <SelectValue placeholder="Hour" />
+                        </SelectTrigger>
+                        <SelectContent className={assignSelectContentClassName}>
+                          {DEADLINE_HOURS.map((hour) => (
+                            <SelectItem key={hour} value={hour}>
+                              {hour}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={deadlineTimeParts.minute}
+                        onValueChange={(value) =>
+                          setAssignmentDeadlineTime(
+                            toTwentyFourHourTime(deadlineTimeParts.hour, value, deadlineTimeParts.period)
+                          )
+                        }
+                        disabled={isAssigningDesigner}
+                      >
+                        <SelectTrigger className={`h-9 rounded-lg font-semibold ${assignFieldClassName}`}>
+                          <SelectValue placeholder="Min" />
+                        </SelectTrigger>
+                        <SelectContent className={`max-h-72 ${assignSelectContentClassName}`}>
+                          {DEADLINE_MINUTES.map((minute) => (
+                            <SelectItem key={minute} value={minute}>
+                              {minute}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={deadlineTimeParts.period}
+                        onValueChange={(value: (typeof DEADLINE_PERIODS)[number]) =>
+                          setAssignmentDeadlineTime(
+                            toTwentyFourHourTime(deadlineTimeParts.hour, deadlineTimeParts.minute, value)
+                          )
+                        }
+                        disabled={isAssigningDesigner}
+                      >
+                        <SelectTrigger className={`h-9 rounded-lg font-semibold ${assignFieldClassName}`}>
+                          <SelectValue placeholder="AM/PM" />
+                        </SelectTrigger>
+                        <SelectContent className={assignSelectContentClassName}>
+                          {DEADLINE_PERIODS.map((period) => (
+                            <SelectItem key={period} value={period}>
+                              {period}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Set exact deadline date and time for the assigned junior designer.

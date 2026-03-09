@@ -12,9 +12,35 @@ import { toast } from 'sonner';
 import { mergeLocalTasks } from '@/lib/taskStorage';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
-import { filterTasksForUser } from '@/lib/taskVisibility';
 
 import { API_URL, authFetch } from '@/lib/api';
+
+const normalizeValue = (value?: string) => (value ? String(value).trim().toLowerCase() : '');
+
+const isOwnRequest = (task: typeof mockTasks[number], user?: { id?: string; email?: string; name?: string } | null) => {
+  if (!user) return false;
+
+  const userId = String(user.id || '').trim();
+  const userEmail = normalizeValue(user.email);
+  const userName = normalizeValue(user.name);
+  const requesterId = String(task.requesterId || '').trim();
+  const requesterEmail = normalizeValue(task.requesterEmail);
+  const requesterName = normalizeValue(task.requesterName);
+
+  if (userId && requesterId && userId === requesterId) return true;
+  if (userEmail && requesterEmail && userEmail === requesterEmail) return true;
+  if (
+    userName &&
+    requesterName &&
+    (userName === requesterName ||
+      userName.includes(requesterName) ||
+      requesterName.includes(userName))
+  ) {
+    return true;
+  }
+
+  return false;
+};
 
 export default function MyRequests() {
   const { user } = useAuth();
@@ -134,9 +160,9 @@ export default function MyRequests() {
     return mergeLocalTasks(localBaseTasks);
   }, [apiUrl, useLocalData, storageTick, tasks]);
 
-  // Filter to only show user's own requests
+  // Show requests created by the current user, regardless of their current role.
   const userTasks = useMemo(() => {
-    return filterTasksForUser(hydratedTasks, user);
+    return hydratedTasks.filter((task) => isOwnRequest(task, user));
   }, [hydratedTasks, user]);
 
   useEffect(() => {

@@ -263,11 +263,11 @@ const glassPanelClass =
 const fileRowClass =
   'flex items-center justify-between rounded-lg border border-transparent bg-gradient-to-r from-[#F7FAFF]/90 via-[#EEF4FF]/60 to-[#EAF2FF]/80 px-4 py-1.5 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-xl dark:bg-none dark:bg-slate-900/70 dark:border-slate-700/60 dark:text-slate-200';
 const fileActionButtonClass =
-  'border border-transparent hover:border-[#C9D7FF] hover:bg-[#E6F1FF]/70 hover:text-primary hover:backdrop-blur-md dark:hover:border-slate-600/70 dark:hover:bg-slate-800/70 dark:hover:text-slate-100';
+  'h-9 w-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-none dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80';
 const fileGlassPillButtonClass =
   'h-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-3 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80';
 const fileGlassIconButtonClass =
-  'h-9 w-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80';
+  'h-9 w-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-none dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80';
 const badgeGlassClass =
   'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
 const changeHistoryCardClass = 'rounded-lg border border-border/60 bg-secondary/40';
@@ -4408,7 +4408,7 @@ export default function TaskDetail() {
                             ? 'border-[#C9D7FF] bg-[#EEF4FF] text-[#2F4E96] dark:border-[#4D70B4]/70 dark:bg-[#1E3A73]/45 dark:text-[#C7D8FF]'
                             : 'border-slate-200/80 bg-slate-50 text-slate-600 dark:border-slate-600/40 dark:bg-slate-900/40 dark:text-slate-300';
                     return (
-                      <div className="mt-3 rounded-xl border border-[#D9E6FF]/65 bg-gradient-to-r from-[#F8FBFF]/85 via-[#F3F8FF]/75 to-[#ECF3FF]/85 px-3 py-2.5 supports-[backdrop-filter]:bg-[#F4F8FF]/65 backdrop-blur-md dark:border-border/70 dark:bg-card/75">
+                      <div className="mt-3 rounded-xl border border-[#D9E6FF]/65 bg-gradient-to-r from-[#F8FBFF]/85 via-[#F3F8FF]/75 to-[#ECF3FF]/85 px-3 py-2.5 supports-[backdrop-filter]:bg-[#F4F8FF]/65 backdrop-blur-md dark:border-slate-700/60 dark:bg-none dark:bg-slate-900/60">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                             Review Status
@@ -4431,7 +4431,7 @@ export default function TaskDetail() {
                           )}
                         </div>
                         {finalDeliverableReviewNote && (
-                          <div className="mt-2 rounded-md border border-[#D9E6FF]/70 bg-white/80 px-2.5 py-2 text-xs leading-5 text-[#4E5F84] dark:border-border/70 dark:bg-card/80 dark:text-slate-300">
+                          <div className="mt-2 rounded-md border border-[#D9E6FF]/70 bg-white/80 px-2.5 py-2 text-xs leading-5 text-[#4E5F84] dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-300">
                             {finalDeliverableReviewNote}
                           </div>
                         )}
@@ -4440,7 +4440,7 @@ export default function TaskDetail() {
                   })()}
 
                   {canMainDesignerReviewFinalDeliverables && (
-                    <div className="mt-3 rounded-lg border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 p-3 dark:border-border/70 dark:bg-card/75">
+                    <div className="mt-3 rounded-lg border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 p-3 dark:border-slate-700/60 dark:bg-slate-900/60">
                       <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                         Design Lead review
                       </p>
@@ -4452,7 +4452,7 @@ export default function TaskDetail() {
                         onChange={(event) => setFinalReviewNote(event.target.value)}
                         rows={2}
                         placeholder="Add review note (or use image annotations) for Update Needed."
-                        className="mt-2 bg-white/90 dark:bg-card/90 dark:border-border dark:text-slate-100 dark:placeholder:text-slate-400"
+                        className="mt-2 bg-white/90 dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-400"
                       />
                       <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                         <Button
@@ -4467,7 +4467,7 @@ export default function TaskDetail() {
                           variant="outline"
                           onClick={() => handleFinalDeliverableReviewDecision('rejected')}
                           disabled={finalReviewDecisionInFlight !== null}
-                          className="h-9 rounded-full px-4"
+                          className="h-9 rounded-full px-4 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-100 dark:hover:bg-slate-900/70"
                         >
                           {finalReviewDecisionInFlight === 'rejected' ? 'Marking...' : 'Update Needed'}
                         </Button>

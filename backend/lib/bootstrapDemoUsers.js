@@ -30,29 +30,6 @@ const buildDemoUsers = () => {
     });
   }
 
-  const designerEmail = String(
-    process.env.DESIGNER_DEMO_EMAIL || "designer.portal@designhub.com"
-  )
-    .trim()
-    .toLowerCase();
-  const designerPassword = String(
-    process.env.DESIGNER_DEMO_PASSWORD || "Designer#Q9v4!"
-  ).trim();
-  const designerName = String(process.env.DESIGNER_DEMO_NAME || "Designer").trim();
-
-  if (
-    designerEmail &&
-    designerPassword &&
-    !users.some((entry) => entry.email === designerEmail)
-  ) {
-    users.push({
-      email: designerEmail,
-      password: designerPassword,
-      role: "designer",
-      name: designerName,
-    });
-  }
-
   const treasurerEmail = String(
     process.env.TREASURER_DEMO_EMAIL || "treasurer.portal@designhub.com"
   )

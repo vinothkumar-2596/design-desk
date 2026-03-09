@@ -5,6 +5,7 @@ interface AnimatedCardProps {
     children: ReactNode;
     className?: string;
     containerClassName?: string;
+    innerClassName?: string;
     onClick?: () => void;
 }
 
@@ -15,20 +16,27 @@ export function AnimatedCard({
     children,
     className,
     containerClassName,
+    innerClassName,
     onClick
 }: AnimatedCardProps) {
     return (
         <div
             className={cn(
-                "group relative overflow-hidden rounded-2xl border border-[#D9E6FF] dark:border-border bg-white dark:bg-card transition-all duration-300",
+                "group relative rounded-2xl transition-all duration-300",
                 onClick && "cursor-pointer",
                 containerClassName
             )}
             onClick={onClick}
         >
-            {/* Content */}
-            <div className={cn("relative z-10", className)}>
-                {children}
+            <div
+                className={cn(
+                    "relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white transition-all duration-300 dark:border-border dark:bg-card",
+                    innerClassName
+                )}
+            >
+                <div className={cn("relative z-10", className)}>
+                    {children}
+                </div>
             </div>
         </div>
     );

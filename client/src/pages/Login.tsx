@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { API_URL, authFetch } from '@/lib/api';
-import { DESIGNER_CREDENTIALS, TREASURER_CREDENTIALS } from '@/constants/auth';
+import { TREASURER_CREDENTIALS } from '@/constants/auth';
 import { UserRole } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,6 @@ const roleOptions: { value: UserRole; label: string; icon: React.ElementType; de
 ];
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
-const DESIGNER_LOGIN_EMAIL = normalizeEmail(DESIGNER_CREDENTIALS.email);
 const TREASURER_LOGIN_EMAIL = normalizeEmail(TREASURER_CREDENTIALS.email);
 const parseEmailList = (value?: string) =>
   Array.from(
@@ -44,9 +43,14 @@ const parseEmailList = (value?: string) =>
         .filter(Boolean)
     )
   );
+const FORCED_DESIGNER_EMAILS = [
+  'chandruvino003@gmail.com',
+  'zaya1432004@gmail.com',
+  'graphics@indbazaar.com',
+];
 const DESIGNER_ROLE_HINT_EMAILS = new Set([
-  DESIGNER_LOGIN_EMAIL,
   'demo@designhub',
+  ...FORCED_DESIGNER_EMAILS,
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAIL),
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAILS),
 ]);
