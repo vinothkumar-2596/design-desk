@@ -14,12 +14,15 @@ interface Message {
     timestamp: Date;
 }
 
-type WizardSlot = 'deliverable' | 'context' | 'deadline' | 'attachments' | 'unknown';
+type WizardSlot = 'deliverable' | 'context' | 'details' | 'category' | 'urgency' | 'deadline' | 'attachments' | 'unknown';
 type AttachmentState = 'unknown' | 'provided' | 'skipped';
 
 interface WizardState {
     deliverable: string;
     context: string;
+    details: string;
+    category: TaskDraft['category'] | '';
+    urgency: TaskDraft['urgency'] | '';
     deadline: string;
     attachmentState: AttachmentState;
     askedCounts: Record<WizardSlot, number>;
@@ -58,6 +61,24 @@ const DELIVERABLE_HINTS = [
     { label: 'logo', patterns: [/\blogo\b/i] },
     { label: 'branding', patterns: [/\bbranding\b/i, /\bbrand identity\b/i] },
     { label: 'campaign creative', patterns: [/\bcampaign\b/i, /\bposter\b/i, /\binvite\b/i, /\binvitation\b/i] },
+];
+
+const CATEGORY_HINTS: Array<{ value: TaskDraft['category']; patterns: RegExp[] }> = [
+    { value: 'banner', patterns: [/\bbanner\b/i, /\bstandee\b/i, /\bflex\b/i] },
+    { value: 'social_media_creative', patterns: [/\bsocial\b/i, /\bpost\b/i, /\bstory\b/i, /\breel\b/i, /\binstagram\b/i, /\bfacebook\b/i] },
+    { value: 'website_assets', patterns: [/\bwebsite\b/i, /\bweb\b/i, /\blanding\b/i, /\bhomepage\b/i, /\bhero\b/i] },
+    { value: 'ui_ux', patterns: [/\bui\b/i, /\bux\b/i, /\bapp\b/i, /\bscreen\b/i, /\bdashboard\b/i, /\bwireframe\b/i, /\bprototype\b/i] },
+    { value: 'led_backdrop', patterns: [/\bled\b/i, /\bbackdrop\b/i, /\bstage\b/i] },
+    { value: 'brochure', patterns: [/\bbrochure\b/i, /\bcatalog\b/i] },
+    { value: 'flyer', patterns: [/\bflyer\b/i, /\bleaflet\b/i, /\bhandbill\b/i] },
+    { value: 'campaign_or_others', patterns: [/\bcampaign\b/i, /\blogo\b/i, /\bbranding\b/i, /\bposter\b/i, /\binvite\b/i, /\binvitation\b/i] },
+];
+
+const URGENCY_HINTS: Array<{ value: TaskDraft['urgency']; patterns: RegExp[] }> = [
+    { value: 'urgent', patterns: [/\burgent\b/i, /\basap\b/i, /\bimmediate(?:ly)?\b/i, /\bhigh priority\b/i, /\btoday\b/i, /\btomorrow\b/i] },
+    { value: 'intermediate', patterns: [/\bintermediate\b/i, /\bmedium\b/i] },
+    { value: 'low', patterns: [/\blow\b/i] },
+    { value: 'normal', patterns: [/\bnormal\b/i, /\bstandard\b/i, /\bregular\b/i] },
 ];
 
 const DEADLINE_PATTERN =
@@ -111,6 +132,43 @@ const extractContextCandidate = (text: string) => {
     return remainder.split(' ').filter(Boolean).length >= 2 ? cleanSlotValue(remainder) : '';
 };
 
+const extractDetailsCandidate = (text: string) => {
+    const normalized = cleanSlotValue(text);
+    if (!normalized) return '';
+    if (ATTACHMENT_SKIP_PATTERNS.some((pattern) => pattern.test(normalized))) return '';
+    if (ATTACHMENT_PROVIDED_PATTERNS.some((pattern) => pattern.test(normalized))) return '';
+    if (extractDeadlineCandidate(normalized)) return '';
+    const stripped = normalizeSpace(
+        stripDeliverableWords(normalized).replace(
+            /\b(?:need|create|make|design|request|for|about|regarding|just|please|want|require|required|title)\b/gi,
+            ' '
+        )
+    );
+    const words = stripped.split(/\s+/).filter(Boolean);
+    if (words.length < 3) return '';
+    return stripped;
+};
+
+const extractCategoryCandidate = (text: string): TaskDraft['category'] | '' => {
+    const normalized = normalizeSpace(text);
+    for (const hint of CATEGORY_HINTS) {
+        if (hint.patterns.some((pattern) => pattern.test(normalized))) {
+            return hint.value;
+        }
+    }
+    return '';
+};
+
+const extractUrgencyCandidate = (text: string): TaskDraft['urgency'] | '' => {
+    const normalized = normalizeSpace(text);
+    for (const hint of URGENCY_HINTS) {
+        if (hint.patterns.some((pattern) => pattern.test(normalized))) {
+            return hint.value;
+        }
+    }
+    return '';
+};
+
 const extractDeadlineCandidate = (text: string) => {
     const normalized = normalizeSpace(text);
     const match = normalized.match(DEADLINE_PATTERN);
@@ -161,10 +219,30 @@ const inferQuestionSlot = (content: string): WizardSlot => {
         lower.includes('what is the name of') ||
         lower.includes('which brand') ||
         lower.includes('which app') ||
-        lower.includes('which school') ||
-        lower.includes('which company')
+            lower.includes('which school') ||
+            lower.includes('which company')
     ) {
         return 'context';
+    }
+    if (
+        lower.includes('details') ||
+        lower.includes('brief') ||
+        lower.includes('requirements') ||
+        lower.includes('special instruction') ||
+        lower.includes('key detail')
+    ) {
+        return 'details';
+    }
+    if (lower.includes('category')) {
+        return 'category';
+    }
+    if (
+        lower.includes('urgency') ||
+        lower.includes('priority') ||
+        lower.includes('normal or urgent') ||
+        lower.includes('how urgent')
+    ) {
+        return 'urgency';
     }
     return 'unknown';
 };
@@ -172,6 +250,9 @@ const inferQuestionSlot = (content: string): WizardSlot => {
 const createEmptyAskedCounts = (): Record<WizardSlot, number> => ({
     deliverable: 0,
     context: 0,
+    details: 0,
+    category: 0,
+    urgency: 0,
     deadline: 0,
     attachments: 0,
     unknown: 0,
@@ -181,6 +262,9 @@ const buildWizardState = (messages: Message[], attachmentsUploaded: boolean): Wi
     const state: WizardState = {
         deliverable: '',
         context: '',
+        details: '',
+        category: '',
+        urgency: '',
         deadline: '',
         attachmentState: attachmentsUploaded ? 'provided' : 'unknown',
         askedCounts: createEmptyAskedCounts(),
@@ -208,6 +292,12 @@ const buildWizardState = (messages: Message[], attachmentsUploaded: boolean): Wi
             state.deliverable = content;
         } else if (pendingSlot === 'context' && !state.context) {
             state.context = content;
+        } else if (pendingSlot === 'details' && !state.details) {
+            state.details = content;
+        } else if (pendingSlot === 'category' && !state.category) {
+            state.category = extractCategoryCandidate(content);
+        } else if (pendingSlot === 'urgency' && !state.urgency) {
+            state.urgency = extractUrgencyCandidate(content);
         } else if (pendingSlot === 'deadline' && !state.deadline) {
             state.deadline = content;
         } else if (pendingSlot === 'attachments' && state.attachmentState === 'unknown') {
@@ -219,6 +309,15 @@ const buildWizardState = (messages: Message[], attachmentsUploaded: boolean): Wi
         }
         if (!state.context) {
             state.context = extractContextCandidate(content);
+        }
+        if (!state.details) {
+            state.details = extractDetailsCandidate(content);
+        }
+        if (!state.category) {
+            state.category = extractCategoryCandidate(content);
+        }
+        if (!state.urgency) {
+            state.urgency = extractUrgencyCandidate(content);
         }
         if (!state.deadline) {
             state.deadline = extractDeadlineCandidate(content);
@@ -243,6 +342,12 @@ const getCanonicalQuestion = (slot: WizardSlot, state: WizardState) => {
             return 'What should be designed?';
         case 'context':
             return getContextQuestion(state);
+        case 'details':
+            return 'Any key details?';
+        case 'category':
+            return 'Which category fits best?';
+        case 'urgency':
+            return 'Urgency normal or urgent?';
         case 'deadline':
             return 'When do you need it?';
         case 'attachments':
@@ -258,6 +363,12 @@ const isSlotSatisfied = (slot: WizardSlot, state: WizardState, attachmentsUpload
             return Boolean(state.deliverable);
         case 'context':
             return Boolean(state.context);
+        case 'details':
+            return Boolean(state.details);
+        case 'category':
+            return Boolean(state.category);
+        case 'urgency':
+            return Boolean(state.urgency);
         case 'deadline':
             return Boolean(state.deadline);
         case 'attachments':
@@ -270,6 +381,9 @@ const isSlotSatisfied = (slot: WizardSlot, state: WizardState, attachmentsUpload
 const getNextMissingQuestion = (state: WizardState, attachmentsUploaded: boolean) => {
     if (!state.deliverable) return getCanonicalQuestion('deliverable', state);
     if (!state.context) return getCanonicalQuestion('context', state);
+    if (!state.details) return getCanonicalQuestion('details', state);
+    if (!state.category) return getCanonicalQuestion('category', state);
+    if (!state.urgency) return getCanonicalQuestion('urgency', state);
     if (!state.deadline) return getCanonicalQuestion('deadline', state);
     if (!attachmentsUploaded && state.attachmentState === 'unknown') {
         return buildAttachmentRequestMessage();
@@ -281,6 +395,9 @@ const buildLiveTaskContext = (state: WizardState, attachmentsUploaded: boolean) 
     const knownDetails = [
         state.deliverable ? `- deliverable: ${state.deliverable}` : '',
         state.context ? `- context: ${state.context}` : '',
+        state.details ? `- details: ${state.details}` : '',
+        state.category ? `- category: ${state.category}` : '',
+        state.urgency ? `- urgency: ${state.urgency}` : '',
         state.deadline ? `- deadline: ${state.deadline}` : '',
         attachmentsUploaded
             ? '- attachments: already uploaded'
@@ -478,17 +595,30 @@ const cleanContextForDraft = (context: string, deliverable: string) => {
     return cleaned;
 };
 
+const cleanDetailsForDraft = (details: string, deliverable: string, context: string) => {
+    const normalized = normalizeSpace(details);
+    if (!normalized) return '';
+    const lowerDetails = normalized.toLowerCase();
+    const lowerDeliverable = normalizeSpace(deliverable).toLowerCase();
+    const lowerContext = normalizeSpace(context).toLowerCase();
+    if (lowerDetails === lowerDeliverable || lowerDetails === lowerContext) {
+        return '';
+    }
+    return normalized;
+};
+
 const buildLocalTaskDraft = (state: WizardState, attachmentsUploaded: boolean): TaskDraft | null => {
     const deliverable = cleanSlotValue(state.deliverable);
     const context = cleanContextForDraft(state.context, deliverable);
+    const details = cleanDetailsForDraft(state.details, deliverable, context);
     const deadline = parseDeadlineToIso(state.deadline);
 
-    if (!deliverable || !deadline) {
+    if (!deliverable || !details || !deadline) {
         return null;
     }
 
-    const category = mapDeliverableToCategory(`${deliverable} ${context}`.trim());
-    const urgency = inferUrgencyFromDeadline(deadline);
+    const category = state.category || mapDeliverableToCategory(`${deliverable} ${context}`.trim());
+    const urgency = state.urgency || inferUrgencyFromDeadline(deadline);
     const deliverableTitle = toTitleCase(deliverable);
     const contextTitle = context ? toTitleCase(context) : '';
     const title = contextTitle
@@ -499,6 +629,7 @@ const buildLocalTaskDraft = (state: WizardState, attachmentsUploaded: boolean): 
         context
             ? `Create a ${deliverable} for ${context}.`
             : `Create a ${deliverable}.`,
+        details.endsWith('.') ? details : `${details}.`,
         attachmentsUploaded
             ? 'Use the uploaded references or assets.'
             : state.attachmentState === 'skipped'

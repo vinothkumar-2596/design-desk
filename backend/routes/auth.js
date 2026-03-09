@@ -230,6 +230,20 @@ const normalizeTaskAssignedRef = (value) => {
 };
 
 const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+const STAFF_EMAIL_DOMAIN = String(process.env.STAFF_EMAIL_DOMAIN || "smvec.ac.in")
+  .trim()
+  .replace(/^@+/, "")
+  .toLowerCase();
+const STAFF_EMAIL_DOMAIN_LABEL = STAFF_EMAIL_DOMAIN ? `@${STAFF_EMAIL_DOMAIN}` : "";
+const hasStaffEmailDomain = (email) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail || !STAFF_EMAIL_DOMAIN) return false;
+  return normalizedEmail.endsWith(`@${STAFF_EMAIL_DOMAIN}`);
+};
+const buildStaffDomainError = () =>
+  STAFF_EMAIL_DOMAIN_LABEL
+    ? `Use your ${STAFF_EMAIL_DOMAIN_LABEL} email address.`
+    : "Use your institutional email address.";
 const FORCED_DESIGNER_EMAILS = new Set([
   "chandruvino003@gmail.com",
   "zaya1432004@gmail.com",
@@ -263,12 +277,16 @@ router.post("/login", authLimiter, async (req, res) => {
   req.skipAudit = true;
   try {
     const { email, password } = req.body;
+    const requestedRole = normalizeRole(req.body?.role || "staff");
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required." });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+    if (requestedRole === "staff" && !hasStaffEmailDomain(normalizedEmail)) {
+      return res.status(403).json({ error: buildStaffDomainError() });
+    }
     const user = await User.findOne({ email: normalizedEmail });
     if (!user || user.isActive === false) {
       await logAudit({
@@ -293,6 +311,10 @@ router.post("/login", authLimiter, async (req, res) => {
         meta: { email: normalizedEmail }
       });
       return res.status(401).json({ error: "Use Google sign-in for this account." });
+    }
+
+    if (user.role === "staff" && !hasStaffEmailDomain(normalizedEmail)) {
+      return res.status(403).json({ error: buildStaffDomainError() });
     }
 
     const storedPassword = user.password || "";
@@ -448,17 +470,21 @@ router.post("/signup", authLimiter, async (req, res) => {
     }
 
     const normalizedRole = normalizeSignupRole(role);
-    const existing = await User.findOne({ email: email.toLowerCase().trim() });
+    const normalizedEmail = normalizeEmail(email);
+    if (!hasStaffEmailDomain(normalizedEmail)) {
+      return res.status(403).json({ error: buildStaffDomainError() });
+    }
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) {
       return res.status(409).json({ error: "Email already exists." });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
-      email,
+      email: normalizedEmail,
       password: passwordHash,
       role: normalizedRole,
-      name: name || email.split("@")[0],
+      name: name || normalizedEmail.split("@")[0],
       authProvider: "local",
     });
     req.auditTargetId = user.id || user._id?.toString?.() || "";
@@ -665,6 +691,9 @@ router.get("/google/start", (req, res) => {
   try {
     const redirectUri = getGoogleRedirectUri();
     const role = normalizeGoogleRole(req.query.role);
+    if (role !== "staff") {
+      return res.status(403).json({ error: "Google sign-in is available for staff accounts only." });
+    }
     const frontendOrigin = normalizeRequestedFrontendOrigin(req.query.origin);
     const stateToken = jwt.sign(
       { role, purpose: "google", frontendOrigin },
@@ -717,6 +746,9 @@ router.get("/google/callback", async (req, res) => {
     }
 
     const normalizedEmail = data.email.toLowerCase().trim();
+    if (requestedRole === "staff" && !hasStaffEmailDomain(normalizedEmail)) {
+      return res.status(403).json({ error: buildStaffDomainError() });
+    }
     let user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {

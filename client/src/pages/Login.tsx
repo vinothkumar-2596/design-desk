@@ -32,7 +32,9 @@ const roleOptions: { value: UserRole; label: string; icon: React.ElementType; de
   { value: 'treasurer', label: 'Treasurer', icon: Briefcase, description: 'Approve modifications' },
 ];
 
+const STAFF_EMAIL_DOMAIN = 'smvec.ac.in';
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
+const hasStaffEmailDomain = (value: string) => normalizeEmail(value).endsWith(`@${STAFF_EMAIL_DOMAIN}`);
 const TREASURER_LOGIN_EMAIL = normalizeEmail(TREASURER_CREDENTIALS.email);
 const parseEmailList = (value?: string) =>
   Array.from(
@@ -135,6 +137,12 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (role === 'staff' && !hasStaffEmailDomain(email)) {
+      toast.error('Use your institution email', {
+        description: `Staff login requires @${STAFF_EMAIL_DOMAIN}.`,
+      });
+      return;
+    }
     setIsLoading(true);
 
     try {
@@ -295,6 +303,12 @@ export default function Login() {
   const handleSignupSubmit = async () => {
     if (!signupEmail || !signupPassword) {
       toast.error('Email and password are required');
+      return;
+    }
+    if (!hasStaffEmailDomain(signupEmail)) {
+      toast.error('Use your institution email', {
+        description: `Signup requires @${STAFF_EMAIL_DOMAIN}.`,
+      });
       return;
     }
     setIsLoading(true);
@@ -527,7 +541,7 @@ export default function Login() {
                   </span>
                 </Button>
                 <p className="text-center text-xs text-muted-foreground mt-3">
-                  Staff can sign up with Google or use Create account.
+                  Staff must use their @smvec.ac.in account.
                 </p>
               </>
             ) : null}
@@ -621,7 +635,7 @@ export default function Login() {
           <DialogHeader>
             <DialogTitle>Create staff account</DialogTitle>
             <DialogDescription>
-              Sign up with your Gmail and set a password.
+              Sign up with your @smvec.ac.in email and set a password.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
