@@ -132,6 +132,40 @@ type DesignerOption = {
   portalId?: string;
 };
 
+const isDebugOrDemoDesigner = (option?: Partial<DesignerOption> | null) => {
+  const haystack = `${option?.name || ''} ${option?.email || ''}`.trim().toLowerCase();
+  return haystack.includes('demo') || haystack.includes('debug');
+};
+
+const sanitizeDesignerOptions = (options: DesignerOption[]) => {
+  const uniqueOptions = new Map<string, DesignerOption>();
+
+  options.forEach((option) => {
+    const id = String(option.id || '').trim();
+    const name = String(option.name || '').trim();
+    const email = String(option.email || '').trim().toLowerCase();
+    if (!id || !name) return;
+    if (isDebugOrDemoDesigner({ ...option, email, name })) return;
+
+    const key = email || `${name.toLowerCase()}::${option.designerScope || 'junior'}`;
+    if (uniqueOptions.has(key)) return;
+
+    uniqueOptions.set(key, {
+      ...option,
+      id,
+      name,
+      email,
+    });
+  });
+
+  return Array.from(uniqueOptions.values()).sort(
+    (left, right) =>
+      left.name.localeCompare(right.name) ||
+      left.email.localeCompare(right.email) ||
+      left.id.localeCompare(right.id)
+  );
+};
+
 const buildFallbackDesigners = (
   tasks: typeof mockTasks,
   currentUser?: {
@@ -188,7 +222,7 @@ const buildFallbackDesigners = (
     }
   }
 
-  return fromTasks;
+  return sanitizeDesignerOptions(fromTasks);
 };
 
 const EmptyState = () => (
@@ -336,7 +370,7 @@ export default function Dashboard() {
     const loadDesigners = async () => {
       if (!apiUrl) {
         const fallbackDesigners = buildFallbackDesigners(hydratedTasks, user);
-        setDesignerOptions(fallbackDesigners);
+        setDesignerOptions(sanitizeDesignerOptions(fallbackDesigners));
         setDesignersLoaded(true);
         return;
       }
@@ -381,12 +415,12 @@ export default function Dashboard() {
             } as DesignerOption;
           })
           .filter(Boolean) as DesignerOption[];
-        setDesignerOptions(mapped);
+        setDesignerOptions(sanitizeDesignerOptions(mapped));
         setDesignersLoaded(true);
       } catch (error) {
         const fallbackDesigners = buildFallbackDesigners(hydratedTasks, user);
         if (fallbackDesigners.length > 0) {
-          setDesignerOptions(fallbackDesigners);
+          setDesignerOptions(sanitizeDesignerOptions(fallbackDesigners));
           setDesignersLoaded(true);
         }
         const message =

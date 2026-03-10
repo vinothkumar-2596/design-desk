@@ -57,18 +57,12 @@ const buildDemoUsers = () => {
 };
 
 const shouldSeedDemoUsers = () => {
-  const enabled = asBool(
-    process.env.SEED_DEMO_USERS,
-    process.env.NODE_ENV !== "production"
-  );
+  const enabled = asBool(process.env.SEED_DEMO_USERS, false);
   return enabled;
 };
 
 const shouldOverwriteDemoPasswords = () => {
-  return asBool(
-    process.env.SEED_DEMO_USERS_OVERWRITE_PASSWORDS,
-    process.env.NODE_ENV !== "production"
-  );
+  return asBool(process.env.SEED_DEMO_USERS_OVERWRITE_PASSWORDS, false);
 };
 
 export const bootstrapDemoUsers = async () => {

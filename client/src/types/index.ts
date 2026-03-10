@@ -67,7 +67,7 @@ export interface TaskFile {
   id: string;
   name: string;
   url: string;
-  type: 'input' | 'output';
+  type: 'input' | 'output' | 'working';
   uploadedAt: Date;
   uploadedBy: string;
   size?: number;

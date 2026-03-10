@@ -232,6 +232,18 @@ export const getDriveClient = () => {
   return google.drive({ version: "v3", auth: oauth });
 };
 
+export const getDriveAuthClient = async () => {
+  const useOAuth = parseBooleanEnv(process.env.GOOGLE_DRIVE_OAUTH);
+  if (!useOAuth) {
+    const auth = getServiceAccountClient();
+    return auth.getClient();
+  }
+  const oauth = getOAuthClient();
+  const token = resolveOAuthToken();
+  oauth.setCredentials(token);
+  return oauth;
+};
+
 export const getDriveAuthUrl = () => {
   const oauth = getOAuthClient();
   return oauth.generateAuthUrl({
@@ -272,6 +284,21 @@ const sanitizeFolderName = (name) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const normalizeFolderSegments = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((segment) => sanitizeFolderName(String(segment || "")))
+      .filter(Boolean);
+  }
+
+  const normalized = String(value || "").trim();
+  if (!normalized) return [];
+  return normalized
+    .split("/")
+    .map((segment) => sanitizeFolderName(segment))
+    .filter(Boolean);
+};
+
 const findOrCreateFolder = async (drive, { name, parentId }) => {
   const safeName = sanitizeFolderName(name);
   if (!safeName) return parentId;
@@ -308,8 +335,7 @@ const findOrCreateFolder = async (drive, { name, parentId }) => {
   return created.data.id || parentId;
 };
 
-export const uploadToDrive = async ({ buffer, filename, mimeType, folderId, makePublic, subfolderName }) => {
-  const drive = getDriveClient();
+const resolveDriveTargetFolder = async (drive, { folderId, subfolderName, subfolderPath }) => {
   const useDateFolders = parseBooleanEnv(process.env.DRIVE_DATE_FOLDERS, true);
   let targetFolder = folderId || undefined;
 
@@ -327,9 +353,18 @@ export const uploadToDrive = async ({ buffer, filename, mimeType, folderId, make
     }
   }
 
-  if (subfolderName) {
+  const folderSegments = normalizeFolderSegments(
+    Array.isArray(subfolderPath) && subfolderPath.length > 0 ? subfolderPath : subfolderName
+  );
+
+  if (folderSegments.length > 0) {
     try {
-      targetFolder = await findOrCreateFolder(drive, { name: subfolderName, parentId: targetFolder });
+      for (const segment of folderSegments) {
+        targetFolder = await findOrCreateFolder(drive, {
+          name: segment,
+          parentId: targetFolder,
+        });
+      }
     } catch (error) {
       if (isParentPermissionError(error)) {
         console.warn("Drive subfolder is not accessible; uploading to Drive root.");
@@ -339,6 +374,173 @@ export const uploadToDrive = async ({ buffer, filename, mimeType, folderId, make
       }
     }
   }
+
+  return targetFolder;
+};
+
+const DRIVE_UPLOAD_FIELDS = "id,name,webViewLink,webContentLink,size,thumbnailLink,mimeType";
+
+const getDriveUploadApiUrl = () => {
+  const url = new URL("https://www.googleapis.com/upload/drive/v3/files");
+  url.searchParams.set("uploadType", "resumable");
+  url.searchParams.set("supportsAllDrives", "true");
+  url.searchParams.set("fields", DRIVE_UPLOAD_FIELDS);
+  return url.toString();
+};
+
+const normalizeRequestHeaders = (headers) =>
+  Object.entries(headers || {}).reduce((acc, [key, value]) => {
+    if (typeof value === "string" && value.trim()) {
+      acc[key] = value.trim();
+    }
+    return acc;
+  }, {});
+
+const buildDriveHttpError = async (response, fallbackMessage) => {
+  const rawDetail = await response.text().catch(() => "");
+  const detail = rawDetail.trim();
+  let parsedDetail = null;
+
+  if (detail) {
+    try {
+      parsedDetail = JSON.parse(detail);
+    } catch {
+      parsedDetail = null;
+    }
+  }
+
+  const error = new Error(
+    detail || fallbackMessage || `Drive request failed (${response.status}).`
+  );
+  error.status = response.status;
+  error.response = {
+    status: response.status,
+    data: parsedDetail || detail,
+  };
+  return error;
+};
+
+export const getDriveRequestHeaders = async (url) => {
+  const authClient = await getDriveAuthClient();
+  const requestUrl = String(url || "").trim();
+  const shouldForceOAuthRefresh =
+    parseBooleanEnv(process.env.GOOGLE_DRIVE_OAUTH) &&
+    typeof authClient.refreshAccessToken === "function" &&
+    String(authClient?.credentials?.refresh_token || "").trim();
+
+  if (shouldForceOAuthRefresh) {
+    await authClient.refreshAccessToken();
+  }
+
+  const headers = normalizeRequestHeaders(
+    await authClient.getRequestHeaders(requestUrl || undefined)
+  );
+  const authHeader = headers.Authorization || headers.authorization;
+
+  if (authHeader) {
+    if (!headers.Authorization) {
+      headers.Authorization = authHeader;
+      delete headers.authorization;
+    }
+    return headers;
+  }
+
+  const accessTokenResponse =
+    typeof authClient.getAccessToken === "function"
+      ? await authClient.getAccessToken()
+      : null;
+  const accessToken =
+    typeof accessTokenResponse === "string"
+      ? accessTokenResponse.trim()
+      : String(accessTokenResponse?.token || "").trim();
+
+  if (!accessToken) {
+    throw new Error("Failed to acquire Google Drive access token.");
+  }
+
+  return {
+    ...headers,
+    Authorization: `Bearer ${accessToken}`,
+  };
+};
+
+export const createDriveResumableUploadSession = async ({
+  filename,
+  mimeType,
+  fileSize,
+  folderId,
+  subfolderName,
+  subfolderPath,
+}) => {
+  const drive = getDriveClient();
+  const targetFolder = await resolveDriveTargetFolder(drive, {
+    folderId,
+    subfolderName,
+    subfolderPath,
+  });
+  const uploadUrl = getDriveUploadApiUrl();
+  const headers = await getDriveRequestHeaders(uploadUrl);
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      ...headers,
+      "Content-Type": "application/json; charset=UTF-8",
+      "X-Upload-Content-Type": mimeType || "application/octet-stream",
+      "X-Upload-Content-Length": String(Math.max(0, Number(fileSize) || 0)),
+    },
+    body: JSON.stringify({
+      name: filename,
+      parents: targetFolder ? [targetFolder] : undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    throw await buildDriveHttpError(
+      response,
+      `Failed to create Drive upload session (${response.status}).`
+    );
+  }
+
+  const sessionUri = response.headers.get("location") || "";
+  if (!sessionUri) {
+    throw new Error("Drive resumable upload session URL is missing.");
+  }
+
+  return {
+    sessionUri,
+    folderId: targetFolder,
+  };
+};
+
+export const makeDriveFilePublic = async (fileId) => {
+  const normalizedId = String(fileId || "").trim();
+  if (!normalizedId) return;
+  const drive = getDriveClient();
+  await drive.permissions.create({
+    fileId: normalizedId,
+    requestBody: {
+      role: "reader",
+      type: "anyone",
+    },
+    supportsAllDrives: true,
+  });
+};
+
+export const uploadToDrive = async ({
+  buffer,
+  filename,
+  mimeType,
+  folderId,
+  makePublic,
+  subfolderName,
+  subfolderPath,
+}) => {
+  const drive = getDriveClient();
+  let targetFolder = await resolveDriveTargetFolder(drive, {
+    folderId,
+    subfolderName,
+    subfolderPath,
+  });
 
   const createFile = (parentFolderId) =>
     drive.files.create({
@@ -369,14 +571,7 @@ export const uploadToDrive = async ({ buffer, filename, mimeType, folderId, make
   const file = createResponse.data;
   if (makePublic && file?.id) {
     try {
-      await drive.permissions.create({
-        fileId: file.id,
-        requestBody: {
-          role: "reader",
-          type: "anyone",
-        },
-        supportsAllDrives: true,
-      });
+      await makeDriveFilePublic(file.id);
     } catch (error) {
       console.warn("Failed to make uploaded Drive file public:", error?.message || error);
     }

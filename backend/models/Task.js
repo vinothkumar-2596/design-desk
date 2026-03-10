@@ -4,7 +4,7 @@ const TaskFileSchema = new mongoose.Schema(
   {
     name: { type: String, default: "" },
     url: { type: String, default: "" },
-    type: { type: String, enum: ["input", "output"], default: "input" },
+    type: { type: String, enum: ["input", "output", "working"], default: "input" },
     uploadedAt: { type: Date },
     uploadedBy: { type: String, default: "" },
     size: { type: Number },

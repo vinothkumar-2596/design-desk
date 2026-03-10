@@ -156,6 +156,7 @@ export default function EmailTask() {
   }, [navigate, token]);
 
   const preview = data?.preview ?? null;
+  const previewDescription = String(preview?.description || "").trim();
   const viewerIsAuthenticated = Boolean(data?.viewer?.isAuthenticated);
   const viewerRole = String(data?.viewer?.role || "").trim().toLowerCase();
   const isAuthorizedRole = viewerRole === "designer" || viewerRole === "treasurer";
@@ -167,18 +168,18 @@ export default function EmailTask() {
 
   const headerDescription = useMemo(() => {
     if (isLoading) {
-      return "Validating the secure link and preparing your branded task preview.";
+      return "Validating secure access and preparing the task preview.";
     }
     if (error) {
-      return "This access link could not be verified. You can still return to the workspace from the main app.";
+      return "This access link could not be verified. You can return to the workspace from the main application.";
     }
     if (viewerIsAuthenticated && data?.canOpenTask) {
-      return "Verified access detected. The full task workspace will open when permissions allow.";
+      return "Your access has been verified. Open the full task workspace when permissions allow.";
     }
     if (viewerIsAuthenticated) {
-      return "You are signed in. Preview access is active while full task access depends on your role permissions.";
+      return "You are signed in. Preview access is available, while full task access depends on your role permissions.";
     }
-    return "Secure preview of the assigned task. Sign in with an approved account to continue into the full workspace.";
+    return "Review a limited preview of the assigned task. Sign in with an authorized account to access the full workspace.";
   }, [data?.canOpenTask, error, isLoading, viewerIsAuthenticated]);
 
   const requesterLabel = preview
@@ -234,14 +235,14 @@ export default function EmailTask() {
                 <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#C9D7FF] bg-gradient-to-br from-white/88 via-[#EAF2FF]/84 to-[#DDE9FF]/74 backdrop-blur-xl dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80">
                   <img src="/favicon.png" alt="DesignDesk" className="h-9 w-9 object-contain" />
                 </span>
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#60749C] dark:text-slate-400">
-                    DesignDesk Secure Access
+                <div className="space-y-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
+                    DesignDesk
                   </p>
-                  <h1 className="text-3xl font-semibold tracking-tight text-[#12254C] premium-headline dark:text-slate-50">
-                    Email Task Preview
+                  <h1 className="text-[2rem] font-semibold tracking-[-0.03em] text-[#12254C] premium-headline dark:text-slate-50 sm:text-[2.35rem]">
+                    Secure Task Preview
                   </h1>
-                  <p className="max-w-2xl text-sm leading-7 text-[#5B6B8A] premium-body dark:text-slate-300">
+                  <p className="max-w-2xl text-[15px] leading-7 text-[#5B6B8A] premium-body dark:text-slate-300">
                     {headerDescription}
                   </p>
                 </div>
@@ -260,7 +261,7 @@ export default function EmailTask() {
                 ) : (
                   <LockKeyhole className="h-4 w-4" />
                 )}
-                {viewerIsAuthenticated ? "Signed In Preview" : "Preview Only"}
+                {viewerIsAuthenticated ? "Authenticated" : "Restricted Preview"}
               </div>
             </div>
           </div>
@@ -315,7 +316,7 @@ export default function EmailTask() {
                   <div className="absolute right-4 top-4 hidden opacity-10 sm:block dark:opacity-[0.08]">
                     <img src="/favicon.png" alt="" className="h-20 w-20 object-contain" />
                   </div>
-                  <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_240px]">
+                  <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_240px] xl:items-start">
                     <div className="space-y-4">
                       <div className="space-y-3">
                         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
@@ -336,9 +337,21 @@ export default function EmailTask() {
                           </Badge>
                         ) : null}
                       </div>
+
+                      {!previewDescription ? (
+                        <div className="max-w-2xl rounded-2xl border border-[#D9E6FF]/75 bg-white/80 p-4 text-sm leading-7 text-[#516483] supports-[backdrop-filter]:bg-white/58 backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/62 dark:text-slate-300">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
+                            Summary
+                          </p>
+                          <p className="mt-2">
+                            No summary was added for this task. Sign in with an approved account to
+                            continue into the full workspace.
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
 
-                    <div className="grid gap-3">
+                    <div className="grid gap-3 self-start">
                       <div className={glassMetaClass}>
                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
                           Task ID
@@ -369,13 +382,13 @@ export default function EmailTask() {
                   ))}
                 </div>
 
-                {preview.description ? (
+                {previewDescription ? (
                   <div className={cn(glassCardClass, "p-6")}>
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#60749C] dark:text-slate-400">
                       Summary
                     </p>
                     <p className="mt-4 whitespace-pre-wrap rounded-2xl border border-[#D9E6FF]/80 bg-white/80 p-4 text-sm leading-7 text-[#243B6A] supports-[backdrop-filter]:bg-white/58 backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/68 dark:text-slate-200">
-                      {preview.description}
+                      {previewDescription}
                     </p>
                   </div>
                 ) : null}

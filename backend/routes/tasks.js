@@ -52,6 +52,22 @@ const normalizeId = (value) => {
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const EXCLUDED_ASSIGNABLE_DESIGNER_EMAILS = new Set(["designer.portal@designhub.com"]);
+const EXCLUDED_ASSIGNABLE_DESIGNER_KEYWORDS = ["demo", "debug"];
+const hasExcludedAssignableDesignerKeyword = (value) => {
+  const normalized = normalizeValue(value);
+  if (!normalized) return false;
+  return EXCLUDED_ASSIGNABLE_DESIGNER_KEYWORDS.some((keyword) => normalized.includes(keyword));
+};
+const isExcludedAssignableDesigner = (designer) => {
+  const email = normalizeValue(designer?.email);
+  if (email && EXCLUDED_ASSIGNABLE_DESIGNER_EMAILS.has(email)) {
+    return true;
+  }
+  return (
+    hasExcludedAssignableDesignerKeyword(designer?.name) ||
+    hasExcludedAssignableDesignerKeyword(designer?.email)
+  );
+};
 const isObjectIdLike = (value) => mongoose.Types.ObjectId.isValid(String(value || ""));
 const resolveAssignedIdentifier = (task) => {
   const assignedToId = normalizeId(task?.assignedToId);
@@ -115,14 +131,17 @@ const getUserIdsByRole = async (roles = []) => {
   return users.map((user) => user._id.toString());
 };
 
-const getActiveDesignerUsers = async () =>
-  User.find({
+const getActiveDesignerUsers = async () => {
+  const designers = await User.find({
     role: "designer",
     isActive: { $ne: false },
     email: { $nin: Array.from(EXCLUDED_ASSIGNABLE_DESIGNER_EMAILS) }
   })
     .sort({ name: 1, email: 1 })
     .select("_id name email role");
+
+  return designers.filter((designer) => !isExcludedAssignableDesigner(designer));
+};
 
 const splitDesignersByScope = (designers = []) => {
   const mainDesigners = [];
@@ -522,11 +541,14 @@ const buildTaskPayloadForViewer = (task, viewer) => {
   payload.finalDeliverableReviewNote = reviewState.reviewNote;
 
   const viewerRole = normalizeTaskRole(viewer?.role);
-  if (viewerRole === "staff" && reviewState.status !== "approved") {
-    payload.finalDeliverableVersions = [];
+  if (viewerRole === "staff") {
     payload.files = Array.isArray(payload.files)
-      ? payload.files.filter((file) => normalizeValue(file?.type) !== "output")
+      ? payload.files.filter((file) => normalizeValue(file?.type) !== "working")
       : [];
+    if (reviewState.status !== "approved") {
+      payload.finalDeliverableVersions = [];
+      payload.files = payload.files.filter((file) => normalizeValue(file?.type) !== "output");
+    }
   }
 
   return payload;
@@ -961,6 +983,21 @@ const ensureTaskAccess = async (req, res, next) => {
       ]);
       const bodyChanges = Array.isArray(req.body?.changes) ? req.body.changes : [];
       const bodyUpdates = req.body?.updates && typeof req.body.updates === "object" ? req.body.updates : {};
+      const fileWriteUpdateKeys = new Set(["files", "updatedAt"]);
+      const hasOnlyFileChanges =
+        bodyChanges.length > 0 &&
+        bodyChanges.every((change) => normalizeValue(change?.field) === "files");
+      const hasOnlyFileUpdates =
+        Object.keys(bodyUpdates).length === 0 ||
+        Object.keys(bodyUpdates).every((key) => fileWriteUpdateKeys.has(key));
+      const canPrivilegedFileWrite =
+        isChangeWrite &&
+        hasOnlyFileChanges &&
+        hasOnlyFileUpdates &&
+        (
+          userRole === "admin" ||
+          (userRole === "designer" && isMainDesigner)
+        );
       const hasManagerApprovalChanges =
         bodyChanges.length > 0 &&
         bodyChanges.every((change) =>
@@ -1049,6 +1086,13 @@ const ensureTaskAccess = async (req, res, next) => {
         return next();
       }
 
+      if (canPrivilegedFileWrite) {
+        req.task = task;
+        req.taskAccessMode = "full";
+        req.taskAccessContext = accessContext;
+        return next();
+      }
+
       if (canMainDesignerFinalizeWrite) {
         req.task = task;
         req.taskAccessMode = accessContext.mode === "none" ? "full" : accessContext.mode;
@@ -1108,6 +1152,29 @@ const ensureTaskAccess = async (req, res, next) => {
         updates && Object.keys(updates).every((key) => allowedKeys.includes(key));
       if (isFileOnly && updatesOk) {
         req.task = task;
+        return next();
+      }
+    }
+    if (
+      isChangeWrite &&
+      (userRole === "admin" || (userRole === "designer" && isMainDesigner))
+    ) {
+      const bodyChanges = Array.isArray(req.body?.changes) ? req.body.changes : [];
+      const bodyUpdates = req.body?.updates && typeof req.body.updates === "object" ? req.body.updates : {};
+      const isFileOnly =
+        bodyChanges.length > 0 &&
+        bodyChanges.every((change) => normalizeValue(change?.field) === "files");
+      const updatesOk =
+        Object.keys(bodyUpdates).length === 0 ||
+        Object.keys(bodyUpdates).every((key) => ["files", "updatedAt"].includes(key));
+      if (isFileOnly && updatesOk) {
+        req.task = task;
+        req.taskAccessMode = "full";
+        req.taskAccessContext = {
+          mode: "full",
+          assignedDesignerEmail: await resolveAssignedDesignerEmail(task),
+          ccEmails: extractTaskCcEmails(task)
+        };
         return next();
       }
     }

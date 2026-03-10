@@ -695,6 +695,63 @@ const buildLocalTaskDraft = (state: WizardState, attachmentsUploaded: boolean): 
     };
 };
 
+const isGenericDraftTitle = (value: string) => {
+    const normalized = normalizeSpace(value).toLowerCase();
+    if (!normalized) return true;
+    return (
+        normalized === 'design request' ||
+        normalized === 'request' ||
+        normalized === 'task request' ||
+        normalized === 'design task'
+    );
+};
+
+const buildMergedDraftNotes = (draft: TaskDraft) => {
+    const noteParts = [draft.notes, draft.attachmentsNote]
+        .map((value) => normalizeSpace(value || ''))
+        .filter(Boolean);
+
+    if (noteParts.length === 0) {
+        return undefined;
+    }
+
+    return Array.from(new Set(noteParts)).join('\n\n');
+};
+
+const mergeDraftWithWizardState = (
+    draft: TaskDraft,
+    state: WizardState,
+    attachmentsUploaded: boolean
+): TaskDraft => {
+    const localDraft = buildLocalTaskDraft(state, attachmentsUploaded);
+    if (!localDraft) {
+        const explicitCategory = state.category || draft.category;
+        const explicitUrgency = state.urgency || draft.urgency;
+        const explicitDeadline = parseDeadlineToIso(state.deadline) || draft.deadline;
+
+        return {
+            ...draft,
+            title: isGenericDraftTitle(draft.title) && state.deliverable
+                ? toTitleCase(state.deliverable)
+                : draft.title,
+            category: explicitCategory,
+            urgency: explicitUrgency,
+            deadline: explicitDeadline,
+            notes: buildMergedDraftNotes(draft),
+        };
+    }
+
+    return {
+        ...draft,
+        ...localDraft,
+        title: isGenericDraftTitle(draft.title) ? localDraft.title : draft.title || localDraft.title,
+        category: state.category || draft.category || localDraft.category,
+        urgency: state.urgency || draft.urgency || localDraft.urgency,
+        deadline: parseDeadlineToIso(state.deadline) || draft.deadline || localDraft.deadline,
+        notes: buildMergedDraftNotes(draft),
+    };
+};
+
 const buildLocalWizardOutcome = (state: WizardState, attachmentsUploaded: boolean) => {
     const nextQuestion = getNextMissingQuestion(state, attachmentsUploaded);
     if (nextQuestion) {
@@ -881,7 +938,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             ? `${normalizedAttachmentContext.slice(0, MAX_ATTACHMENT_CONTEXT_CHARS).trim()}\n...[attachment content truncated]`
             : normalizedAttachmentContext;
         const systemEvent = hasAttachments
-            ? 'SYSTEM CONTEXT: User has uploaded file(s). Use attachments as available reference while following the step-by-step wizard.'
+            ? 'SYSTEM CONTEXT: User has uploaded file(s). Treat attachments as supporting reference only. Prioritize the confirmed chat answers for the final brief, title, category, urgency, and deadline.'
             : '';
         const fileContext = attachmentSnippet ? `\n\nATTACHED FILE CONTENT:\n${attachmentSnippet}` : '';
         const provisionalUserMessage = trimmedInput && !isHiddenMessage ? {
@@ -959,7 +1016,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                     setMessages(prev => [...prev, assistantMessage]);
                     return;
                 }
-                setTaskDraft(response.data);
+                setTaskDraft(mergeDraftWithWizardState(response.data, wizardState, Boolean(hasAttachments)));
                 const assistantMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
@@ -973,7 +1030,11 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 setQuotaBlocked(false);
                 readyNudgeTriggeredRef.current = false;
                 const payload = response.data as TaskBuddyActionPayload;
-                const draft = mapActionPayloadToDraft(payload);
+                const draft = mergeDraftWithWizardState(
+                    mapActionPayloadToDraft(payload),
+                    wizardState,
+                    Boolean(hasAttachments)
+                );
                 if (shouldAskForAttachments) {
                     const assistantMessage: Message = {
                         id: (Date.now() + 1).toString(),

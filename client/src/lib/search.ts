@@ -75,7 +75,12 @@ export const buildSearchItemsFromTasks = (tasks: Task[]): GlobalSearchItem[] => 
         id: `file:${task.id}:${file.name}`,
         label: file.name,
         description: task.title,
-        meta: `${file.type === 'output' ? 'Final file' : 'Associated file'}`,
+        meta:
+          file.type === 'output'
+            ? 'Final file'
+            : file.type === 'working'
+              ? 'Working file'
+              : 'Associated file',
         href: `/task/${task.id}`,
         kind: 'file',
       });

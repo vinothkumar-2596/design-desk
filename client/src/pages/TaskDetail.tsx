@@ -44,6 +44,8 @@ import {
   History,
   Check,
   ChevronDown,
+  Copy,
+  PenTool,
   X,
   XCircle,
   ExternalLink,
@@ -191,7 +193,19 @@ const resolveTaskCcEmails = (task?: typeof mockTasks[number]) => {
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 type UploadStatus = 'uploading' | 'done' | 'error';
 type ApprovalDecision = 'approved' | 'rejected';
+type TaskUploadChannel = 'attachment' | 'working';
 type UploadItem = { id: string; name: string; status: UploadStatus; progress?: number };
+type WorkingUploadStatus = 'preparing' | 'uploading' | 'done' | 'error';
+type WorkingUploadItem = {
+  id: string;
+  name: string;
+  status: WorkingUploadStatus;
+  loadedBytes: number;
+  totalBytes: number;
+  progress: number;
+  speedBytesPerSecond: number;
+  error?: string;
+};
 type FileUploadResponse = {
   id?: string;
   webViewLink?: string;
@@ -218,6 +232,17 @@ type OutputDisplayFile = {
   mime?: string;
   thumbnailUrl?: string;
 };
+type FileActionTarget = (typeof mockTasks)[number]['files'][number] | OutputDisplayFile;
+const getFileListItemKey = (
+  file: { id?: string; url?: string; name?: string },
+  index: number
+) =>
+  [
+    String(file.id || '').trim() || 'no-id',
+    String(file.url || '').trim() || 'no-url',
+    String(file.name || '').trim() || 'no-name',
+    String(index),
+  ].join('::');
 const getReviewAnnotationFileKey = (value?: { fileId?: string; fileUrl?: string; id?: string; url?: string }) => {
   const byId = String(value?.fileId || value?.id || '').trim();
   if (byId) return byId;
@@ -263,14 +288,17 @@ const glassPanelClass =
 const fileRowClass =
   'flex items-center justify-between rounded-lg border border-transparent bg-gradient-to-r from-[#F7FAFF]/90 via-[#EEF4FF]/60 to-[#EAF2FF]/80 px-4 py-1.5 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-xl dark:bg-none dark:bg-slate-900/70 dark:border-slate-700/60 dark:text-slate-200';
 const fileActionButtonClass =
-  'h-9 w-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-none dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80';
+  'icon-action-press h-9 w-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 text-[#223467] shadow-none transition-all duration-150 ease-out supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#D3E1FF] hover:bg-[#EEF4FF]/62 hover:text-[#223467] hover:shadow-none dark:border-slate-600/70 dark:bg-none dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/70 dark:hover:text-slate-100';
 const fileGlassPillButtonClass =
-  'h-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-3 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80';
+  'h-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-3 text-[#223467] shadow-none transition-all duration-150 ease-out supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#D3E1FF] hover:bg-[#EEF4FF]/62 hover:text-[#223467] hover:shadow-none active:translate-y-[1px] active:scale-[0.98] dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/70 dark:hover:text-slate-100';
 const fileGlassIconButtonClass =
-  'h-9 w-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-none dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80';
+  'h-9 w-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 text-[#223467] shadow-none transition-all duration-150 ease-out supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#D3E1FF] hover:bg-[#EEF4FF]/62 hover:text-[#223467] hover:shadow-none active:translate-y-[1px] active:scale-[0.94] dark:border-slate-600/70 dark:bg-none dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/70 dark:hover:text-slate-100';
 const badgeGlassClass =
   'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
 const changeHistoryCardClass = 'rounded-lg border border-border/60 bg-secondary/40';
+const PSD_FILE_ICON_URL = '/icons/psd-file.svg';
+const MAX_WORKING_FILE_BYTES = Math.floor(2.5 * 1024 * 1024 * 1024);
+const WORKING_UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024;
 
 import { API_URL, authFetch, getAuthToken, openDriveReconnectWindow } from '@/lib/api';
 
@@ -329,6 +357,8 @@ export default function TaskDetail() {
   const [isUploadingFinal, setIsUploadingFinal] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null);
+  const [isUploadingWorking, setIsUploadingWorking] = useState(false);
+  const [workingUploadItems, setWorkingUploadItems] = useState<WorkingUploadItem[]>([]);
   const [isFinalUploadDragging, setIsFinalUploadDragging] = useState(false);
   const [finalUploadItems, setFinalUploadItems] = useState<UploadItem[]>([]);
   const [showFinalUploadList, setShowFinalUploadList] = useState(true);
@@ -350,8 +380,11 @@ export default function TaskDetail() {
   const [isAcceptingTask, setIsAcceptingTask] = useState(false);
   const [emergencyDecisionReason, setEmergencyDecisionReason] = useState('');
   const [showReferenceFileList, setShowReferenceFileList] = useState(true);
+  const [showWorkingFileList, setShowWorkingFileList] = useState(true);
   const [showFinalDeliverableList, setShowFinalDeliverableList] = useState(true);
   const [isEditAttachmentDragging, setIsEditAttachmentDragging] = useState(false);
+  const [isWorkingUploadDragging, setIsWorkingUploadDragging] = useState(false);
+  const [copiedFileKey, setCopiedFileKey] = useState('');
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
   const [approvalDecisionInFlight, setApprovalDecisionInFlight] = useState<ApprovalDecision | null>(null);
   const [finalReviewDecisionInFlight, setFinalReviewDecisionInFlight] =
@@ -365,14 +398,17 @@ export default function TaskDetail() {
   >({});
   const sizeFetchRef = useRef(new Set<string>());
   const addAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const workingUploadInputRef = useRef<HTMLInputElement | null>(null);
   const finalUploadInputRef = useRef<HTMLInputElement | null>(null);
   const replaceFinalFileInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const copiedFileResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isChatComposerFocusedRef = useRef(false);
   const clientIdRef = useRef<string>('');
   const finalUploadAbortRef = useRef<AbortController | null>(null);
+  const workingUploadDismissTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [compareLeftId, setCompareLeftId] = useState('');
   const [compareRightId, setCompareRightId] = useState('');
   const storageKey = id ? `designhub.task.${id}` : '';
@@ -395,6 +431,15 @@ export default function TaskDetail() {
       return latestApprovalCheckpointAt ? time > latestApprovalCheckpointAt : true;
     }).length;
   }, [changeHistory]);
+  useEffect(() => {
+    return () => {
+      if (copiedFileResetTimerRef.current) {
+        clearTimeout(copiedFileResetTimerRef.current);
+      }
+      workingUploadDismissTimersRef.current.forEach((timer) => clearTimeout(timer));
+      workingUploadDismissTimersRef.current.clear();
+    };
+  }, []);
   const displayedChangeCount = user?.role === 'staff' ? staffChangeCount : changeCount;
   const approvalLockedForStaff = false;
   const staffChangeLabel = staffChangeCount === 1 ? '1 change updated' : `${staffChangeCount} changes updated`;
@@ -545,108 +590,128 @@ export default function TaskDetail() {
         })) ?? [],
         createdAt: new Date(comment.createdAt),
       })),
-      designVersions: raw.designVersions?.map((version, index) => ({
-        ...version,
-        id:
-          version.id ||
-          (version as { _id?: string })._id ||
-          `version-${index}-${version.name || 'design'}`,
-        uploadedAt: new Date(version.uploadedAt),
-      })) ?? [],
-      finalDeliverableVersions: raw.finalDeliverableVersions?.map((version, index) => ({
-        ...version,
-        id:
-          version.id ||
-          (version as { _id?: string })._id ||
-          `final-version-${version.version || index + 1}-${index}`,
-        uploadedAt: new Date(version.uploadedAt),
-        reviewedAt: version.reviewedAt ? new Date(version.reviewedAt) : undefined,
-        reviewAnnotations:
-          version.reviewAnnotations?.map((annotation, annotationIndex) => ({
-            ...annotation,
-            id:
-              annotation.id ||
-              `annotation-${index}-${annotationIndex}`,
-            fileId:
-              String(annotation.fileId || '').trim() ||
-              String(annotation.fileUrl || '').trim(),
-            fileName: String(annotation.fileName || '').trim(),
-            fileUrl: String(annotation.fileUrl || '').trim(),
-            comments:
-              annotation.comments?.map((comment, commentIndex) => ({
-                ...comment,
-                id:
-                  comment.id ||
-                  `annotation-comment-${index}-${annotationIndex}-${commentIndex}`,
-                x: Number(comment.x ?? 0),
-                y: Number(comment.y ?? 0),
-                text: String(comment.text || ''),
-                thread:
-                  comment.thread?.map((message, messageIndex) => ({
-                    ...message,
-                    id:
-                      message.id ||
-                      `annotation-thread-${index}-${annotationIndex}-${commentIndex}-${messageIndex}`,
-                    text: String(message.text || ''),
-                    author: String(message.author || ''),
-                    createdAt: String(message.createdAt || ''),
-                  })) ?? [],
-              })) ?? [],
-            shapes:
-              annotation.shapes?.map((shape, shapeIndex) => ({
-                ...shape,
-                id: shape.id || `annotation-shape-${index}-${annotationIndex}-${shapeIndex}`,
-                kind: String(shape.kind || 'pen') as
-                  | 'pen'
-                  | 'highlighter'
-                  | 'arrow'
-                  | 'rect'
-                  | 'ellipse'
-                  | 'text'
-                  | 'blur_rect'
-                  | 'highlight_rect',
-                color: String(shape.color || '#ef4444'),
-                width: Number(shape.width ?? 2),
-                opacity: Number(shape.opacity ?? 1),
-                points:
-                  shape.points?.map((point) => ({
-                    x: Number(point.x ?? 0),
-                    y: Number(point.y ?? 0),
-                  })) ?? [],
-                startX: Number(shape.startX ?? 0),
-                startY: Number(shape.startY ?? 0),
-                endX: Number(shape.endX ?? 0),
-                endY: Number(shape.endY ?? 0),
-                x: Number(shape.x ?? 0),
-                y: Number(shape.y ?? 0),
-                text: String(shape.text || ''),
-                fontSize: Number(shape.fontSize ?? 24),
-                fillColor: String(shape.fillColor || ''),
-              })) ?? [],
-            strokes:
-              annotation.strokes?.map((stroke, strokeIndex) => ({
-                ...stroke,
-                id:
-                  stroke.id ||
-                  `annotation-stroke-${index}-${annotationIndex}-${strokeIndex}`,
-                width: Number(stroke.width ?? 2),
-                points:
-                  stroke.points?.map((point) => ({
-                    x: Number(point.x ?? 0),
-                    y: Number(point.y ?? 0),
-                  })) ?? [],
-              })) ?? [],
-          })) ?? [],
-        files:
-          version.files?.map((file, fileIndex) => ({
-            ...file,
-            id:
-              file.id ||
-              (file as { _id?: string })._id ||
-              `final-file-${index}-${fileIndex}-${file.name || 'file'}`,
-            uploadedAt: file.uploadedAt ? new Date(file.uploadedAt) : new Date(),
-          })) ?? [],
-      })) ?? [],
+      designVersions: (() => {
+        const usedIds = new Map<string, number>();
+        return (
+          raw.designVersions?.map((version, index) => {
+            const baseId =
+              version.id ||
+              (version as { _id?: string })._id ||
+              `version-${index}-${version.name || 'design'}`;
+            const duplicateCount = usedIds.get(baseId) ?? 0;
+            usedIds.set(baseId, duplicateCount + 1);
+            return {
+              ...version,
+              id: duplicateCount === 0 ? baseId : `${baseId}-${duplicateCount}`,
+              uploadedAt: new Date(version.uploadedAt),
+            };
+          }) ?? []
+        );
+      })(),
+      finalDeliverableVersions: (() => {
+        const usedIds = new Map<string, number>();
+        return (
+          raw.finalDeliverableVersions?.map((version, index) => {
+            const baseId =
+              version.id ||
+              (version as { _id?: string })._id ||
+              `final-version-${version.version || index + 1}-${index}`;
+            const duplicateCount = usedIds.get(baseId) ?? 0;
+            usedIds.set(baseId, duplicateCount + 1);
+            return {
+              ...version,
+              id: duplicateCount === 0 ? baseId : `${baseId}-${duplicateCount}`,
+              uploadedAt: new Date(version.uploadedAt),
+              reviewedAt: version.reviewedAt ? new Date(version.reviewedAt) : undefined,
+              reviewAnnotations:
+                version.reviewAnnotations?.map((annotation, annotationIndex) => ({
+                  ...annotation,
+                  id:
+                    annotation.id ||
+                    `annotation-${index}-${annotationIndex}`,
+                  fileId:
+                    String(annotation.fileId || '').trim() ||
+                    String(annotation.fileUrl || '').trim(),
+                  fileName: String(annotation.fileName || '').trim(),
+                  fileUrl: String(annotation.fileUrl || '').trim(),
+                  comments:
+                    annotation.comments?.map((comment, commentIndex) => ({
+                      ...comment,
+                      id:
+                        comment.id ||
+                        `annotation-comment-${index}-${annotationIndex}-${commentIndex}`,
+                      x: Number(comment.x ?? 0),
+                      y: Number(comment.y ?? 0),
+                      text: String(comment.text || ''),
+                      thread:
+                        comment.thread?.map((message, messageIndex) => ({
+                          ...message,
+                          id:
+                            message.id ||
+                            `annotation-thread-${index}-${annotationIndex}-${commentIndex}-${messageIndex}`,
+                          text: String(message.text || ''),
+                          author: String(message.author || ''),
+                          createdAt: String(message.createdAt || ''),
+                        })) ?? [],
+                    })) ?? [],
+                  shapes:
+                    annotation.shapes?.map((shape, shapeIndex) => ({
+                      ...shape,
+                      id: shape.id || `annotation-shape-${index}-${annotationIndex}-${shapeIndex}`,
+                      kind: String(shape.kind || 'pen') as
+                        | 'pen'
+                        | 'highlighter'
+                        | 'arrow'
+                        | 'rect'
+                        | 'ellipse'
+                        | 'text'
+                        | 'blur_rect'
+                        | 'highlight_rect',
+                      color: String(shape.color || '#ef4444'),
+                      width: Number(shape.width ?? 2),
+                      opacity: Number(shape.opacity ?? 1),
+                      points:
+                        shape.points?.map((point) => ({
+                          x: Number(point.x ?? 0),
+                          y: Number(point.y ?? 0),
+                        })) ?? [],
+                      startX: Number(shape.startX ?? 0),
+                      startY: Number(shape.startY ?? 0),
+                      endX: Number(shape.endX ?? 0),
+                      endY: Number(shape.endY ?? 0),
+                      x: Number(shape.x ?? 0),
+                      y: Number(shape.y ?? 0),
+                      text: String(shape.text || ''),
+                      fontSize: Number(shape.fontSize ?? 24),
+                      fillColor: String(shape.fillColor || ''),
+                    })) ?? [],
+                  strokes:
+                    annotation.strokes?.map((stroke, strokeIndex) => ({
+                      ...stroke,
+                      id:
+                        stroke.id ||
+                        `annotation-stroke-${index}-${annotationIndex}-${strokeIndex}`,
+                      width: Number(stroke.width ?? 2),
+                      points:
+                        stroke.points?.map((point) => ({
+                          x: Number(point.x ?? 0),
+                          y: Number(point.y ?? 0),
+                        })) ?? [],
+                    })) ?? [],
+                })) ?? [],
+              files:
+                version.files?.map((file, fileIndex) => ({
+                  ...file,
+                  id:
+                    file.id ||
+                    (file as { _id?: string })._id ||
+                    `final-file-${index}-${fileIndex}-${file.name || 'file'}`,
+                  uploadedAt: file.uploadedAt ? new Date(file.uploadedAt) : new Date(),
+                })) ?? [],
+            };
+          }) ?? []
+        );
+      })(),
       changeHistory: raw.changeHistory?.map((entry) => ({
         ...entry,
         createdAt: new Date(entry.createdAt),
@@ -1170,6 +1235,8 @@ export default function TaskDetail() {
   const canManageVersions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canComment = true;
   const canRemoveFiles = canDesignerActions;
+  const canViewWorkingFiles = user?.role === 'designer' || user?.role === 'treasurer';
+  const canManageWorkingFiles = canDesignerActions || (isDesignerRole && isMainDesignerUser);
   const minDeadlineDate = addWorkingDays(new Date(), 3);
   const emergencyStatus =
     taskState.isEmergency || taskState.emergencyApprovalStatus
@@ -1198,6 +1265,7 @@ export default function TaskDetail() {
     return '';
   }, [taskState?.changeHistory]);
   const inputFiles = taskState.files.filter((f) => f.type === 'input');
+  const workingFiles = taskState.files.filter((f) => f.type === 'working');
   const outputFiles = taskState.files.filter((f) => f.type === 'output');
   const finalDeliverableVersions = useMemo<FinalDeliverableVersion[]>(() => {
     const raw = taskState?.finalDeliverableVersions ?? [];
@@ -1350,13 +1418,17 @@ export default function TaskDetail() {
   );
   const finalUploadProgress = useMemo(() => {
     if (finalUploadItems.length === 0) return 0;
-    const totalProgress = finalUploadItems.reduce((sum, item) => {
+    const progressItems = finalUploadItems.some((item) => item.status === 'uploading')
+      ? finalUploadItems.filter((item) => item.status === 'uploading')
+      : finalUploadItems;
+    if (progressItems.length === 0) return 0;
+    const totalProgress = progressItems.reduce((sum, item) => {
       if (item.status === 'done') return sum + 100;
       const raw = Number(item.progress);
       const normalized = Number.isFinite(raw) ? Math.max(0, Math.min(99, Math.round(raw))) : 0;
       return sum + normalized;
     }, 0);
-    return Math.max(0, Math.min(100, Math.round(totalProgress / finalUploadItems.length)));
+    return Math.max(0, Math.min(100, Math.round(totalProgress / progressItems.length)));
   }, [finalUploadItems]);
   const finalUploadLabel =
     finalUploadTotals.uploading > 0
@@ -1515,6 +1587,15 @@ export default function TaskDetail() {
     }
     return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`;
   };
+  const formatTransferAmount = (bytes?: number) => {
+    const formatted = formatFileSize(bytes);
+    return formatted || '0 B';
+  };
+  const formatTransferSpeed = (bytesPerSecond?: number) => {
+    const numeric = Number(bytesPerSecond);
+    if (!Number.isFinite(numeric) || numeric <= 0) return '0 B/s';
+    return `${formatTransferAmount(numeric)}/s`;
+  };
   const toTitleCaseFileName = (name: string) => {
     const lastDot = name.lastIndexOf('.');
     const base = lastDot > 0 ? name.slice(0, lastDot) : name;
@@ -1555,7 +1636,7 @@ export default function TaskDetail() {
     if (webContentLink) return webContentLink;
     return buildDriveViewUrl(payload?.id);
   };
-  const getPreviewUrl = (file: (typeof taskState)['files'][number]) => {
+  const getPreviewUrl = (file: FileActionTarget) => {
     if (file.thumbnailUrl) return file.thumbnailUrl;
     if (!file.url) return '';
     const driveId = getDriveFileId(file.url);
@@ -1570,17 +1651,17 @@ export default function TaskDetail() {
     if (!ext) return false;
     return ['jpg', 'jpeg', 'png', 'pdf', 'psd'].includes(ext);
   };
-  const isLinkOnlyFile = (file: (typeof taskState)['files'][number]) => {
+  const isLinkOnlyFile = (file: FileActionTarget) => {
     return String(file.mime || '').toLowerCase() === 'link';
   };
-  const isGoogleDriveLinkFile = (file: (typeof taskState)['files'][number]) =>
+  const isGoogleDriveLinkFile = (file: FileActionTarget) =>
     Boolean(file.url && getDriveLinkMeta(file.url).isGoogleDrive);
-  const shouldUseLinkIcon = (file: (typeof taskState)['files'][number]) => {
+  const shouldUseLinkIcon = (file: FileActionTarget) => {
     if (!file.url) return false;
     if (isLinkOnlyFile(file)) return true;
     return !isDownloadableExtension(file.name);
   };
-  const getFileActionUrl = (file: (typeof taskState)['files'][number]) => {
+  const getFileActionUrl = (file: FileActionTarget) => {
     if (!file.url) return '';
     const driveId = getDriveFileId(file.url);
     if (shouldUseLinkIcon(file)) {
@@ -1612,7 +1693,61 @@ export default function TaskDetail() {
     }
     return fallbackName;
   };
-  const downloadFileViaApi = async (file: (typeof taskState)['files'][number]) => {
+  const copyToClipboard = async (value: string) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      if (typeof document === 'undefined') return;
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    }
+  };
+  const getFileShareUrl = (file: FileActionTarget) => {
+    const rawUrl = String(file.url || '').trim();
+    if (!rawUrl) return '';
+    const driveId = getDriveFileId(rawUrl);
+    if (driveId) {
+      return buildDriveViewUrl(driveId);
+    }
+    return getFileActionUrl(file) || rawUrl;
+  };
+  const getFileCopyFeedbackKey = (file: FileActionTarget) => {
+    const type = String(file.type || '').trim() || 'file';
+    const fileId = String(file.id || '').trim();
+    if (fileId) return `${type}:${fileId}`;
+    const rawUrl = String(file.url || '').trim();
+    if (rawUrl) return `${type}:${rawUrl}`;
+    return `${type}:${String(file.name || '').trim()}`;
+  };
+  const handleCopyFileLink = async (file: FileActionTarget) => {
+    const shareUrl = getFileShareUrl(file);
+    if (!shareUrl) {
+      toast.error('Share link is missing for this file.');
+      return;
+    }
+    await copyToClipboard(shareUrl);
+    const nextCopiedKey = getFileCopyFeedbackKey(file);
+    setCopiedFileKey(nextCopiedKey);
+    if (copiedFileResetTimerRef.current) {
+      clearTimeout(copiedFileResetTimerRef.current);
+    }
+    copiedFileResetTimerRef.current = setTimeout(() => {
+      setCopiedFileKey((current) => (current === nextCopiedKey ? '' : current));
+    }, 1200);
+    toast.success('File link copied.');
+  };
+  const downloadFileViaApi = async (file: FileActionTarget) => {
     const fileLinkUrl = getFileActionUrl(file);
     if (!fileLinkUrl || fileLinkUrl === '#') return;
 
@@ -1632,7 +1767,7 @@ export default function TaskDetail() {
     link.remove();
     URL.revokeObjectURL(blobUrl);
   };
-  const handleFileAction = async (file: (typeof taskState)['files'][number]) => {
+  const handleFileAction = async (file: FileActionTarget) => {
     const fileLinkUrl = getFileActionUrl(file);
     if (!fileLinkUrl || fileLinkUrl === '#') {
       toast.error('File link is missing. Refresh the task or re-upload the attachment.');
@@ -1695,9 +1830,96 @@ export default function TaskDetail() {
     }));
     toast.success('Feedback saved for this file.');
   };
-  const renderFilePreview = (file: (typeof taskState)['files'][number]) => {
+  const getDesignSourcePreviewVariant = (fileName: string) => {
+    const extension = getFileExtension(fileName).toLowerCase();
+    if (extension === 'psd') {
+      return {
+        kind: 'image' as const,
+        iconSrc: PSD_FILE_ICON_URL,
+        iconAlt: 'PSD file icon',
+      };
+    }
+    if (extension === 'ai') {
+      return {
+        kind: 'brand' as const,
+        topLabel: 'Ai',
+        bottomLabel: 'AI',
+        cardClass:
+          'border-[#4B2800] bg-[linear-gradient(180deg,_#1F1304_0%,_#472603_55%,_#8F4A02_100%)] text-[#FFB347] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]',
+        foldClass: 'border-t-[14px] border-t-[#FF9A00] border-l-[14px] border-l-transparent',
+        topLabelClass: 'text-[16px] font-semibold tracking-[-0.04em]',
+        bottomLabelClass: 'text-[9px] font-semibold tracking-[0.22em] text-white/92',
+      };
+    }
+    if (extension === 'eps') {
+      return {
+        kind: 'paper' as const,
+        topLabel: 'EPS',
+        bottomLabel: 'EPS',
+        cardClass:
+          'border-[#CBD5E1] bg-[linear-gradient(180deg,_#FFFFFF_0%,_#F5F7FA_100%)] text-[#3F3F46] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]',
+        foldClass: 'border-t-[14px] border-t-[#E5E7EB] border-l-[14px] border-l-transparent',
+        topLabelClass: 'text-[9px] font-semibold tracking-[0.22em]',
+        bottomLabelClass: 'text-[10px] font-semibold tracking-[0.16em] text-[#3F3F46]',
+      };
+    }
+    return null;
+  };
+  const renderFilePreview = (file: FileActionTarget) => {
     const extLabel = getFileExtension(file.name);
     const previewUrl = getPreviewUrl(file);
+    const designSourceVariant = getDesignSourcePreviewVariant(file.name);
+    if (designSourceVariant) {
+      if (designSourceVariant.kind === 'image') {
+        return (
+          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-[9px]">
+            <img
+              src={designSourceVariant.iconSrc}
+              alt={designSourceVariant.iconAlt}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              onError={(event) => {
+                event.currentTarget.style.display = 'none';
+              }}
+            />
+          </div>
+        );
+      }
+      return (
+        <div
+          className={cn(
+            'relative flex h-11 w-12 shrink-0 flex-col items-center justify-between overflow-hidden rounded-[10px] border px-1.5 py-1.5',
+            designSourceVariant.cardClass
+          )}
+        >
+          <span
+            className={cn(
+              'absolute right-0 top-0 h-0 w-0',
+              designSourceVariant.foldClass
+            )}
+          />
+          {designSourceVariant.kind === 'paper' ? (
+            <>
+              <div className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-[#D4D4D8] bg-white/80">
+                <PenTool className="h-2.5 w-2.5 text-[#52525B]" strokeWidth={2.2} />
+              </div>
+              <span className={cn('mt-1', designSourceVariant.bottomLabelClass)}>
+                {designSourceVariant.bottomLabel}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className={cn('mt-0.5', designSourceVariant.topLabelClass)}>
+                {designSourceVariant.topLabel}
+              </span>
+              <span className={cn('mb-0.5', designSourceVariant.bottomLabelClass)}>
+                {designSourceVariant.bottomLabel}
+              </span>
+            </>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="relative h-9 w-12 overflow-hidden rounded-[6px] border border-transparent bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.6),_transparent_55%),linear-gradient(160deg,_rgba(236,244,255,0.85),_rgba(198,220,255,0.45))] backdrop-blur-xl dark:border-slate-700/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(100,116,139,0.35),_transparent_55%),linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.75))] dark:shadow-none">
         <div className="absolute inset-0 rounded-[6px] border border-transparent bg-gradient-to-br from-white/85 via-[#EEF4FF]/75 to-[#D5E5FF]/65 backdrop-blur-sm dark:bg-gradient-to-br dark:from-slate-800/95 dark:via-slate-700/90 dark:to-slate-700/70 dark:border-slate-700/60">
@@ -1743,10 +1965,21 @@ export default function TaskDetail() {
   const recordChanges = async (
     changes: ChangeInput[],
     updates: Partial<typeof taskState> = {},
-    options?: { allowManagerApproval?: boolean; skipSuccessToast?: boolean }
+    options?: {
+      allowManagerApproval?: boolean;
+      allowMainDesignerFinalize?: boolean;
+      skipSuccessToast?: boolean;
+    }
   ) => {
     if (changes.length === 0) return false;
-    if (!ensureWritableTask({ allowManagerApproval: options?.allowManagerApproval })) return false;
+    if (
+      !ensureWritableTask({
+        allowManagerApproval: options?.allowManagerApproval,
+        allowMainDesignerFinalize: options?.allowMainDesignerFinalize,
+      })
+    ) {
+      return false;
+    }
 
     const isStaffUser = user?.role === 'staff';
     const now = new Date();
@@ -2662,9 +2895,17 @@ export default function TaskDetail() {
     addAttachmentInputRef.current?.click();
   };
 
-  const handleRemoveFile = (fileId: string, fileName: string) => {
-    if (!canRemoveFiles) {
+  const handleRemoveFile = (
+    fileId: string,
+    fileName: string,
+    fileType: (typeof taskState.files)[number]['type'] = 'input'
+  ) => {
+    const canRemoveThisFile = fileType === 'working' ? canManageWorkingFiles : canRemoveFiles;
+    if (!canRemoveThisFile) {
       toast.error('Only designers can remove files.');
+      return;
+    }
+    if (!ensureWritableTask(fileType === 'working' ? { allowMainDesignerFinalize: true } : undefined)) {
       return;
     }
     if (approvalLockedForStaff) {
@@ -2692,14 +2933,29 @@ export default function TaskDetail() {
     );
   };
 
+  const setTaskUploadState = (
+    channel: TaskUploadChannel,
+    uploading: boolean,
+    progress: number | null
+  ) => {
+    if (channel === 'working') {
+      setIsUploadingWorking(uploading);
+      return;
+    }
+    setIsUploadingAttachment(uploading);
+    setAttachmentUploadProgress(progress);
+  };
+
   const uploadFinalFileWithProgress = ({
     file,
     taskTitle,
+    taskId,
     uploadId,
     signal,
   }: {
     file: File;
     taskTitle: string;
+    taskId: string;
     uploadId: string;
     signal: AbortSignal;
   }) =>
@@ -2713,6 +2969,7 @@ export default function TaskDetail() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('taskTitle', taskTitle);
+      formData.append('taskId', taskId);
 
       const handleAbort = () => xhr.abort();
       signal.addEventListener('abort', handleAbort, { once: true });
@@ -2793,7 +3050,7 @@ export default function TaskDetail() {
       status: 'uploading' as const,
       progress: 0,
     }));
-    setFinalUploadItems(uploadItems);
+    setFinalUploadItems((prev) => [...prev, ...uploadItems]);
     setShowFinalUploadList(true);
 
     if (finalUploadAbortRef.current) {
@@ -2820,6 +3077,7 @@ export default function TaskDetail() {
           const data = await uploadFinalFileWithProgress({
             file,
             taskTitle: taskState.title,
+            taskId,
             uploadId,
             signal: controller.signal,
           });
@@ -2891,7 +3149,9 @@ export default function TaskDetail() {
             duration: 10000,
           });
         } else if (hasFailure) {
-          toast.error('File upload failed');
+          toast.error('File upload failed', {
+            description: 'One or more files could not be uploaded. Please retry.',
+          });
         } else if (uploadedFiles.length > 0) {
           setPendingFinalFiles((prev) => [...prev, ...uploadedFiles]);
           toast.success('Files staged. Click Submit to create the next version.');
@@ -2919,7 +3179,7 @@ export default function TaskDetail() {
             duration: 10000,
           });
         } else {
-          toast.error('File upload failed');
+          toast.error('File upload failed', { description: errorMsg });
         }
       }
     } finally {
@@ -2956,6 +3216,15 @@ export default function TaskDetail() {
       return;
     }
     if (!ensureWritableTask({ allowMainDesignerFinalize: true })) return;
+    const taskId = String(
+      (taskState as { id?: string; _id?: string })?.id ||
+      (taskState as { _id?: string })?._id ||
+      ''
+    ).trim();
+    if (!taskId) {
+      toast.error('Task id missing. Please refresh and try again.');
+      return;
+    }
 
     const stagedBase =
       pendingFinalFiles.length > 0
@@ -3013,6 +3282,7 @@ export default function TaskDetail() {
       const data = await uploadFinalFileWithProgress({
         file: selectedFile,
         taskTitle: taskState.title,
+        taskId,
         uploadId,
         signal: controller.signal,
       });
@@ -3247,16 +3517,24 @@ export default function TaskDetail() {
   const uploadTaskAttachments = async (
     selectedFiles: File[],
     options?: {
-      type?: 'input' | 'output';
+      type?: 'input' | 'output' | 'working';
       category?: 'reference' | 'others';
       details?: string;
       nameOverride?: string;
       successMessage?: string;
+      changeNote?: string;
+      taskSection?: string;
+      channel?: TaskUploadChannel;
+      allowMainDesigner?: boolean;
     }
   ) => {
     if (!selectedFiles || selectedFiles.length === 0) return 0;
     if (!taskState) return 0;
-    if (!ensureWritableTask()) {
+    if (
+      !ensureWritableTask(
+        options?.allowMainDesigner ? { allowMainDesignerFinalize: true } : undefined
+      )
+    ) {
       return 0;
     }
     if (!apiUrl) {
@@ -3264,13 +3542,18 @@ export default function TaskDetail() {
       return 0;
     }
 
-    setIsUploadingAttachment(true);
+    const uploadChannel = options?.channel ?? 'attachment';
+    const taskId = String(
+      (taskState as { id?: string; _id?: string })?.id ||
+      (taskState as { _id?: string })?._id ||
+      ''
+    ).trim();
+    setTaskUploadState(uploadChannel, true, 0);
     const uploads = Array.from(selectedFiles);
     const selectedType = options?.type ?? 'input';
     const selectedCategory = options?.category ?? 'reference';
     const trimmedDetails = options?.details?.trim() || '';
     const trimmedNameOverride = options?.nameOverride?.trim() || '';
-    setAttachmentUploadProgress(0);
     const uploadedTaskFiles: typeof taskState.files = [];
     const changeEntries: ChangeInput[] = [];
     try {
@@ -3279,6 +3562,12 @@ export default function TaskDetail() {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('taskTitle', taskState.title);
+        if (taskId) {
+          formData.append('taskId', taskId);
+        }
+        if (options?.taskSection) {
+          formData.append('taskSection', options.taskSection);
+        }
         const response = await authFetch(`${apiUrl}/api/files/upload`, {
           method: 'POST',
           body: formData,
@@ -3308,7 +3597,9 @@ export default function TaskDetail() {
           uploadedBy: user?.id || '',
         };
         uploadedTaskFiles.push(newFile);
-        setAttachmentUploadProgress(
+        setTaskUploadState(
+          uploadChannel,
+          true,
           Math.min(99, Math.round(((index + 1) / uploads.length) * 100))
         );
         changeEntries.push({
@@ -3316,13 +3607,13 @@ export default function TaskDetail() {
           field: 'files',
           oldValue: '',
           newValue: resolvedName,
-          note: 'Attachment uploaded',
+          note: options?.changeNote || 'Attachment uploaded',
         });
       }
       if (uploadedTaskFiles.length > 0) {
         await recordChanges(changeEntries, { files: [...taskState.files, ...uploadedTaskFiles] });
       }
-      setAttachmentUploadProgress(100);
+      setTaskUploadState(uploadChannel, true, 100);
       if (uploadedTaskFiles.length > 0) {
         toast.success(
           options?.successMessage ||
@@ -3349,12 +3640,11 @@ export default function TaskDetail() {
           duration: 10000,
         });
       } else {
-        toast.error('File upload failed');
+        toast.error('File upload failed', { description: errorMsg });
       }
       return 0;
     } finally {
-      setIsUploadingAttachment(false);
-      setAttachmentUploadProgress(null);
+      setTaskUploadState(uploadChannel, false, null);
     }
   };
 
@@ -3363,6 +3653,357 @@ export default function TaskDetail() {
     if (selectedFiles.length === 0) return;
     await uploadTaskAttachments(selectedFiles, { type: 'input', category: 'reference' });
     e.target.value = '';
+  };
+
+  const clearWorkingUploadDismissTimer = (uploadId: string) => {
+    const timer = workingUploadDismissTimersRef.current.get(uploadId);
+    if (!timer) return;
+    clearTimeout(timer);
+    workingUploadDismissTimersRef.current.delete(uploadId);
+  };
+
+  const scheduleWorkingUploadDismiss = (uploadId: string) => {
+    clearWorkingUploadDismissTimer(uploadId);
+    const timer = setTimeout(() => {
+      setWorkingUploadItems((prev) => prev.filter((item) => item.id !== uploadId));
+      workingUploadDismissTimersRef.current.delete(uploadId);
+    }, 2200);
+    workingUploadDismissTimersRef.current.set(uploadId, timer);
+  };
+
+  const updateWorkingUploadItem = (
+    uploadId: string,
+    updates: Partial<WorkingUploadItem>
+  ) => {
+    if (updates.status === 'done') {
+      scheduleWorkingUploadDismiss(uploadId);
+    } else if (updates.status) {
+      clearWorkingUploadDismissTimer(uploadId);
+    }
+    setWorkingUploadItems((prev) =>
+      prev.map((item) => (item.id === uploadId ? { ...item, ...updates } : item))
+    );
+  };
+
+  const uploadWorkingChunk = ({
+    chunk,
+    sessionUri,
+    mimeType,
+    contentRange,
+    uploadId,
+    loadedBase,
+    totalBytes,
+    startedAt,
+  }: {
+    chunk: Blob;
+    sessionUri: string;
+    mimeType: string;
+    contentRange: string;
+    uploadId: string;
+    loadedBase: number;
+    totalBytes: number;
+    startedAt: number;
+  }) =>
+    new Promise<{ complete: boolean; uploadedBytes: number; file?: FileUploadResponse }>(
+      (resolve, reject) => {
+        if (!apiUrl) {
+          reject(new Error('Chunk upload requires the backend.'));
+          return;
+        }
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', `${apiUrl}/api/files/resumable/chunk`);
+        xhr.responseType = 'json';
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.setRequestHeader('X-Upload-Session-Uri', sessionUri);
+        xhr.setRequestHeader('X-Upload-Content-Range', contentRange);
+        xhr.setRequestHeader('X-Upload-Content-Type', mimeType || 'application/octet-stream');
+        const authToken = getAuthToken();
+        if (authToken) {
+          xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+        }
+
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+          const nextLoaded = Math.min(totalBytes, loadedBase + event.loaded);
+          const elapsedSeconds = Math.max(0.001, (performance.now() - startedAt) / 1000);
+          updateWorkingUploadItem(uploadId, {
+            status: 'uploading',
+            loadedBytes: nextLoaded,
+            totalBytes,
+            progress: Math.min(100, (nextLoaded / totalBytes) * 100),
+            speedBytesPerSecond: nextLoaded / elapsedSeconds,
+          });
+        };
+
+        xhr.onload = () => {
+          const payload =
+            xhr.response && typeof xhr.response === 'object'
+              ? (xhr.response as {
+                  complete?: boolean;
+                  uploadedBytes?: number;
+                  file?: FileUploadResponse;
+                  error?: string;
+                  detail?: string;
+                })
+              : null;
+          if (xhr.status >= 200 && xhr.status < 300 && payload) {
+            resolve({
+              complete: Boolean(payload.complete),
+              uploadedBytes: Number(payload.uploadedBytes || 0),
+              file: payload.file,
+            });
+            return;
+          }
+          const message =
+            payload?.detail ||
+            payload?.error ||
+            (typeof xhr.responseText === 'string' && xhr.responseText.trim()) ||
+            'Chunk upload failed.';
+          reject(new Error(message));
+        };
+
+        xhr.onerror = () => {
+          reject(new Error('Network error while uploading chunk.'));
+        };
+
+        xhr.send(chunk);
+      }
+    );
+
+  const uploadWorkingFilesResumable = async (selectedFiles: File[]) => {
+    if (!selectedFiles || selectedFiles.length === 0) return 0;
+    if (!taskState) return 0;
+    if (!apiUrl) {
+      toast.error('Working file upload requires the backend.');
+      return 0;
+    }
+    if (!ensureWritableTask({ allowMainDesignerFinalize: true })) {
+      return 0;
+    }
+
+    setIsWorkingUploadDragging(false);
+    const taskId = String(
+      (taskState as { id?: string; _id?: string })?.id ||
+      (taskState as { _id?: string })?._id ||
+      ''
+    ).trim();
+    if (!taskId) {
+      toast.error('Task id missing. Please refresh and try again.');
+      return 0;
+    }
+
+    const validFiles = selectedFiles.filter((file) => file.size <= MAX_WORKING_FILE_BYTES);
+    const oversizedFiles = selectedFiles.filter((file) => file.size > MAX_WORKING_FILE_BYTES);
+    oversizedFiles.forEach((file) => {
+      toast.error(`${file.name} exceeds the 2.5 GB working-file limit.`);
+    });
+    if (validFiles.length === 0) return 0;
+
+    const batchId = Date.now();
+    const uploadItems = validFiles.map((file, index) => ({
+      id: `working-${batchId}-${index}`,
+      name: file.name,
+      status: 'preparing' as const,
+      loadedBytes: 0,
+      totalBytes: file.size,
+      progress: 0,
+      speedBytesPerSecond: 0,
+    }));
+    setWorkingUploadItems((prev) => [...prev, ...uploadItems]);
+    setIsUploadingWorking(true);
+
+    const uploadedTaskFiles: typeof taskState.files = [];
+    const changeEntries: ChangeInput[] = [];
+    let completedCount = 0;
+
+    try {
+      for (let index = 0; index < validFiles.length; index += 1) {
+        const file = validFiles[index];
+        const uploadId = uploadItems[index]?.id;
+        if (!uploadId) continue;
+
+        try {
+          const initResponse = await authFetch(`${apiUrl}/api/files/resumable/init`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              filename: file.name,
+              mimeType: file.type || 'application/octet-stream',
+              size: file.size,
+              taskId,
+              taskTitle: taskState.title,
+              taskSection: 'PSD Working Files',
+            }),
+          });
+          const initPayload = await initResponse.json().catch(() => ({}));
+          if (!initResponse.ok) {
+            throw new Error(initPayload?.error || 'Failed to initialize resumable upload.');
+          }
+
+          const sessionUri = String(initPayload?.sessionUri || '').trim();
+          if (!sessionUri) {
+            throw new Error('Drive upload session is missing.');
+          }
+          const chunkSize = Math.max(
+            1024 * 1024,
+            Math.min(
+              WORKING_UPLOAD_CHUNK_BYTES,
+              Number(initPayload?.chunkSize || WORKING_UPLOAD_CHUNK_BYTES)
+            )
+          );
+
+          const startedAt = performance.now();
+          let uploadedBytes = 0;
+          let filePayload: FileUploadResponse | undefined;
+          updateWorkingUploadItem(uploadId, {
+            status: 'uploading',
+            loadedBytes: 0,
+            totalBytes: file.size,
+            progress: 0,
+            speedBytesPerSecond: 0,
+            error: undefined,
+          });
+
+          while (uploadedBytes < file.size) {
+            const nextEndExclusive = Math.min(uploadedBytes + chunkSize, file.size);
+            const contentRange = `bytes ${uploadedBytes}-${nextEndExclusive - 1}/${file.size}`;
+            const result = await uploadWorkingChunk({
+              chunk: file.slice(uploadedBytes, nextEndExclusive),
+              sessionUri,
+              mimeType: file.type || 'application/octet-stream',
+              contentRange,
+              uploadId,
+              loadedBase: uploadedBytes,
+              totalBytes: file.size,
+              startedAt,
+            });
+            uploadedBytes = Math.max(uploadedBytes, Number(result.uploadedBytes || nextEndExclusive));
+            const elapsedSeconds = Math.max(0.001, (performance.now() - startedAt) / 1000);
+            updateWorkingUploadItem(uploadId, {
+              status: result.complete ? 'done' : 'uploading',
+              loadedBytes: uploadedBytes,
+              totalBytes: file.size,
+              progress: Math.min(100, (uploadedBytes / file.size) * 100),
+              speedBytesPerSecond: uploadedBytes / elapsedSeconds,
+            });
+            if (result.complete) {
+              filePayload = result.file;
+              break;
+            }
+          }
+
+          const uploadedUrl = resolveUploadedDriveUrl(filePayload);
+          if (!uploadedUrl) {
+            throw new Error('Upload finished but the Drive link is missing.');
+          }
+
+          const elapsedSeconds = Math.max(0.001, (performance.now() - startedAt) / 1000);
+          uploadedTaskFiles.push({
+            id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            name: file.name,
+            url: uploadedUrl,
+            type: 'working',
+            size: file.size,
+            mime: file.type || filePayload?.mimeType || '',
+            thumbnailUrl: filePayload?.thumbnailLink,
+            uploadedAt: new Date(),
+            uploadedBy: user?.id || '',
+          });
+          changeEntries.push({
+            type: 'file_added',
+            field: 'files',
+            oldValue: '',
+            newValue: file.name,
+            note: 'Working file uploaded',
+          });
+          updateWorkingUploadItem(uploadId, {
+            status: 'done',
+            loadedBytes: file.size,
+            totalBytes: file.size,
+            progress: 100,
+            speedBytesPerSecond: file.size / elapsedSeconds,
+            error: undefined,
+          });
+          completedCount += 1;
+        } catch (error) {
+          const message =
+            error instanceof Error && error.message
+              ? error.message
+              : 'Working file upload failed.';
+          updateWorkingUploadItem(uploadId, {
+            status: 'error',
+            error: message,
+          });
+          toast.error(`Working file upload failed: ${file.name}`, {
+            description: message,
+          });
+        }
+      }
+
+      if (uploadedTaskFiles.length > 0) {
+        const saved = await recordChanges(
+          changeEntries,
+          { files: [...taskState.files, ...uploadedTaskFiles] },
+          {
+            allowMainDesignerFinalize: true,
+            skipSuccessToast: true,
+          }
+        );
+        if (!saved) {
+          toast.error('Working files uploaded to Drive, but task update failed.');
+          return completedCount;
+        }
+        toast.success(
+          uploadedTaskFiles.length === 1
+            ? 'Working file uploaded.'
+            : 'Working files uploaded.'
+        );
+      }
+
+      return completedCount;
+    } finally {
+      setIsUploadingWorking(false);
+    }
+  };
+
+  const openWorkingFilePicker = () => {
+    if (isUploadingWorking) return;
+    workingUploadInputRef.current?.click();
+  };
+
+  const handleWorkingFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = event.target.files ? Array.from(event.target.files) : [];
+    if (selectedFiles.length === 0) return;
+    await uploadWorkingFilesResumable(selectedFiles);
+    event.target.value = '';
+  };
+
+  const handleWorkingUploadDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (isUploadingWorking) return;
+    event.dataTransfer.dropEffect = 'copy';
+    setIsWorkingUploadDragging(true);
+  };
+
+  const handleWorkingUploadDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const nextTarget = event.relatedTarget;
+    if (nextTarget && event.currentTarget.contains(nextTarget as Node)) {
+      return;
+    }
+    setIsWorkingUploadDragging(false);
+  };
+
+  const handleWorkingUploadDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsWorkingUploadDragging(false);
+    if (isUploadingWorking) return;
+    const files = Array.from(event.dataTransfer.files || []);
+    if (files.length === 0) return;
+    await uploadWorkingFilesResumable(files);
   };
 
   const handleAddFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -4094,9 +4735,11 @@ export default function TaskDetail() {
                   </div>
                   {showReferenceFileList && (
                     <div className="space-y-2">
-                      {inputFiles.map((file) => (
+                      {inputFiles.map((file, index) => {
+                        const isCopied = copiedFileKey === getFileCopyFeedbackKey(file);
+                        return (
                         <div
-                          key={file.id}
+                          key={getFileListItemKey(file, index)}
                           className={fileRowClass}
                         >
                           <div className="flex min-w-0 items-center gap-3">
@@ -4120,11 +4763,27 @@ export default function TaskDetail() {
                                 size="icon-sm"
                                 disabled={approvalLockedForStaff || staffChangeLimitReached}
                                 className={fileActionButtonClass}
-                                onClick={() => handleRemoveFile(file.id, file.name)}
+                                onClick={() => handleRemoveFile(file.id, file.name, file.type)}
                               >
                                 <Trash2 className="h-4 w-4 text-status-urgent" />
                               </Button>
                             )}
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              disabled={!getFileShareUrl(file)}
+                              data-success={isCopied}
+                              className={cn(
+                                fileActionButtonClass,
+                                isCopied &&
+                                  'border-primary/50 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/20 dark:text-primary'
+                              )}
+                              onClick={() => void handleCopyFileLink(file)}
+                              title={isCopied ? 'Copied' : 'Copy link'}
+                              aria-label={isCopied ? 'File link copied' : 'Copy file link'}
+                            >
+                              {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                            </Button>
                             {(() => {
                               const fileLinkUrl = getFileActionUrl(file);
                               return (
@@ -4145,7 +4804,214 @@ export default function TaskDetail() {
                             })()}
                           </div>
                         </div>
-                      ))}
+                      )})}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {canViewWorkingFiles && (workingFiles.length > 0 || canManageWorkingFiles) && (
+                <div className="mb-6">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground">
+                        Designer Working Files
+                      </h3>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Upload PSD, AI, ZIP, or source files for designer handoff. These are saved
+                        inside the task Drive folder under `PSD Working Files`.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowWorkingFileList((prev) => !prev)}
+                      className="inline-flex items-center gap-1 rounded-full border border-[#D9E6FF] bg-white/85 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition hover:bg-[#F3F7FF] dark:border-border dark:bg-card/85 dark:hover:bg-muted/80"
+                      aria-expanded={showWorkingFileList}
+                      aria-label="Toggle designer working files list"
+                    >
+                      <span>{workingFiles.length}</span>
+                      <ChevronDown
+                        className={cn(
+                          'h-3.5 w-3.5 transition-transform',
+                          showWorkingFileList ? 'rotate-180' : ''
+                        )}
+                      />
+                    </button>
+                  </div>
+                  {showWorkingFileList && (
+                    <>
+                      {workingFiles.length > 0 ? (
+                        <div className="space-y-2">
+                          {workingFiles.map((file, index) => {
+                            const isCopied = copiedFileKey === getFileCopyFeedbackKey(file);
+                            return (
+                            <div
+                              key={getFileListItemKey(file, index)}
+                              className={fileRowClass}
+                            >
+                              <div className="flex min-w-0 items-center gap-3">
+                                {renderFilePreview(file)}
+                                <div className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium">
+                                    {toTitleCaseFileName(file.name)}
+                                  </span>
+                                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                                    {formatFileSize(file.size) || 'Working file'}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                {canManageWorkingFiles && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    className={fileActionButtonClass}
+                                    onClick={() => handleRemoveFile(file.id, file.name, file.type)}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-status-urgent" />
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  disabled={!getFileShareUrl(file)}
+                                  data-success={isCopied}
+                                  className={cn(
+                                    fileActionButtonClass,
+                                    isCopied &&
+                                      'border-primary/50 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/20 dark:text-primary'
+                                  )}
+                                  onClick={() => void handleCopyFileLink(file)}
+                                  title={isCopied ? 'Copied' : 'Copy link'}
+                                  aria-label={isCopied ? 'File link copied' : 'Copy file link'}
+                                >
+                                  {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                </Button>
+                                {(() => {
+                                  const fileLinkUrl = getFileActionUrl(file);
+                                  return (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      disabled={!fileLinkUrl || fileLinkUrl === '#'}
+                                      className={fileActionButtonClass}
+                                      onClick={() => handleFileAction(file)}
+                                    >
+                                      {shouldUseLinkIcon(file) ? (
+                                        <ExternalLink className="h-4 w-4" />
+                                      ) : (
+                                        <Download className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          )})}
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-[#D9E6FF]/80 bg-[#F8FBFF]/75 px-4 py-3 text-sm text-muted-foreground dark:border-border/70 dark:bg-card/70">
+                          No working files uploaded yet.
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {canManageWorkingFiles && (
+                    <div
+                      className={cn(
+                        'mt-4 rounded-2xl border border-dashed border-[#D9E6FF] bg-white/85 p-4 transition-colors dark:border-border dark:bg-card/85',
+                        isWorkingUploadDragging &&
+                          'border-primary/45 bg-[#F4F8FF] ring-2 ring-primary/20 dark:bg-card'
+                      )}
+                      onDragOver={handleWorkingUploadDragOver}
+                      onDragLeave={handleWorkingUploadDragLeave}
+                      onDrop={handleWorkingUploadDrop}
+                    >
+                      <input
+                        ref={workingUploadInputRef}
+                        type="file"
+                        multiple
+                        onChange={handleWorkingFileUpload}
+                        className="hidden"
+                        disabled={isUploadingWorking}
+                      />
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            Upload PSD / source files
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Main designer source files can be shared here for another designer to continue work. Max 2.5 GB per file.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={openWorkingFilePicker}
+                          disabled={isUploadingWorking}
+                          className="rounded-full px-5"
+                        >
+                          {isUploadingWorking ? 'Uploading...' : 'Select files'}
+                        </Button>
+                      </div>
+                      {workingUploadItems.length > 0 && (
+                        <div className="mt-4 space-y-2 border-t border-[#E1E9FF] pt-4 dark:border-border">
+                          {workingUploadItems.map((item) => (
+                            <div
+                              key={item.id}
+                              className="rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-3 dark:border-border dark:bg-card/95"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium text-foreground">
+                                    {item.name}
+                                  </p>
+                                  <p className="mt-1 text-[11px] text-muted-foreground">
+                                    {item.status === 'done' ? (
+                                      `${formatTransferAmount(item.totalBytes)} uploaded successfully`
+                                    ) : (
+                                      <>
+                                        {formatTransferAmount(item.loadedBytes)} / {formatTransferAmount(item.totalBytes)}
+                                        {' '}({item.progress.toFixed(item.progress >= 10 ? 0 : 1)}%)
+                                        {item.status === 'uploading' && (
+                                          <> • {formatTransferSpeed(item.speedBytesPerSecond)}</>
+                                        )}
+                                      </>
+                                    )}
+                                  </p>
+                                </div>
+                                <div className="shrink-0 text-right text-[11px] font-semibold">
+                                  {item.status === 'preparing' && (
+                                    <span className="text-muted-foreground">Preparing...</span>
+                                  )}
+                                  {item.status === 'uploading' && (
+                                    <span className="text-primary">Uploading</span>
+                                  )}
+                                  {item.status === 'done' && (
+                                    <span className="text-emerald-600 dark:text-emerald-400">Done</span>
+                                  )}
+                                  {item.status === 'error' && (
+                                    <span className="text-red-500">Failed</span>
+                                  )}
+                                </div>
+                              </div>
+                              {item.status !== 'done' && (
+                                <div className="mt-2.5">
+                                  <Progress
+                                    value={Math.max(0, Math.min(100, item.progress))}
+                                    className="h-1.5 rounded-full bg-[#E7EEFF] dark:bg-[#1A2748]"
+                                  />
+                                </div>
+                              )}
+                              {item.error && (
+                                <p className="mt-2 text-[11px] text-red-500 dark:text-red-300">
+                                  {item.error}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -4202,8 +5068,8 @@ export default function TaskDetail() {
                           </TooltipContent>
                         </Tooltip>
                         <SelectContent>
-                          {sortedFinalDeliverableVersions.map((version) => (
-                            <SelectItem key={version.id} value={version.id}>
+                          {sortedFinalDeliverableVersions.map((version, index) => (
+                            <SelectItem key={`${version.id}-${index}`} value={version.id}>
                               {getFinalVersionLabel(version)}
                             </SelectItem>
                           ))}
@@ -4244,6 +5110,7 @@ export default function TaskDetail() {
                           const displayName = isLinkCard
                             ? sanitizeLinkDisplayName(displayFile.name, displayFile.url || '')
                             : toTitleCaseFileName(displayFile.name);
+                          const isCopied = copiedFileKey === getFileCopyFeedbackKey(displayFile);
                           const annotationKey = getReviewAnnotationFileKey(displayFile);
                           const fileAnnotation = annotationKey
                             ? draftReviewAnnotationsByFile[annotationKey]
@@ -4265,7 +5132,7 @@ export default function TaskDetail() {
                             (canAnnotateFile || shouldAllowViewingRejectedAnnotations);
                           const canReplaceThisFile = canReplaceRejectedFinalFile && !isLinkCard;
                           return (
-                            <div key={displayFile.id} className={fileRowClass}>
+                            <div key={getFileListItemKey(displayFile, index)} className={fileRowClass}>
                               {isLinkCard ? (
                                 <div className="flex min-w-0 items-center gap-3">
                                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#CFDBF8]/65 bg-gradient-to-br from-[#EEF4FF]/90 to-[#DCE8FF]/75 dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-800/90 dark:to-slate-700/70">
@@ -4345,11 +5212,29 @@ export default function TaskDetail() {
                                     size="icon-sm"
                                     disabled={approvalLockedForStaff || staffChangeLimitReached}
                                     className={fileActionButtonClass}
-                                    onClick={() => handleRemoveFile(displayFile.id, displayFile.name)}
+                                    onClick={() =>
+                                      handleRemoveFile(displayFile.id, displayFile.name, displayFile.type)
+                                    }
                                   >
                                     <Trash2 className="h-4 w-4 text-status-urgent" />
                                   </Button>
                                 )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  disabled={!getFileShareUrl(displayFile)}
+                                  data-success={isCopied}
+                                  className={cn(
+                                    fileActionButtonClass,
+                                    isCopied &&
+                                      'border-primary/50 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/20 dark:text-primary'
+                                  )}
+                                  onClick={() => void handleCopyFileLink(displayFile)}
+                                  title={isCopied ? 'Copied' : 'Copy link'}
+                                  aria-label={isCopied ? 'File link copied' : 'Copy file link'}
+                                >
+                                  {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                </Button>
                               {(() => {
                                   const fileLinkUrl = getFileActionUrl(displayFile);
                                   return (
@@ -5117,8 +6002,8 @@ export default function TaskDetail() {
                       Version History
                     </h3>
                     <div className="space-y-2">
-                      {designVersions.map((version) => (
-                        <div key={version.id} className={cn(fileRowClass, 'items-start gap-3 min-w-0')}>
+                      {designVersions.map((version, index) => (
+                        <div key={`${version.id}-${index}`} className={cn(fileRowClass, 'items-start gap-3 min-w-0')}>
                           <div className="min-w-0 flex-1 pr-2">
                             <div className="text-sm font-medium text-foreground line-clamp-2 break-words">
                               {getVersionLabel(version)} - {version.name}
@@ -5170,8 +6055,8 @@ export default function TaskDetail() {
                                 <SelectValue placeholder="Select version" />
                               </SelectTrigger>
                               <SelectContent>
-                                {designVersions.map((version) => (
-                                  <SelectItem key={version.id} value={version.id}>
+                                {designVersions.map((version, index) => (
+                                  <SelectItem key={`${version.id}-${index}`} value={version.id}>
                                     {getVersionLabel(version)} - {version.name}
                                   </SelectItem>
                                 ))}
@@ -5187,8 +6072,8 @@ export default function TaskDetail() {
                                 <SelectValue placeholder="Select version" />
                               </SelectTrigger>
                               <SelectContent>
-                                {designVersions.map((version) => (
-                                  <SelectItem key={version.id} value={version.id}>
+                                {designVersions.map((version, index) => (
+                                  <SelectItem key={`${version.id}-${index}`} value={version.id}>
                                     {getVersionLabel(version)} - {version.name}
                                   </SelectItem>
                                 ))}
@@ -5199,9 +6084,9 @@ export default function TaskDetail() {
 
                         {compareLeft && compareRight && (
                           <div className="mt-4 grid gap-4 md:grid-cols-2">
-                            {[compareLeft, compareRight].map((version) => (
+                            {[compareLeft, compareRight].map((version, index) => (
                               <div
-                                key={version.id}
+                                key={`${version.id}-${index}`}
                                 className="rounded-lg border border-border/60 bg-background p-3"
                               >
                                 <div className="text-xs font-semibold text-muted-foreground mb-2">
