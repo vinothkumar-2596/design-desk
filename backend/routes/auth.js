@@ -209,10 +209,6 @@ const buildGoogleAuthRedirectUrl = ({ frontendOrigin, token, error }) => {
   return redirectUrl.toString();
 };
 
-const redirectGoogleAuth = (res, { frontendOrigin, token, error }) => {
-  res.redirect(buildGoogleAuthRedirectUrl({ frontendOrigin, token, error }));
-};
-
 const resolveGoogleProviderError = (errorCode) => {
   const normalized = String(errorCode || "").trim().toLowerCase();
   if (normalized === "access_denied") {
@@ -229,10 +225,16 @@ const escapeHtml = (value) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const renderGoogleAuthErrorPage = ({ title, message, frontendOrigin }) => {
+const renderGoogleAuthCallbackPage = ({ title, frontendOrigin, token, error }) => {
   const origin = normalizeRequestedFrontendOrigin(frontendOrigin);
-  const loginUrl = buildGoogleAuthRedirectUrl({ frontendOrigin: origin, error: message });
-  const popupMessage = JSON.stringify({ type: "google-auth-error", error: message });
+  const redirectUrl = buildGoogleAuthRedirectUrl({
+    frontendOrigin: origin,
+    token,
+    error,
+  });
+  const popupPayload = error
+    ? { type: "google-auth-error", error }
+    : { type: "google-auth", token };
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -241,183 +243,73 @@ const renderGoogleAuthErrorPage = ({ title, message, frontendOrigin }) => {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(title)}</title>
     <style>
-      :root {
-        color-scheme: light;
-        --bg: #eef3ff;
-        --panel: rgba(255, 255, 255, 0.92);
-        --border: rgba(127, 153, 220, 0.24);
-        --text: #102247;
-        --muted: #5c6f96;
-        --accent: #35429a;
-        --accent-soft: rgba(53, 66, 154, 0.12);
-        --danger: #c53b4e;
-      }
-      * { box-sizing: border-box; }
-      body {
+      html, body {
         margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        padding: 24px;
-        font-family: Inter, Segoe UI, sans-serif;
-        background:
-          radial-gradient(circle at top left, rgba(63, 95, 191, 0.18), transparent 34%),
-          radial-gradient(circle at bottom right, rgba(99, 150, 255, 0.16), transparent 38%),
-          linear-gradient(180deg, #f7f9ff 0%, var(--bg) 100%);
-        color: var(--text);
-      }
-      .card {
-        width: min(100%, 460px);
-        border-radius: 28px;
-        border: 1px solid var(--border);
-        background: var(--panel);
-        box-shadow: 0 28px 60px -36px rgba(16, 34, 71, 0.42);
-        backdrop-filter: blur(18px);
-        padding: 32px;
-      }
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        margin-bottom: 28px;
-      }
-      .brand-mark {
-        width: 52px;
-        height: 52px;
-        border-radius: 16px;
-        display: grid;
-        place-items: center;
-        background: linear-gradient(135deg, #ffffff 0%, #eaf1ff 100%);
-        border: 1px solid rgba(127, 153, 220, 0.24);
-      }
-      .brand-mark img {
-        width: 34px;
-        height: 34px;
-        object-fit: contain;
-      }
-      .brand-name {
-        font-size: 1.35rem;
-        font-weight: 700;
-        line-height: 1.1;
-      }
-      .brand-copy {
-        margin-top: 3px;
-        font-size: 0.92rem;
-        color: var(--muted);
-      }
-      .status-icon {
-        width: 62px;
-        height: 62px;
-        border-radius: 20px;
-        display: grid;
-        place-items: center;
-        margin-bottom: 18px;
-        background: linear-gradient(135deg, rgba(197, 59, 78, 0.12), rgba(197, 59, 78, 0.04));
-        color: var(--danger);
-        font-size: 1.8rem;
-      }
-      h1 {
-        margin: 0;
-        font-size: 2rem;
-        line-height: 1.12;
-        letter-spacing: -0.03em;
-      }
-      p {
-        margin: 12px 0 0;
-        color: var(--muted);
-        font-size: 1rem;
-        line-height: 1.6;
-      }
-      .message {
-        margin-top: 18px;
-        padding: 16px 18px;
-        border-radius: 18px;
-        border: 1px solid rgba(197, 59, 78, 0.18);
-        background: rgba(255, 255, 255, 0.72);
-        color: var(--text);
-        font-weight: 600;
-      }
-      .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 24px;
-      }
-      .button {
-        appearance: none;
-        border: 0;
-        border-radius: 14px;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 46px;
-        padding: 0 18px;
-        font-weight: 700;
-        transition: transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
-      }
-      .button:hover {
-        transform: translateY(-1px);
-      }
-      .button-primary {
-        background: var(--accent);
-        color: #fff;
-        box-shadow: 0 16px 32px -20px rgba(53, 66, 154, 0.55);
-      }
-      .button-secondary {
-        background: var(--accent-soft);
-        color: var(--accent);
-      }
-      .footnote {
-        margin-top: 18px;
-        font-size: 0.9rem;
+        padding: 0;
+        background: transparent;
       }
     </style>
   </head>
   <body>
-    <main class="card">
-      <div class="brand">
-        <div class="brand-mark">
-          <img src="${origin}/favicon.png" alt="DesignDesk" />
-        </div>
-        <div>
-          <div class="brand-name">DesignDesk</div>
-          <div class="brand-copy">Secure staff sign-in</div>
-        </div>
-      </div>
-      <div class="status-icon" aria-hidden="true">!</div>
-      <h1>${escapeHtml(title)}</h1>
-      <p>Google sign-in could not be completed with this account.</p>
-      <div class="message">${escapeHtml(message)}</div>
-      <div class="actions">
-        <a class="button button-primary" href="${escapeHtml(loginUrl)}">Back to sign in</a>
-        <button class="button button-secondary" type="button" onclick="window.close()">Close window</button>
-      </div>
-      <p class="footnote">Use your institutional ${escapeHtml(STAFF_EMAIL_DOMAIN_LABEL || "staff")} account to continue.</p>
-    </main>
     <script>
       (function () {
-        var payload = ${JSON.stringify(popupMessage)};
+        var payload = ${JSON.stringify(popupPayload)};
         var openerOrigin = ${JSON.stringify(origin)};
+        var redirectUrl = ${JSON.stringify(redirectUrl)};
+        var hasOpener = false;
+
         try {
-          if (window.opener && !window.opener.closed) {
-            window.opener.postMessage(JSON.parse(payload), openerOrigin);
-            setTimeout(function () { window.close(); }, 240);
+          hasOpener = Boolean(window.opener && !window.opener.closed);
+          if (hasOpener) {
+            window.opener.postMessage(payload, openerOrigin);
+            window.close();
           }
         } catch (error) {
-          // Ignore popup messaging failures and leave the page visible.
+          hasOpener = false;
         }
+
+        if (!hasOpener) {
+          window.location.replace(redirectUrl);
+          return;
+        }
+
+        setTimeout(function () {
+          if (!window.closed) {
+            try {
+              window.close();
+            } catch (error) {
+              // Ignore close failures.
+            }
+          }
+        }, 80);
+
+        setTimeout(function () {
+          if (!window.closed) {
+            window.location.replace(redirectUrl);
+          }
+        }, 240);
       })();
     </script>
+    <noscript>
+      <meta http-equiv="refresh" content="0;url=${escapeHtml(redirectUrl)}" />
+    </noscript>
   </body>
 </html>`;
 };
 
-const respondGoogleAuthError = (res, { frontendOrigin, title, message }) => {
+const respondGoogleAuthCallback = (res, { frontendOrigin, title, token, error }) => {
   res
     .status(200)
     .type("html")
-    .send(renderGoogleAuthErrorPage({ title, message, frontendOrigin }));
+    .send(renderGoogleAuthCallbackPage({ title, frontendOrigin, token, error }));
+};
+
+const respondGoogleAuthError = (res, { frontendOrigin, title, message }) => {
+  return respondGoogleAuthCallback(res, {
+    frontendOrigin,
+    title,
+    error: message,
+  });
 };
 
 const buildResetUrl = (token) => {
@@ -1076,8 +968,9 @@ router.get("/google/callback", async (req, res) => {
       meta: { email: normalizedEmail, provider: "google" }
     });
 
-    return redirectGoogleAuth(res, {
+    return respondGoogleAuthCallback(res, {
       frontendOrigin: statePayload.frontendOrigin,
+      title: "Completing Google sign-in",
       token,
     });
   } catch (error) {
