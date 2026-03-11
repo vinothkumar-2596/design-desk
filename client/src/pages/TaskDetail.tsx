@@ -4972,7 +4972,7 @@ export default function TaskDetail() {
                             Upload PSD / source files
                           </p>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            Main designer source files can be shared here for another designer to continue work. Max 2.5 GB per file.
+                            DesignLead source files can be shared here for another designer to continue work. Max 2.5 GB per file.
                           </p>
                         </div>
                         <Button

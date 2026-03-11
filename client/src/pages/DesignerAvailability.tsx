@@ -500,26 +500,28 @@ export default function DesignerAvailability() {
                 {subtitle}
               </p>
             </div>
-            <div className="availability-top__actions">
+            <div className="availability-top__actions w-full">
               {designerOptions.length > 1 && (
-                <Select value={designerId} onValueChange={setSelectedDesignerId}>
-                  <SelectTrigger className="min-w-[220px] rounded-full border border-[#D9E6FF] bg-white/95 px-4 py-2 shadow-none dark:border-slate-700/60 dark:bg-slate-900/80 dark:text-slate-100">
-                    <SelectValue placeholder="Select designer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {designerOptions.map((designer) => (
-                      <SelectItem key={designer.id} value={designer.id}>
-                        {designer.name}
-                        {showDesignerScope && designer.scope
-                          ? ` (${getDesignerScopeLabel(designer.scope)})`
-                          : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="min-w-[220px] flex-[1.35]">
+                  <Select value={designerId} onValueChange={setSelectedDesignerId}>
+                    <SelectTrigger className="w-full rounded-full border-[rgba(53,66,154,0.2)] bg-white/95 px-4 py-2 shadow-none focus:border-[rgba(53,66,154,0.2)] focus:ring-[rgba(53,66,154,0.2)] focus:ring-offset-0 dark:border-slate-700/60 dark:bg-slate-900/80 dark:text-slate-100">
+                      <SelectValue placeholder="Select designer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {designerOptions.map((designer) => (
+                        <SelectItem key={designer.id} value={designer.id}>
+                          {designer.name}
+                          {showDesignerScope && designer.scope
+                            ? ` (${getDesignerScopeLabel(designer.scope)})`
+                            : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
               {showTaskSearch && (
-                <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-none dark:border-slate-700/60 dark:bg-slate-900/80">
+                <div className="search-elastic group ml-auto flex min-w-[200px] max-w-[260px] flex-1 items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-none dark:border-slate-700/60 dark:bg-slate-900/80">
                   <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
                   <input
                     value={query}

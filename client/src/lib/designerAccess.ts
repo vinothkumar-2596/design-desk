@@ -76,7 +76,7 @@ export const getDesignerPortalId = (
 
 export const getDesignerScopeLabel = (scope?: string | null) => {
   const normalized = normalizeDesignerScope(scope);
-  if (normalized === 'main') return 'Main Designer';
+  if (normalized === 'main') return 'DesignLead';
   if (normalized === 'junior') return 'Junior Designer';
   return 'Designer';
 };

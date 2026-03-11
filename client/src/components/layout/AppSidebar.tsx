@@ -26,13 +26,21 @@ import {
   PenLine,
   X,
   PhoneCall,
+  QrCode,
+  Copy,
+  Share2,
+  MessageCircle,
+  Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { UserAvatar } from '@/components/common/UserAvatar';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { toast } from '@/components/ui/sonner';
+import { useTheme } from 'next-themes';
 
 interface NavItem {
   title: string;
@@ -45,6 +53,15 @@ interface NavItem {
 const EMAIL_DRAFT_MAILTO_STORAGE_KEY = 'designhub:email-draft-mailto';
 const EMAIL_SEND_PENDING_KEY = 'designhub:gmail-send-pending';
 const EMAIL_COMPOSE_OPENED_EVENT = 'designhub:gmail-compose-opened';
+const PORTAL_SHARE_URL = 'https://designdesk.vercel.app/';
+const PORTAL_DISPLAY_URL = 'designdesk.vercel.app';
+const PORTAL_SHARE_TEXT = 'Open the DesignDesk portal';
+const PORTAL_QR_LIGHT_IMAGE_SRC = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=svg&bgcolor=F7FAFF&color=1E2A5A&data=${encodeURIComponent(
+  PORTAL_SHARE_URL
+)}`;
+const PORTAL_QR_DARK_IMAGE_SRC = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=svg&bgcolor=081530&color=F3F7FF&data=${encodeURIComponent(
+  PORTAL_SHARE_URL
+)}`;
 const decodeValue = (value: string) => {
   try {
     return decodeURIComponent(value || '');
@@ -147,7 +164,12 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { theme = 'light', resolvedTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
+  const [portalLinkCopied, setPortalLinkCopied] = useState(false);
+  const portalCopyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDarkTheme = (resolvedTheme || theme) === 'dark';
+  const portalQrImageSrc = isDarkTheme ? PORTAL_QR_DARK_IMAGE_SRC : PORTAL_QR_LIGHT_IMAGE_SRC;
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -174,6 +196,14 @@ export function AppSidebar() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [user]);
+
+  useEffect(() => {
+    return () => {
+      if (portalCopyResetTimerRef.current) {
+        clearTimeout(portalCopyResetTimerRef.current);
+      }
+    };
+  }, []);
 
   if (!user) return null;
 
@@ -241,13 +271,69 @@ export function AppSidebar() {
     }
   };
 
+  const copyPortalLink = async () => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (!window.navigator.clipboard?.writeText) {
+        throw new Error('Clipboard unavailable');
+      }
+      await window.navigator.clipboard.writeText(PORTAL_SHARE_URL);
+      setPortalLinkCopied(true);
+      if (portalCopyResetTimerRef.current) {
+        clearTimeout(portalCopyResetTimerRef.current);
+      }
+      portalCopyResetTimerRef.current = setTimeout(() => {
+        setPortalLinkCopied(false);
+      }, 1200);
+      toast.success('Portal link copied');
+    } catch {
+      window.prompt('Copy DesignDesk portal link', PORTAL_SHARE_URL);
+    }
+  };
+
+  const sharePortalLink = async () => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (typeof window.navigator.share === 'function') {
+        await window.navigator.share({
+          title: 'DesignDesk',
+          text: PORTAL_SHARE_TEXT,
+          url: PORTAL_SHARE_URL,
+        });
+        return;
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+    }
+
+    await copyPortalLink();
+  };
+
+  const sharePortalLinkOnWhatsApp = () => {
+    if (typeof window === 'undefined') return;
+    const shareUrl = `https://wa.me/?text=${encodeURIComponent(
+      `${PORTAL_SHARE_TEXT} ${PORTAL_SHARE_URL}`
+    )}`;
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const sharePortalLinkByEmail = () => {
+    if (typeof window === 'undefined') return;
+    const subject = encodeURIComponent('DesignDesk Portal');
+    const body = encodeURIComponent(`${PORTAL_SHARE_TEXT}\n${PORTAL_SHARE_URL}`);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  };
+
   return (
-    <aside
-      className={cn(
-        'group/sidebar z-40 flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none transition-all duration-300 h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
-        collapsed ? 'w-20' : 'w-72'
-      )}
-    >
+    <>
+      <aside
+        className={cn(
+          'group/sidebar z-40 flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none transition-all duration-300 h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
+          collapsed ? 'w-20' : 'w-72'
+        )}
+      >
       {/* Header */}
       <div className="group/sidebar-header flex items-center justify-between px-4 py-3.5 border-b border-[#D9E6FF]/70 dark:border-border">
         <button
@@ -647,6 +733,113 @@ export function AppSidebar() {
           </button>
         </div>
       </div>
-    </aside>
+      </aside>
+
+      <HoverCard openDelay={100} closeDelay={120}>
+        <HoverCardTrigger asChild>
+          <button
+            type="button"
+            aria-label="Show DesignDesk QR code"
+            className={cn(
+              'fixed bottom-4 left-4 z-30 hidden items-center rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-left text-[#475569] shadow-none transition-all duration-300 md:bottom-6 md:left-6 md:flex dark:border-border dark:bg-card/95 dark:bg-none dark:text-foreground',
+              collapsed ? 'w-20 justify-center px-3 py-3' : 'w-72 gap-3 px-4 py-3'
+            )}
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#C9D7FF]/80 bg-white/72 supports-[backdrop-filter]:bg-white/56 backdrop-blur-xl text-[#1E2A5A] dark:border-[#33548E]/72 dark:bg-[rgba(12,27,61,0.68)] dark:text-slate-100">
+              <QrCode className="h-5 w-5" />
+            </span>
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#1E2A5A] dark:text-foreground">
+                  Scan DesignDesk
+                </p>
+                <p className="mt-1 text-xs leading-5 text-[#6B7A99] dark:text-muted-foreground">
+                  Hover to show the portal QR for mobile scan or sharing.
+                </p>
+              </div>
+            )}
+          </button>
+        </HoverCardTrigger>
+        <HoverCardContent
+          side="top"
+          align="start"
+          sideOffset={14}
+          className="hidden w-72 border-none bg-transparent p-0 text-[#475569] shadow-none md:block dark:text-foreground"
+        >
+          <div className="rounded-[24px] border border-[#D9E6FF] bg-white/86 px-3 py-3.5 dark:border-border dark:bg-slate-900/75">
+            <div className="grid grid-cols-[5.6rem_minmax(0,1fr)] items-center gap-2.5">
+              <div className="shrink-0 rounded-none bg-[#F7FAFF] p-1.5 dark:bg-slate-950/60">
+                <img
+                  src={portalQrImageSrc}
+                  alt="QR code to open the DesignDesk portal"
+                  className="h-[5.1rem] w-[5.1rem] rounded-none border border-[#E3EBFF] bg-white p-1 object-contain dark:border-[#223A70] dark:bg-[#081530]"
+                  loading="lazy"
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[#1E2A5A] dark:text-foreground">
+                    Scan DesignDesk
+                  </p>
+                </div>
+
+                <div className="mt-3 rounded-2xl border border-[#D9E6FF] bg-[#F7FAFF] px-3 py-2 dark:border-border dark:bg-slate-950/40">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8A97B2] dark:text-muted-foreground">
+                    Portal Link
+                  </p>
+                  <p className="mt-1 truncate text-xs font-medium text-[#1E2A5A] dark:text-foreground">
+                    {PORTAL_DISPLAY_URL}
+                  </p>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={sharePortalLink}
+                    className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+                    title="Share"
+                    aria-label="Share DesignDesk portal"
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sharePortalLinkOnWhatsApp}
+                    className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+                    title="Share via WhatsApp"
+                    aria-label="Share DesignDesk portal via WhatsApp"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sharePortalLinkByEmail}
+                    className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+                    title="Share via Email"
+                    aria-label="Share DesignDesk portal via Email"
+                  >
+                    <Mail className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    data-success={portalLinkCopied}
+                    onClick={copyPortalLink}
+                    className={cn(
+                      'icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none',
+                      portalLinkCopied && 'border-primary/50 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/20 dark:text-primary'
+                    )}
+                    title={portalLinkCopied ? 'Copied' : 'Copy link'}
+                    aria-label={portalLinkCopied ? 'Portal link copied' : 'Copy DesignDesk portal link'}
+                  >
+                    {portalLinkCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </HoverCardContent>
+      </HoverCard>
+    </>
   );
 }

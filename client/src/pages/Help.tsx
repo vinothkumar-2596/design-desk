@@ -103,35 +103,71 @@ const helpItems: HelpItem[] = [
     title: 'Request Status Definitions',
     icon: AlarmClock,
     body: (
-      <div className="space-y-2">
-        <div className="rounded-lg border border-[#C9D7FF] bg-[#EEF4FF] px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
-          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Pending</p>
-          <p className="text-xs text-[#2F3A56]/85 dark:text-slate-300">
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-[#DDE7FF] bg-[linear-gradient(135deg,#FBFCFF_0%,#F4F7FF_100%)] p-4 dark:border-[#3B558C]/60 dark:bg-[linear-gradient(135deg,rgba(24,39,72,0.72)_0%,rgba(14,23,42,0.82)_100%)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#8CA6FF]" />
+              <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Pending</p>
+            </div>
+            <span className="rounded-full border border-[#DDE7FF] bg-white/75 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#6D83BE] dark:border-[#4E6EA9]/60 dark:bg-white/10 dark:text-[#B9CBFF]">
+              Awaiting action
+            </span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-[#5C6E95] dark:text-slate-300">
             Task submitted and awaiting action. No designer assigned yet.
           </p>
         </div>
-        <div className="rounded-lg border border-[#C9D7FF] bg-[#EEF4FF] px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
-          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">In Progress</p>
-          <p className="text-xs text-[#2F3A56]/85 dark:text-slate-300">
+
+        <div className="rounded-2xl border border-[#D6E5FF] bg-[linear-gradient(135deg,#F9FBFF_0%,#EEF4FF_100%)] p-4 dark:border-[#34558F]/60 dark:bg-[linear-gradient(135deg,rgba(22,37,69,0.72)_0%,rgba(15,23,42,0.82)_100%)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#5F8DFF]" />
+              <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">In Progress</p>
+            </div>
+            <span className="rounded-full border border-[#D9E6FF] bg-white/75 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#3D63D2] dark:border-[#4566A4]/60 dark:bg-white/10 dark:text-[#93B1FF]">
+              Assigned
+            </span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-[#45608A] dark:text-slate-300">
             A designer has started working on your request.
           </p>
         </div>
-        <div className="rounded-lg border border-[#C9D7FF] bg-[#EEF4FF] px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
-          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Completed</p>
-          <p className="text-xs text-[#2F3A56]/85 dark:text-slate-300">
+
+        <div className="rounded-2xl border border-[#D3E1FF] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF4FF_100%)] p-4 dark:border-[#3E5C99]/60 dark:bg-[linear-gradient(135deg,rgba(24,40,77,0.74)_0%,rgba(13,22,41,0.84)_100%)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#4F6EF7]" />
+              <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Completed</p>
+            </div>
+            <span className="rounded-full border border-[#D3E1FF] bg-white/75 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#3550A8] dark:border-[#4E6EA9]/60 dark:bg-white/10 dark:text-[#AFC3FF]">
+              Delivered
+            </span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-[#526B97] dark:text-slate-300">
             Design work is finished and final files are uploaded.
           </p>
         </div>
-        <div className="rounded-lg border border-[#C9D7FF] bg-[#EEF4FF] px-3 py-2 dark:border-slate-700/70 dark:bg-slate-900/70">
-          <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Overdue</p>
-          <p className="text-xs text-[#2F3A56]/85 dark:text-slate-300">
+
+        <div className="rounded-2xl border border-[#C8D8FF] bg-[linear-gradient(135deg,#F5F8FF_0%,#EAF1FF_100%)] p-4 dark:border-[#4D6BA6]/60 dark:bg-[linear-gradient(135deg,rgba(27,43,81,0.76)_0%,rgba(13,22,41,0.88)_100%)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#35429A]" />
+              <p className="font-semibold text-[#1E2A5A] dark:text-slate-100">Overdue</p>
+            </div>
+            <span className="rounded-full border border-[#C8D8FF] bg-white/75 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] dark:border-[#4D6BA6]/60 dark:bg-white/10 dark:text-[#D2DEFF]">
+              Needs attention
+            </span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-[#566C98] dark:text-slate-300">
             The expected deadline has passed without completion.
           </p>
         </div>
-        <p className="text-xs text-[#7B8CAD] dark:text-slate-400">
+
+        <div className="rounded-xl border border-[#E3EBFF] bg-white/70 px-3 py-2 text-xs leading-5 text-[#7B8CAD] dark:border-border dark:bg-slate-900/40 dark:text-slate-400">
           If a request seems stuck for too long, contact support or your department
           supervisor.
-        </p>
+        </div>
       </div>
     ),
   },
@@ -240,7 +276,7 @@ const helpItems: HelpItem[] = [
 export default function Help() {
   return (
     <DashboardLayout>
-      <div className="rounded-[32px] border border-[#D9E6FF] bg-white/90 p-6 md:p-10 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)] dark:border-border dark:bg-card/90 dark:shadow-[0_24px_60px_-40px_rgba(0,0,0,0.6)]">
+      <div className="rounded-[32px] border border-[#D9E6FF] bg-white/90 p-6 md:p-10 shadow-none dark:border-border dark:bg-card/90 dark:shadow-none">
         <div className="grid gap-8 lg:grid-cols-[1.05fr_1fr]">
           <div className="space-y-6">
             <div className="space-y-3">

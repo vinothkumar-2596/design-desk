@@ -2183,7 +2183,7 @@ router.post("/:id/final-deliverables/review", ensureTaskAccess, async (req, res)
 
     const previousReviewState = resolveFinalDeliverableReviewState(task);
     const reviewedAt = new Date();
-    const reviewerName = req.user?.name || req.user?.email || "Main Designer";
+    const reviewerName = req.user?.name || req.user?.email || "DesignLead";
     targetVersion.reviewStatus = decision;
     targetVersion.reviewedBy = reviewerName;
     targetVersion.reviewedAt = reviewedAt;
