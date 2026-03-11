@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { mockTasks } from '@/data/mockTasks';
 import { mergeLocalTasks } from '@/lib/taskStorage';
 import { filterTasksForUser } from '@/lib/taskVisibility';
@@ -24,6 +30,7 @@ import {
   buildScheduleFromTasks,
   getDefaultDesignerId,
 } from '@/lib/designerSchedule';
+import { getDesignerScopeLabel, isMainDesigner } from '@/lib/designerAccess';
 import { API_URL, authFetch } from '@/lib/api';
 
 const priorityClasses: Record<ScheduleTask['priority'], string> = {
@@ -32,15 +39,41 @@ const priorityClasses: Record<ScheduleTask['priority'], string> = {
   NORMAL: 'gantt-priority-normal',
 };
 
+type AvailabilityDesignerOption = {
+  id: string;
+  name: string;
+  scope: 'main' | 'junior' | '';
+};
+
 export default function DesignerAvailability() {
   const apiUrl = API_URL;
   const { user } = useAuth();
   const [rawTasks, setRawTasks] = useState<any[]>([]);
   const [query, setQuery] = useState('');
+  const [selectedDesignerId, setSelectedDesignerId] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollTrackRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef({ isDragging: false, startX: 0, startScrollLeft: 0 });
   const today = useMemo(() => startOfDay(new Date()), []);
+  const userRole = String(user?.role || '').trim().toLowerCase();
+  const userIsMainDesigner = isMainDesigner(user);
+  const useAvailabilityEndpoint = Boolean(
+    apiUrl &&
+    (
+      userRole === 'staff' ||
+      userRole === 'treasurer' ||
+      userRole === 'admin' ||
+      userRole === 'manager' ||
+      (userRole === 'designer' && userIsMainDesigner)
+    )
+  );
+  const showTaskSearch = userRole !== 'staff';
+  const showDesignerScope = Boolean(
+    userRole === 'treasurer' ||
+    userRole === 'admin' ||
+    userRole === 'manager' ||
+    (userRole === 'designer' && userIsMainDesigner)
+  );
   const [scrollState, setScrollState] = useState({
     scrollLeft: 0,
     scrollWidth: 0,
@@ -59,15 +92,23 @@ export default function DesignerAvailability() {
     });
   };
 
-  const getLocalTasks = () =>
-    normalizeDesignerAssignments(
-      filterTasksForUser(
-        typeof window === 'undefined'
-          ? (apiUrl ? [] : mockTasks)
-          : mergeLocalTasks(apiUrl ? [] : mockTasks),
-        user
-      )
-    );
+  const scheduleEndpoint =
+    useAvailabilityEndpoint
+      ? `${apiUrl}/api/tasks/availability`
+      : apiUrl
+        ? `${apiUrl}/api/tasks`
+        : '';
+
+  const getLocalTasks = () => {
+    const localTasks =
+      typeof window === 'undefined'
+        ? (apiUrl ? [] : mockTasks)
+        : mergeLocalTasks(apiUrl ? [] : mockTasks);
+    const visibleTasks = useAvailabilityEndpoint
+      ? localTasks
+      : filterTasksForUser(localTasks, user);
+    return normalizeDesignerAssignments(visibleTasks);
+  };
 
   useEffect(() => {
     if (!apiUrl) {
@@ -77,13 +118,15 @@ export default function DesignerAvailability() {
     let isActive = true;
     const loadSchedule = async () => {
       try {
-        const response = await authFetch(`${apiUrl}/api/tasks`);
+        const response = await authFetch(scheduleEndpoint);
         if (!response.ok) {
           throw new Error('Failed to load tasks');
         }
         const data = await response.json();
         if (!isActive) return;
-        const visibleTasks = filterTasksForUser(data, user);
+        const visibleTasks = useAvailabilityEndpoint
+          ? data
+          : filterTasksForUser(data, user);
         setRawTasks(normalizeDesignerAssignments(visibleTasks));
       } catch {
         if (!isActive) return;
@@ -94,7 +137,7 @@ export default function DesignerAvailability() {
     return () => {
       isActive = false;
     };
-  }, [apiUrl, user]);
+  }, [apiUrl, scheduleEndpoint, useAvailabilityEndpoint, user]);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -119,9 +162,69 @@ export default function DesignerAvailability() {
     [rawTasks]
   );
 
+  const designerOptions = useMemo<AvailabilityDesignerOption[]>(() => {
+    const designerMap = new Map<string, AvailabilityDesignerOption>();
+
+    rawTasks.forEach((task) => {
+      const designerId = String(task?.assignedToId || task?.assignedTo || '').trim();
+      const designerName = String(task?.assignedToName || '').trim() || 'Designer';
+      const normalizedScope = String(task?.assignedToScope || '').trim().toLowerCase();
+      const scope =
+        normalizedScope === 'main' || normalizedScope === 'junior'
+          ? normalizedScope
+          : '';
+
+      if (!designerId) return;
+      const existing = designerMap.get(designerId);
+      if (existing) {
+        if (!existing.scope && scope) {
+          existing.scope = scope;
+        }
+        if ((!existing.name || existing.name === 'Designer') && designerName) {
+          existing.name = designerName;
+        }
+        return;
+      }
+
+      designerMap.set(designerId, {
+        id: designerId,
+        name: designerName,
+        scope,
+      });
+    });
+
+    return Array.from(designerMap.values()).sort((left, right) => {
+      if (left.scope !== right.scope) {
+        if (left.scope === 'main') return -1;
+        if (right.scope === 'main') return 1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+  }, [rawTasks]);
+
+  useEffect(() => {
+    if (designerOptions.length === 0) {
+      setSelectedDesignerId('');
+      return;
+    }
+    if (designerOptions.some((designer) => designer.id === selectedDesignerId)) {
+      return;
+    }
+    const preferredDesigner =
+      userRole === 'designer'
+        ? designerOptions.find((designer) => designer.id === String(user?.id || '').trim())
+        : null;
+    setSelectedDesignerId((preferredDesigner || designerOptions[0]).id);
+  }, [designerOptions, selectedDesignerId, user?.id, userRole]);
+
   const designerId = useMemo(
-    () => getDefaultDesignerId(scheduleTasks),
-    [scheduleTasks]
+    () => selectedDesignerId || getDefaultDesignerId(scheduleTasks),
+    [scheduleTasks, selectedDesignerId]
+  );
+
+  const activeDesigner = useMemo(
+    () => designerOptions.find((designer) => designer.id === designerId) || null,
+    [designerId, designerOptions]
   );
 
   const filteredTasks = useMemo(() => {
@@ -132,14 +235,15 @@ export default function DesignerAvailability() {
           task.designerId === designerId &&
           task.status !== 'COMPLETED' &&
           task.status !== 'EMERGENCY_PENDING' &&
-          (!normalizedQuery ||
+          (!showTaskSearch ||
+            !normalizedQuery ||
             task.title.toLowerCase().includes(normalizedQuery))
       )
       .sort(
         (a, b) =>
           (a.actualStartDate?.getTime() ?? 0) - (b.actualStartDate?.getTime() ?? 0)
       );
-  }, [designerId, query, scheduleTasks]);
+  }, [designerId, query, scheduleTasks, showTaskSearch]);
 
   const availabilityTasks = useMemo(() => {
     return filteredTasks
@@ -379,6 +483,11 @@ export default function DesignerAvailability() {
     };
   }, [thumbWidth]);
 
+  const subtitle =
+    userRole === 'staff'
+      ? 'See which dates are busy. Task names stay hidden for staff.'
+      : 'See which dates are busy and which tasks are committed.';
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -388,20 +497,39 @@ export default function DesignerAvailability() {
               <p className="availability-top__kicker dark:text-slate-400">Availability</p>
               <h1 className="availability-top__title dark:text-slate-100">Designer availability</h1>
               <p className="availability-top__subtitle dark:text-slate-400">
-                See which dates are busy and which tasks are committed.
+                {subtitle}
               </p>
             </div>
             <div className="availability-top__actions">
-              <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-none dark:border-slate-700/60 dark:bg-slate-900/80">
-                <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search tasks"
-                  aria-label="Search tasks"
-                  className="search-elastic-input w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none dark:text-slate-100 dark:placeholder:text-slate-500"
-                />
-              </div>
+              {designerOptions.length > 1 && (
+                <Select value={designerId} onValueChange={setSelectedDesignerId}>
+                  <SelectTrigger className="min-w-[220px] rounded-full border border-[#D9E6FF] bg-white/95 px-4 py-2 shadow-none dark:border-slate-700/60 dark:bg-slate-900/80 dark:text-slate-100">
+                    <SelectValue placeholder="Select designer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {designerOptions.map((designer) => (
+                      <SelectItem key={designer.id} value={designer.id}>
+                        {designer.name}
+                        {showDesignerScope && designer.scope
+                          ? ` (${getDesignerScopeLabel(designer.scope)})`
+                          : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {showTaskSearch && (
+                <div className="search-elastic group flex items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-none dark:border-slate-700/60 dark:bg-slate-900/80">
+                  <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search tasks"
+                    aria-label="Search tasks"
+                    className="search-elastic-input w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none dark:text-slate-100 dark:placeholder:text-slate-500"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -426,7 +554,17 @@ export default function DesignerAvailability() {
 
           <div className="availability-calendar">
             <div className="availability-calendar__meta dark:text-slate-200">
-              {format(activeMonth, 'MMMM yyyy')}
+              <div className="flex flex-wrap items-center gap-3">
+                <span>{format(activeMonth, 'MMMM yyyy')}</span>
+                {activeDesigner && (
+                  <span className="inline-flex items-center rounded-full border border-[#D9E6FF] bg-[#F4F8FF] px-3 py-1 text-xs font-semibold text-[#24346D] dark:border-slate-700/60 dark:bg-slate-800/70 dark:text-slate-200">
+                    {activeDesigner.name}
+                    {showDesignerScope && activeDesigner.scope
+                      ? ` • ${getDesignerScopeLabel(activeDesigner.scope)}`
+                      : ''}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="availability-calendar__scroll dark:border-slate-700/60 dark:bg-slate-900/60 dark:shadow-none dark:before:bg-slate-900/60 dark:before:bg-none dark:after:bg-slate-900/60 dark:after:bg-none">
               <div className="availability-calendar__scroll-inner" ref={scrollRef}>

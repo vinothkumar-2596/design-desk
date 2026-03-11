@@ -68,6 +68,11 @@ import {
   getDefaultDesignerId,
   Task as ScheduleTask,
 } from '@/lib/designerSchedule';
+import {
+  addOfficeOpenDays,
+  isOfficeClosedDate,
+  OFFICE_REGION_LABEL,
+} from '@/lib/officeCalendar';
 import { upsertLocalTask } from '@/lib/taskStorage';
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
@@ -364,10 +369,6 @@ const createGmailComposeUrl = (to: string, subject: string, body: string) =>
 const INDIAN_MOBILE_REGEX = /^\+91[6-9]\d{9}$/;
 const INDIAN_PREFIX = '+91 ';
 const FREE_DATE_SUGGESTION_COUNT = 6;
-const isWeekendDate = (value: Date) => {
-  const day = startOfDay(value).getDay();
-  return day === 0 || day === 6;
-};
 const formatIndianPhoneInput = (value?: string) => {
   const digitsOnly = String(value || '').replace(/\D/g, '');
   const local = digitsOnly.startsWith('91') ? digitsOnly.slice(2) : digitsOnly;
@@ -498,22 +499,23 @@ export default function NewRequest() {
     'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF] dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus-visible:ring-primary/40 dark:focus-visible:border-slate-500/60';
   const apiUrl = API_URL;
 
-  // Minimum deadline is 3 days from now
+  // Minimum deadline is 3 office-working days from now.
   const todayDate = startOfDay(new Date());
-  const minDeadlineDate = startOfDay(addDays(new Date(), 3));
+  const minDeadlineDate = addOfficeOpenDays(new Date(), 3);
   const designerId = getDefaultDesignerId(scheduleTasks);
   const invalidRanges = useMemo(
     () => buildInvalidRanges(scheduleTasks, designerId),
     [designerId, scheduleTasks]
   );
-  const isDateBlocked = (value: Date) =>
-    !isEmergency &&
+  const hasDesignerConflict = (value: Date) =>
     invalidRanges.some((range) =>
       isWithinInterval(startOfDay(value), {
         start: startOfDay(range.start),
         end: startOfDay(range.end),
       })
     );
+  const isDateBlocked = (value: Date) =>
+    isOfficeClosedDate(value) || (!isEmergency && hasDesignerConflict(value));
   const getNextAvailableDeadline = (baseDate: Date) => {
     let candidate = startOfDay(baseDate);
     if (isBefore(candidate, todayDate)) {
@@ -523,7 +525,7 @@ export default function NewRequest() {
       candidate = minDeadlineDate;
     }
     let attempts = 0;
-    while (!isEmergency && isDateBlocked(candidate) && attempts < 120) {
+    while (isDateBlocked(candidate) && attempts < 180) {
       candidate = addDays(candidate, 1);
       attempts += 1;
     }
@@ -535,15 +537,7 @@ export default function NewRequest() {
     let attempts = 0;
 
     while (suggestions.length < FREE_DATE_SUGGESTION_COUNT && attempts < 90) {
-      const blocked =
-        !isEmergency &&
-        invalidRanges.some((range) =>
-          isWithinInterval(candidate, {
-            start: startOfDay(range.start),
-            end: startOfDay(range.end),
-          })
-        );
-      if (!blocked && !isWeekendDate(candidate)) {
+      if (!isDateBlocked(candidate)) {
         suggestions.push(candidate);
       }
       candidate = addDays(candidate, 1);
@@ -553,6 +547,12 @@ export default function NewRequest() {
     return suggestions;
   }, [invalidRanges, isEmergency, minDeadlineDate, todayDate]);
   const selectedDeadlineKey = deadline ? format(startOfDay(deadline), 'yyyy-MM-dd') : '';
+  const scheduleEndpoint =
+    apiUrl && user?.role === 'staff'
+      ? `${apiUrl}/api/tasks/availability`
+      : apiUrl
+        ? `${apiUrl}/api/tasks`
+        : '';
 
   useEffect(() => {
     if (!apiUrl) {
@@ -562,7 +562,7 @@ export default function NewRequest() {
     let isActive = true;
     const loadSchedule = async () => {
       try {
-        const response = await authFetch(`${apiUrl}/api/tasks`);
+        const response = await authFetch(scheduleEndpoint);
         if (!response.ok) {
           throw new Error('Failed to load tasks');
         }
@@ -578,7 +578,7 @@ export default function NewRequest() {
     return () => {
       isActive = false;
     };
-  }, [apiUrl]);
+  }, [apiUrl, scheduleEndpoint]);
 
   useEffect(() => {
     let isActive = true;
@@ -634,7 +634,7 @@ export default function NewRequest() {
     const normalized = startOfDay(deadline);
     const isPastDate = isBefore(normalized, todayDate);
     const requiresMinLead = isBefore(normalized, minDeadlineDate);
-    const blockedDate = !isEmergency && isDateBlocked(normalized);
+    const blockedDate = isDateBlocked(normalized);
     if (!isPastDate && (!requiresMinLead || isEmergency) && !blockedDate) return;
     const corrected = getNextAvailableDeadline(normalized);
     if (corrected.getTime() !== normalized.getTime()) {
@@ -850,7 +850,8 @@ export default function NewRequest() {
     const deadlineValid = Boolean(
       normalizedDeadline &&
       !isBefore(normalizedDeadline, todayDate) &&
-      (isEmergency || !isBefore(normalizedDeadline, minDeadlineDate))
+      (isEmergency || !isBefore(normalizedDeadline, minDeadlineDate)) &&
+      !isDateBlocked(normalizedDeadline)
     );
     return (
       title.trim() &&
@@ -864,11 +865,6 @@ export default function NewRequest() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (deadline && isBefore(startOfDay(deadline), todayDate)) {
-      toast.error('Deadline cannot be before today.');
-      return;
-    }
 
     if (!isFormValid()) {
       toast.error('Please complete all required fields', {
@@ -1433,8 +1429,8 @@ export default function NewRequest() {
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 {isEmergency
-                  ? 'Emergency requests can bypass the 3-day minimum (today onward only)'
-                  : 'Minimum 3 days from today'}
+                  ? `Emergency requests can bypass designer workload and the 3-day minimum, but weekends and ${OFFICE_REGION_LABEL} government holidays remain unavailable.`
+                  : `Minimum 3 working days from today. Saturdays, Sundays, and ${OFFICE_REGION_LABEL} government holidays are unavailable.`}
               </p>
               {freeDateSuggestions.length > 0 && (
                 <div className="space-y-2 pt-1">
@@ -1464,7 +1460,7 @@ export default function NewRequest() {
                     })}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    These dates are currently open based on designer availability.
+                    {`These dates are currently open based on designer availability and the ${OFFICE_REGION_LABEL} office calendar.`}
                   </p>
                 </div>
               )}

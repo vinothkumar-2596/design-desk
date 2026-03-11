@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { API_URL, authFetch } from '@/lib/api';
+import {
+  API_URL,
+  GOOGLE_AUTH_ERROR_EVENT,
+  GOOGLE_AUTH_ERROR_STORAGE_KEY,
+  authFetch,
+} from '@/lib/api';
 import { TREASURER_CREDENTIALS } from '@/constants/auth';
 import { UserRole } from '@/types';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Palette, Users, Briefcase, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, Palette, Users, Briefcase, Eye, EyeOff } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 
@@ -65,13 +71,31 @@ const resolveLoginRole = (email: string): UserRole => {
   return 'staff';
 };
 
+const normalizeGoogleAuthError = (value: unknown) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
+
+const consumeStoredGoogleAuthError = () => {
+  if (typeof window === 'undefined') return '';
+  const storedError = normalizeGoogleAuthError(
+    window.sessionStorage.getItem(GOOGLE_AUTH_ERROR_STORAGE_KEY)
+  );
+  if (storedError) {
+    window.sessionStorage.removeItem(GOOGLE_AUTH_ERROR_STORAGE_KEY);
+  }
+  return storedError;
+};
+
 export default function Login() {
   const { setTheme } = useTheme();
   const previousThemeRef = useRef<string | null>(null);
+  const lastGoogleAuthErrorRef = useRef('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('staff');
   const [isLoading, setIsLoading] = useState(false);
+  const [googleAuthError, setGoogleAuthError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
@@ -134,6 +158,37 @@ export default function Login() {
     'border border-[#C9D7FF] bg-white shadow-lg';
   const selectTriggerClass =
     'h-11 bg-white border border-[#D9E6FF] font-semibold text-foreground/90 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF]';
+  const googleErrorText = googleAuthError.toLowerCase();
+  const isStaffGoogleDomainError =
+    googleErrorText.includes(`@${STAFF_EMAIL_DOMAIN}`) ||
+    googleErrorText.includes('institutional email');
+  const googleErrorTitle = isStaffGoogleDomainError
+    ? 'Use your staff Google account'
+    : 'Google sign-in needs attention';
+  const googleErrorDescription = isStaffGoogleDomainError
+    ? `Google access is limited to verified staff accounts. Switch to your @${STAFF_EMAIL_DOMAIN} Google account and try again.`
+    : googleAuthError;
+
+  const clearGoogleAuthError = () => {
+    setGoogleAuthError('');
+    lastGoogleAuthErrorRef.current = '';
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(GOOGLE_AUTH_ERROR_STORAGE_KEY);
+    }
+  };
+
+  const showGoogleAuthError = (message: unknown) => {
+    const normalizedMessage = normalizeGoogleAuthError(message);
+    if (!normalizedMessage) return;
+    setGoogleAuthError(normalizedMessage);
+    if (lastGoogleAuthErrorRef.current === normalizedMessage) {
+      return;
+    }
+    lastGoogleAuthErrorRef.current = normalizedMessage;
+    toast.error('Google sign-in failed', {
+      description: normalizedMessage,
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +217,7 @@ export default function Login() {
 
   const handleGoogleLogin = async () => {
     try {
+      clearGoogleAuthError();
       if (role !== 'staff') {
         toast.error('Google sign-in is for staff accounts only');
         return;
@@ -335,6 +391,35 @@ export default function Login() {
       navigate(safeRedirect);
     }
   }, [isAuthenticated, navigate, safeRedirect]);
+
+  useEffect(() => {
+    const queryError = normalizeGoogleAuthError(
+      new URLSearchParams(location.search).get('authError')
+    );
+    const storedError = consumeStoredGoogleAuthError();
+    if (queryError) {
+      showGoogleAuthError(queryError);
+      return;
+    }
+    if (storedError) {
+      showGoogleAuthError(storedError);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    const handleGoogleAuthError: EventListener = (event) => {
+      const detailMessage =
+        event instanceof CustomEvent ? normalizeGoogleAuthError(event.detail?.message) : '';
+      const nextMessage = detailMessage || consumeStoredGoogleAuthError();
+      if (!nextMessage) return;
+      showGoogleAuthError(nextMessage);
+    };
+
+    window.addEventListener(GOOGLE_AUTH_ERROR_EVENT, handleGoogleAuthError);
+    return () => {
+      window.removeEventListener(GOOGLE_AUTH_ERROR_EVENT, handleGoogleAuthError);
+    };
+  }, []);
 
   return (
     <>
@@ -540,6 +625,39 @@ export default function Login() {
                     <span>Continue with Google</span>
                   </span>
                 </Button>
+                {googleAuthError ? (
+                  <div className="mt-4 overflow-hidden rounded-[22px] border border-[#D7E0F8] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(239,244,255,0.94))]">
+                    <div className="flex gap-4 p-4 sm:p-5">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#D9E6FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(230,238,255,0.84))] text-[#35429A] backdrop-blur-xl">
+                        <AlertCircle className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className="border border-[#D7E0F8] bg-white/80 px-2 py-0.5 text-[11px] font-medium text-[#35429A]">
+                            Staff Google access
+                          </Badge>
+                        </div>
+                        <p className="mt-3 text-[13px] font-semibold text-[#162858]">
+                          {googleErrorTitle}
+                        </p>
+                        <p className="mt-1 text-[12px] leading-6 text-[#5C6E95]">
+                          {googleErrorDescription}
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="border-[#D7E0F8] bg-white/85 text-[#35429A] hover:bg-[#EEF3FF]"
+                            onClick={clearGoogleAuthError}
+                          >
+                            Dismiss
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <p className="text-center text-xs text-muted-foreground mt-3">
                   Staff must use their @smvec.ac.in account.
                 </p>

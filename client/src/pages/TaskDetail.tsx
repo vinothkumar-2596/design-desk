@@ -220,6 +220,9 @@ type PendingFinalFile = {
   size?: number;
   mime?: string;
   thumbnailUrl?: string;
+  webViewLink?: string;
+  webContentLink?: string;
+  driveId?: string;
 };
 type OutputDisplayFile = {
   id: string;
@@ -231,8 +234,17 @@ type OutputDisplayFile = {
   size?: number;
   mime?: string;
   thumbnailUrl?: string;
+  webViewLink?: string;
+  webContentLink?: string;
+  driveId?: string;
 };
 type FileActionTarget = (typeof mockTasks)[number]['files'][number] | OutputDisplayFile;
+type FileLinkLike = {
+  url?: string;
+  webViewLink?: string;
+  webContentLink?: string;
+  driveId?: string;
+};
 const getFileListItemKey = (
   file: { id?: string; url?: string; name?: string },
   index: number
@@ -1406,6 +1418,7 @@ export default function TaskDetail() {
   const canAcceptTask =
     canDesignerActions &&
     isAssignedToCurrentUser &&
+    emergencyStatus !== 'approved' &&
     (normalizedTaskStatus === 'assigned' || normalizedTaskStatus === 'pending');
   const finalUploadTotals = finalUploadItems.reduce(
     (acc, item) => {
@@ -1625,6 +1638,17 @@ export default function TaskDetail() {
     if (!normalizedId) return '';
     return `https://drive.google.com/file/d/${encodeURIComponent(normalizedId)}/view?usp=drivesdk`;
   };
+  const resolveStoredFileUrl = (file?: FileLinkLike | null) => {
+    const rawUrl = String(file?.url || '').trim();
+    if (rawUrl) return rawUrl;
+    const webViewLink = String(file?.webViewLink || '').trim();
+    if (webViewLink) return webViewLink;
+    const webContentLink = String(file?.webContentLink || '').trim();
+    if (webContentLink) return webContentLink;
+    const driveId = String(file?.driveId || '').trim();
+    if (driveId) return buildDriveViewUrl(driveId);
+    return '';
+  };
   const resolveUploadedDriveUrl = (payload?: {
     webViewLink?: string;
     webContentLink?: string;
@@ -1638,12 +1662,13 @@ export default function TaskDetail() {
   };
   const getPreviewUrl = (file: FileActionTarget) => {
     if (file.thumbnailUrl) return file.thumbnailUrl;
-    if (!file.url) return '';
-    const driveId = getDriveFileId(file.url);
+    const resolvedUrl = resolveStoredFileUrl(file);
+    if (!resolvedUrl) return '';
+    const driveId = getDriveFileId(resolvedUrl);
     if (driveId) {
       return `https://drive.google.com/thumbnail?id=${driveId}&sz=w400`;
     }
-    if (isImageFile(file.name)) return file.url;
+    if (isImageFile(file.name)) return resolvedUrl;
     return '';
   };
   const isDownloadableExtension = (fileName: string) => {
@@ -1655,27 +1680,29 @@ export default function TaskDetail() {
     return String(file.mime || '').toLowerCase() === 'link';
   };
   const isGoogleDriveLinkFile = (file: FileActionTarget) =>
-    Boolean(file.url && getDriveLinkMeta(file.url).isGoogleDrive);
+    Boolean(resolveStoredFileUrl(file) && getDriveLinkMeta(resolveStoredFileUrl(file)).isGoogleDrive);
   const shouldUseLinkIcon = (file: FileActionTarget) => {
-    if (!file.url) return false;
+    const resolvedUrl = resolveStoredFileUrl(file);
+    if (!resolvedUrl) return false;
     if (isLinkOnlyFile(file)) return true;
     return !isDownloadableExtension(file.name);
   };
   const getFileActionUrl = (file: FileActionTarget) => {
-    if (!file.url) return '';
-    const driveId = getDriveFileId(file.url);
+    const resolvedUrl = resolveStoredFileUrl(file);
+    if (!resolvedUrl) return '';
+    const driveId = getDriveFileId(resolvedUrl);
     if (shouldUseLinkIcon(file)) {
       if (driveId) {
         return `https://drive.google.com/file/d/${driveId}/view`;
       }
-      return file.url;
+      return resolvedUrl;
     }
     if (driveId) {
       return apiUrl
         ? `${apiUrl}/api/files/download/${encodeURIComponent(driveId)}`
         : `/api/files/download/${encodeURIComponent(driveId)}`;
     }
-    return file.url;
+    return resolvedUrl;
   };
   const getDownloadFileNameFromHeaders = (response: Response, fallbackName: string) => {
     const contentDisposition = response.headers.get('content-disposition') || '';
@@ -1714,7 +1741,7 @@ export default function TaskDetail() {
     }
   };
   const getFileShareUrl = (file: FileActionTarget) => {
-    const rawUrl = String(file.url || '').trim();
+    const rawUrl = resolveStoredFileUrl(file);
     if (!rawUrl) return '';
     const driveId = getDriveFileId(rawUrl);
     if (driveId) {
@@ -1779,7 +1806,7 @@ export default function TaskDetail() {
       return;
     }
 
-    const driveId = getDriveFileId(file.url || '');
+    const driveId = getDriveFileId(resolveStoredFileUrl(file));
     if (driveId) {
       try {
         await downloadFileViaApi(file);
@@ -1794,13 +1821,16 @@ export default function TaskDetail() {
   const toOutputFile = (file: FinalDeliverableFile, index: number): OutputDisplayFile => ({
     id: file.id || `final-file-${index}`,
     name: file.name || inferDriveItemNameFromUrl(file.url || ''),
-    url: file.url,
+    url: resolveStoredFileUrl(file as FinalDeliverableFile & FileLinkLike),
     type: 'output' as const,
     uploadedAt: file.uploadedAt,
     uploadedBy: file.uploadedBy,
     size: file.size,
     mime: file.mime,
     thumbnailUrl: file.thumbnailUrl,
+    webViewLink: (file as FinalDeliverableFile & FileLinkLike).webViewLink,
+    webContentLink: (file as FinalDeliverableFile & FileLinkLike).webContentLink,
+    driveId: (file as FinalDeliverableFile & FileLinkLike).driveId,
   });
   const toPendingFinalFileFromVersionFile = (file: FinalDeliverableFile): PendingFinalFile => ({
     name: file.name || inferDriveItemNameFromUrl(file.url || ''),
@@ -5853,6 +5883,90 @@ export default function TaskDetail() {
                     {formatDistanceToNow(taskState.updatedAt, { addSuffix: true })}
                   </dd>
                 </div>
+
+                {emergencyStatus && (
+                  <div className="border-t border-[#E1E9FF] pt-5 dark:border-slate-700/60">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <dt className="text-xs text-muted-foreground uppercase tracking-wider">
+                          Emergency Approval
+                        </dt>
+                        <dd className="mt-1 text-base font-semibold text-foreground">
+                          Emergency request review
+                        </dd>
+                      </div>
+                      <Badge variant={emergencyVariant}>{emergencyLabel}</Badge>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                          Requested
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {format(
+                            taskState.emergencyRequestedAt || taskState.createdAt,
+                            'MMM d, yyyy'
+                          )}
+                        </p>
+                      </div>
+
+                      {taskState.emergencyApprovedAt && (
+                        <div>
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                            Decision
+                          </p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {emergencyStatus === 'approved' ? 'Approved' : 'Rejected'} by{' '}
+                            {taskState.emergencyApprovedBy || 'Designer'} on{' '}
+                            {format(taskState.emergencyApprovedAt, 'MMM d, yyyy')}
+                          </p>
+                        </div>
+                      )}
+
+                      {latestEmergencyDecisionNote && (
+                        <div>
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                            Reason
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                            {latestEmergencyDecisionNote}
+                          </p>
+                        </div>
+                      )}
+
+                      {canDesignerActions && emergencyStatus === 'pending' && (
+                        <div className="space-y-3 rounded-2xl border border-[#D9E6FF] bg-[#F8FBFF]/80 p-4 dark:border-slate-700/60 dark:bg-slate-900/50">
+                          <Textarea
+                            value={emergencyDecisionReason}
+                            onChange={(event) => setEmergencyDecisionReason(event.target.value)}
+                            rows={3}
+                            placeholder="Reason for approve/reject (required)"
+                            className="select-text"
+                            disabled={isEmergencyUpdating}
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleEmergencyDecision('approved')}
+                              disabled={isEmergencyUpdating || !emergencyDecisionReason.trim()}
+                            >
+                              {approvalDecisionInFlight === 'approved' ? 'Approving...' : 'Approve'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEmergencyDecision('rejected')}
+                              disabled={isEmergencyUpdating || !emergencyDecisionReason.trim()}
+                            >
+                              {approvalDecisionInFlight === 'rejected' ? 'Rejecting...' : 'Reject'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </dl>
             </div>
 
@@ -5940,192 +6054,137 @@ export default function TaskDetail() {
                 );
               })()}
             </div>
-            {emergencyStatus && (
+            {emergencyStatus && designVersions.length > 0 && (
               <div className={`${glassPanelClass} p-6 animate-slide-up`}>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold text-foreground">Emergency Approval</h2>
-                  <Badge variant={emergencyVariant}>{emergencyLabel}</Badge>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Requested{' '}
-                  {format(
-                    taskState.emergencyRequestedAt || taskState.createdAt,
-                    'MMM d, yyyy'
+                <div className="mb-6">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                    <History className="h-4 w-4 text-primary" />
+                    Version History
+                  </h3>
+                  <div className="space-y-2">
+                    {designVersions.map((version, index) => (
+                      <div key={`${version.id}-${index}`} className={cn(fileRowClass, 'items-start gap-3 min-w-0')}>
+                        <div className="min-w-0 flex-1 pr-2">
+                          <div className="text-sm font-medium text-foreground line-clamp-2 break-words">
+                            {getVersionLabel(version)} - {version.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Uploaded {format(version.uploadedAt, 'MMM d, yyyy')}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {activeDesignVersionId === version.id && (
+                            <Badge variant="secondary">Active</Badge>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled={!version.url}
+                            className={fileActionButtonClass}
+                            onClick={() => {
+                              if (version.url) {
+                                window.open(version.url, '_blank', 'noopener,noreferrer');
+                              }
+                            }}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          {canManageVersions && activeDesignVersionId !== version.id && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRollbackVersion(version.id)}
+                            >
+                              Rollback
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {designVersions.length > 1 && (
+                    <div className="mt-4 rounded-lg border border-border/60 bg-secondary/30 p-4">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                            Compare Left
+                          </span>
+                          <Select value={compareLeftId} onValueChange={setCompareLeftId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select version" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {designVersions.map((version, index) => (
+                                <SelectItem key={`${version.id}-${index}`} value={version.id}>
+                                  {getVersionLabel(version)} - {version.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                            Compare Right
+                          </span>
+                          <Select value={compareRightId} onValueChange={setCompareRightId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select version" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {designVersions.map((version, index) => (
+                                <SelectItem key={`${version.id}-${index}`} value={version.id}>
+                                  {getVersionLabel(version)} - {version.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {compareLeft && compareRight && (
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          {[compareLeft, compareRight].map((version, index) => (
+                            <div
+                              key={`${version.id}-${index}`}
+                              className="rounded-lg border border-border/60 bg-background p-3"
+                            >
+                              <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                {getVersionLabel(version)} - {version.name}
+                              </div>
+                              {version.url && isImageVersion(version) ? (
+                                <img
+                                  src={version.url}
+                                  alt={version.name}
+                                  className="w-full rounded-md border border-border/40"
+                                />
+                              ) : (
+                                <div className="text-sm text-muted-foreground">
+                                  {version.url ? (
+                                    <>
+                                      Preview not available.{' '}
+                                      <button
+                                        type="button"
+                                        className="text-primary hover:underline"
+                                        onClick={() =>
+                                          window.open(version.url, '_blank', 'noopener,noreferrer')
+                                        }
+                                      >
+                                        Open file
+                                      </button>
+                                    </>
+                                  ) : (
+                                    'No file URL available for this version.'
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-                {taskState.emergencyApprovedAt && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {emergencyStatus === 'approved' ? 'Approved' : 'Rejected'} by{' '}
-                    {taskState.emergencyApprovedBy || 'Designer'} on{' '}
-                    {format(taskState.emergencyApprovedAt, 'MMM d, yyyy')}
-                  </p>
-                )}
-                {latestEmergencyDecisionNote && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Reason: {latestEmergencyDecisionNote}
-                  </p>
-                )}
-                {canDesignerActions && emergencyStatus === 'pending' && (
-                  <div className="mt-4 space-y-2">
-                    <Textarea
-                      value={emergencyDecisionReason}
-                      onChange={(event) => setEmergencyDecisionReason(event.target.value)}
-                      rows={2}
-                      placeholder="Reason for approve/reject (required)"
-                      className="select-text"
-                      disabled={isEmergencyUpdating}
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => handleEmergencyDecision('approved')}
-                        disabled={isEmergencyUpdating || !emergencyDecisionReason.trim()}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleEmergencyDecision('rejected')}
-                        disabled={isEmergencyUpdating || !emergencyDecisionReason.trim()}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {designVersions.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                      <History className="h-4 w-4 text-primary" />
-                      Version History
-                    </h3>
-                    <div className="space-y-2">
-                      {designVersions.map((version, index) => (
-                        <div key={`${version.id}-${index}`} className={cn(fileRowClass, 'items-start gap-3 min-w-0')}>
-                          <div className="min-w-0 flex-1 pr-2">
-                            <div className="text-sm font-medium text-foreground line-clamp-2 break-words">
-                              {getVersionLabel(version)} - {version.name}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Uploaded {format(version.uploadedAt, 'MMM d, yyyy')}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            {activeDesignVersionId === version.id && (
-                              <Badge variant="secondary">Active</Badge>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              disabled={!version.url}
-                              className={fileActionButtonClass}
-                              onClick={() => {
-                                if (version.url) {
-                                  window.open(version.url, '_blank', 'noopener,noreferrer');
-                                }
-                              }}
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            {canManageVersions && activeDesignVersionId !== version.id && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRollbackVersion(version.id)}
-                              >
-                                Rollback
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {designVersions.length > 1 && (
-                      <div className="mt-4 rounded-lg border border-border/60 bg-secondary/30 p-4">
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div className="space-y-2">
-                            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              Compare Left
-                            </span>
-                            <Select value={compareLeftId} onValueChange={setCompareLeftId}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select version" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {designVersions.map((version, index) => (
-                                  <SelectItem key={`${version.id}-${index}`} value={version.id}>
-                                    {getVersionLabel(version)} - {version.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              Compare Right
-                            </span>
-                            <Select value={compareRightId} onValueChange={setCompareRightId}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select version" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {designVersions.map((version, index) => (
-                                  <SelectItem key={`${version.id}-${index}`} value={version.id}>
-                                    {getVersionLabel(version)} - {version.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        {compareLeft && compareRight && (
-                          <div className="mt-4 grid gap-4 md:grid-cols-2">
-                            {[compareLeft, compareRight].map((version, index) => (
-                              <div
-                                key={`${version.id}-${index}`}
-                                className="rounded-lg border border-border/60 bg-background p-3"
-                              >
-                                <div className="text-xs font-semibold text-muted-foreground mb-2">
-                                  {getVersionLabel(version)} - {version.name}
-                                </div>
-                                {version.url && isImageVersion(version) ? (
-                                  <img
-                                    src={version.url}
-                                    alt={version.name}
-                                    className="w-full rounded-md border border-border/40"
-                                  />
-                                ) : (
-                                  <div className="text-sm text-muted-foreground">
-                                    {version.url ? (
-                                      <>
-                                        Preview not available.{' '}
-                                        <button
-                                          type="button"
-                                          className="text-primary hover:underline"
-                                          onClick={() =>
-                                            window.open(version.url, '_blank', 'noopener,noreferrer')
-                                          }
-                                        >
-                                          Open file
-                                        </button>
-                                      </>
-                                    ) : (
-                                      'No file URL available for this version.'
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 

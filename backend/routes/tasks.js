@@ -911,6 +911,125 @@ const canAccessTask = (task, user) => {
   return false;
 };
 
+const buildAvailabilityTaskTitle = (task, user) => {
+  const role = normalizeTaskRole(user?.role);
+  const userIsMainDesigner = role === "designer" && isMainDesignerUser(user);
+  if (role === "admin" || role === "treasurer" || role === "manager") {
+    return task?.title || "Untitled";
+  }
+  if (role === "designer" && userIsMainDesigner) {
+    return task?.title || "Untitled";
+  }
+  if (role === "designer" && canAccessTask(task, user)) {
+    return task?.title || "Untitled";
+  }
+  return "Committed with work";
+};
+
+const buildAvailabilityDesignerScopeMaps = async (tasks = []) => {
+  const designerIds = new Set();
+  const designerEmails = new Set();
+
+  tasks.forEach((task) => {
+    const assignedId = normalizeId(task?.assignedToId);
+    if (assignedId && isObjectIdLike(assignedId)) {
+      designerIds.add(assignedId);
+    }
+
+    const assignedEmail = normalizeValue(task?.assignedToEmail);
+    if (assignedEmail) {
+      designerEmails.add(assignedEmail);
+    }
+
+    const assignedIdentifier = resolveAssignedIdentifier(task);
+    if (assignedIdentifier && isObjectIdLike(assignedIdentifier)) {
+      designerIds.add(assignedIdentifier);
+    } else if (assignedIdentifier && EMAIL_REGEX.test(assignedIdentifier)) {
+      designerEmails.add(normalizeValue(assignedIdentifier));
+    }
+  });
+
+  if (designerIds.size === 0 && designerEmails.size === 0) {
+    return { byId: new Map(), byEmail: new Map() };
+  }
+
+  const orClauses = [];
+  if (designerIds.size > 0) {
+    orClauses.push({
+      _id: { $in: Array.from(designerIds).map((id) => new mongoose.Types.ObjectId(id)) }
+    });
+  }
+  if (designerEmails.size > 0) {
+    orClauses.push({ email: { $in: Array.from(designerEmails) } });
+  }
+
+  const designers = await User.find({
+    role: "designer",
+    isActive: { $ne: false },
+    $or: orClauses
+  }).select("_id email role");
+
+  const byId = new Map();
+  const byEmail = new Map();
+
+  designers.forEach((designer) => {
+    const scope = getDesignerScope(designer) || "junior";
+    const id = designer?._id?.toString?.();
+    const email = normalizeValue(designer?.email);
+    if (id) {
+      byId.set(id, scope);
+    }
+    if (email) {
+      byEmail.set(email, scope);
+    }
+  });
+
+  return { byId, byEmail };
+};
+
+const resolveAvailabilityAssignedScope = (task, designerScopeMaps) => {
+  const assignedId = normalizeId(task?.assignedToId);
+  if (assignedId && designerScopeMaps.byId.has(assignedId)) {
+    return designerScopeMaps.byId.get(assignedId);
+  }
+
+  const assignedIdentifier = resolveAssignedIdentifier(task);
+  if (assignedIdentifier && designerScopeMaps.byId.has(assignedIdentifier)) {
+    return designerScopeMaps.byId.get(assignedIdentifier);
+  }
+  if (assignedIdentifier && EMAIL_REGEX.test(assignedIdentifier)) {
+    const normalizedEmail = normalizeValue(assignedIdentifier);
+    if (designerScopeMaps.byEmail.has(normalizedEmail)) {
+      return designerScopeMaps.byEmail.get(normalizedEmail);
+    }
+  }
+
+  const assignedEmail = normalizeValue(task?.assignedToEmail);
+  if (assignedEmail && designerScopeMaps.byEmail.has(assignedEmail)) {
+    return designerScopeMaps.byEmail.get(assignedEmail);
+  }
+
+  return "";
+};
+
+const buildAvailabilityTaskPreview = (task, user, designerScopeMaps) => {
+  const assignedIdentifier = resolveAssignedIdentifier(task);
+  if (!assignedIdentifier) return null;
+  return {
+    id: task?._id?.toString?.() || "",
+    title: buildAvailabilityTaskTitle(task, user),
+    assignedToId: task?.assignedToId || assignedIdentifier || "",
+    assignedTo: task?.assignedTo || assignedIdentifier || "",
+    assignedToName: task?.assignedToName || "",
+    deadline: task?.deadline || null,
+    estimatedDays: Number(task?.estimatedDays || 0) || 0,
+    urgency: task?.urgency || "normal",
+    status: task?.status || "pending",
+    assignedToScope: resolveAvailabilityAssignedScope(task, designerScopeMaps),
+    createdAt: task?.createdAt || new Date(),
+  };
+};
+
 const ensureTaskAccess = async (req, res, next) => {
   try {
     const rawTaskParam = String(req.params.id || "").trim();
@@ -1296,6 +1415,47 @@ router.get("/", globalLimiter, async (req, res) => {
     res.json(filteredTasks);
   } catch (error) {
     res.status(500).json({ error: "Failed to load tasks." });
+  }
+});
+
+router.get("/availability", globalLimiter, async (req, res) => {
+  try {
+    const { status, category, urgency, assignedToId, limit } = req.query;
+    const query = {};
+    const userRole = normalizeTaskRole(req.user?.role);
+    const userIsMainDesigner = userRole === "designer" && isMainDesignerUser(req.user);
+
+    if (status) query.status = status;
+    if (category) query.category = category;
+    if (urgency) query.urgency = urgency;
+    if (assignedToId) query.assignedToId = assignedToId;
+
+    const safeLimit = Math.min(parseInt(limit || "250", 10), 500);
+    const tasks = await Task.find(query).sort({ createdAt: -1 }).limit(safeLimit);
+    const visibleTasks = (
+      await Promise.all(
+        tasks.map(async (task) => {
+          if (userRole === "admin" || userRole === "treasurer" || userRole === "manager" || userRole === "staff") {
+            return task;
+          }
+          if (userRole === "designer") {
+            if (userIsMainDesigner) {
+              return task;
+            }
+            return canAccessTask(task, req.user) ? task : null;
+          }
+          return null;
+        })
+      )
+    ).filter(Boolean);
+    const designerScopeMaps = await buildAvailabilityDesignerScopeMaps(visibleTasks);
+    const availabilityTasks = visibleTasks
+      .map((task) => buildAvailabilityTaskPreview(task, req.user, designerScopeMaps))
+      .filter(Boolean);
+
+    return res.json(availabilityTasks);
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to load availability." });
   }
 });
 

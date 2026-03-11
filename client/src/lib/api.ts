@@ -33,6 +33,8 @@ export const AUTH_TOKEN_KEY = 'auth_token';
 export const AUTH_USER_KEY = 'auth_user';
 export const AUTH_ROLE_KEY = 'auth_role';
 export const AUTH_SESSION_EXPIRED_EVENT = 'designhub:auth:session-expired';
+export const GOOGLE_AUTH_ERROR_EVENT = 'designhub:auth:google-error';
+export const GOOGLE_AUTH_ERROR_STORAGE_KEY = 'designhub:auth:google-error-message';
 
 let refreshTokenPromise: Promise<string | null> | null = null;
 

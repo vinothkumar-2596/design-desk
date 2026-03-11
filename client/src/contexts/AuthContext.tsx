@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, UserRole } from '@/types';
-import { API_URL, AUTH_SESSION_EXPIRED_EVENT } from '@/lib/api';
+import {
+  API_URL,
+  AUTH_SESSION_EXPIRED_EVENT,
+  GOOGLE_AUTH_ERROR_EVENT,
+  GOOGLE_AUTH_ERROR_STORAGE_KEY,
+} from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -52,6 +57,29 @@ const sameLoopbackOrigin = (left: string, right: string) => {
   }
 };
 
+const normalizeGoogleAuthError = (value: unknown) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
+
+const emitGoogleAuthError = (message: unknown) => {
+  if (typeof window === 'undefined') return;
+  const normalizedMessage = normalizeGoogleAuthError(message) || 'Google sign-in failed.';
+  window.sessionStorage.setItem(GOOGLE_AUTH_ERROR_STORAGE_KEY, normalizedMessage);
+  window.dispatchEvent(
+    new CustomEvent(GOOGLE_AUTH_ERROR_EVENT, {
+      detail: { message: normalizedMessage },
+    })
+  );
+};
+
+const clearGoogleCallbackParams = (url: URL) => {
+  url.searchParams.delete('authError');
+  url.searchParams.delete('token');
+  url.searchParams.delete('provider');
+  url.searchParams.delete('openerOrigin');
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -99,6 +127,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sameLoopbackOrigin(event.origin, window.location.origin);
       if (!trustedOrigin) return;
       if (!event.data || typeof event.data !== 'object') return;
+      if (event.data.type === 'google-auth-error') {
+        emitGoogleAuthError(event.data.error);
+        return;
+      }
       if (event.data.type !== 'google-auth') return;
       const token = event.data.token as string | undefined;
       if (!token) return;
@@ -117,6 +149,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         .catch(() => {
           localStorage.removeItem(TOKEN_KEY);
+          emitGoogleAuthError(
+            'Google sign-in completed, but your session could not be loaded. Please try again.'
+          );
         });
     };
 
@@ -128,11 +163,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const url = new URL(window.location.href);
     const token = url.searchParams.get('token');
     const provider = url.searchParams.get('provider');
+    const authError = url.searchParams.get('authError');
     const isGoogleCallback = provider === 'google' && url.pathname === '/login';
-    if (!token || !API_URL || !isGoogleCallback) return;
+    if (!isGoogleCallback) return;
 
     const openerOrigin =
       resolveOrigin(url.searchParams.get('openerOrigin')) ?? window.location.origin;
+
+    if (authError) {
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage({ type: 'google-auth-error', error: authError }, openerOrigin);
+        } catch {
+          // no-op: fall back to handling in the current window
+        }
+      }
+
+      emitGoogleAuthError(authError);
+      clearGoogleCallbackParams(url);
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+
+      if (window.opener && !window.opener.closed) {
+        window.close();
+      }
+      return;
+    }
+
+    if (!token || !API_URL) return;
 
     if (window.opener && !window.opener.closed) {
       try {
@@ -143,9 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     localStorage.setItem(TOKEN_KEY, token);
-    url.searchParams.delete('token');
-    url.searchParams.delete('provider');
-    url.searchParams.delete('openerOrigin');
+    clearGoogleCallbackParams(url);
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 
     fetch(`${API_URL}/api/auth/me`, {
@@ -161,9 +216,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         localStorage.removeItem(TOKEN_KEY);
+        emitGoogleAuthError(
+          'Google sign-in completed, but your session could not be loaded. Please try again.'
+        );
       });
 
-    window.close();
+    if (window.opener && !window.opener.closed) {
+      window.close();
+    }
   }, []);
 
   useEffect(() => {

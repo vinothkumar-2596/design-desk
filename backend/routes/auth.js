@@ -150,6 +150,15 @@ const getFrontendOrigin = () => {
   return parseOrigin(base) || "http://localhost:8080";
 };
 
+const decodeJwtPayload = (value) => {
+  try {
+    const decoded = jwt.decode(String(value || ""));
+    return decoded && typeof decoded === "object" ? decoded : null;
+  } catch {
+    return null;
+  }
+};
+
 const normalizeRequestedFrontendOrigin = (requestedOrigin) => {
   const fallback = getFrontendOrigin();
   const requested = parseOrigin(requestedOrigin);
@@ -179,6 +188,236 @@ const normalizeRequestedFrontendOrigin = (requestedOrigin) => {
   }
 
   return fallback;
+};
+
+const resolveGoogleAuthFrontendOrigin = (state) => {
+  const decodedState = decodeJwtPayload(state);
+  return normalizeRequestedFrontendOrigin(decodedState?.frontendOrigin);
+};
+
+const buildGoogleAuthRedirectUrl = ({ frontendOrigin, token, error }) => {
+  const origin = normalizeRequestedFrontendOrigin(frontendOrigin);
+  const redirectUrl = new URL("/login", origin);
+  redirectUrl.searchParams.set("provider", "google");
+  redirectUrl.searchParams.set("openerOrigin", origin);
+  if (token) {
+    redirectUrl.searchParams.set("token", token);
+  }
+  if (error) {
+    redirectUrl.searchParams.set("authError", error);
+  }
+  return redirectUrl.toString();
+};
+
+const redirectGoogleAuth = (res, { frontendOrigin, token, error }) => {
+  res.redirect(buildGoogleAuthRedirectUrl({ frontendOrigin, token, error }));
+};
+
+const resolveGoogleProviderError = (errorCode) => {
+  const normalized = String(errorCode || "").trim().toLowerCase();
+  if (normalized === "access_denied") {
+    return "Google sign-in was canceled.";
+  }
+  return "Google sign-in could not be completed.";
+};
+
+const escapeHtml = (value) =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const renderGoogleAuthErrorPage = ({ title, message, frontendOrigin }) => {
+  const origin = normalizeRequestedFrontendOrigin(frontendOrigin);
+  const loginUrl = buildGoogleAuthRedirectUrl({ frontendOrigin: origin, error: message });
+  const popupMessage = JSON.stringify({ type: "google-auth-error", error: message });
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #eef3ff;
+        --panel: rgba(255, 255, 255, 0.92);
+        --border: rgba(127, 153, 220, 0.24);
+        --text: #102247;
+        --muted: #5c6f96;
+        --accent: #35429a;
+        --accent-soft: rgba(53, 66, 154, 0.12);
+        --danger: #c53b4e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        font-family: Inter, Segoe UI, sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(63, 95, 191, 0.18), transparent 34%),
+          radial-gradient(circle at bottom right, rgba(99, 150, 255, 0.16), transparent 38%),
+          linear-gradient(180deg, #f7f9ff 0%, var(--bg) 100%);
+        color: var(--text);
+      }
+      .card {
+        width: min(100%, 460px);
+        border-radius: 28px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        box-shadow: 0 28px 60px -36px rgba(16, 34, 71, 0.42);
+        backdrop-filter: blur(18px);
+        padding: 32px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 28px;
+      }
+      .brand-mark {
+        width: 52px;
+        height: 52px;
+        border-radius: 16px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, #ffffff 0%, #eaf1ff 100%);
+        border: 1px solid rgba(127, 153, 220, 0.24);
+      }
+      .brand-mark img {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
+      }
+      .brand-name {
+        font-size: 1.35rem;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .brand-copy {
+        margin-top: 3px;
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+      .status-icon {
+        width: 62px;
+        height: 62px;
+        border-radius: 20px;
+        display: grid;
+        place-items: center;
+        margin-bottom: 18px;
+        background: linear-gradient(135deg, rgba(197, 59, 78, 0.12), rgba(197, 59, 78, 0.04));
+        color: var(--danger);
+        font-size: 1.8rem;
+      }
+      h1 {
+        margin: 0;
+        font-size: 2rem;
+        line-height: 1.12;
+        letter-spacing: -0.03em;
+      }
+      p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.6;
+      }
+      .message {
+        margin-top: 18px;
+        padding: 16px 18px;
+        border-radius: 18px;
+        border: 1px solid rgba(197, 59, 78, 0.18);
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--text);
+        font-weight: 600;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 24px;
+      }
+      .button {
+        appearance: none;
+        border: 0;
+        border-radius: 14px;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 46px;
+        padding: 0 18px;
+        font-weight: 700;
+        transition: transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+      }
+      .button:hover {
+        transform: translateY(-1px);
+      }
+      .button-primary {
+        background: var(--accent);
+        color: #fff;
+        box-shadow: 0 16px 32px -20px rgba(53, 66, 154, 0.55);
+      }
+      .button-secondary {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .footnote {
+        margin-top: 18px;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="brand">
+        <div class="brand-mark">
+          <img src="${origin}/favicon.png" alt="DesignDesk" />
+        </div>
+        <div>
+          <div class="brand-name">DesignDesk</div>
+          <div class="brand-copy">Secure staff sign-in</div>
+        </div>
+      </div>
+      <div class="status-icon" aria-hidden="true">!</div>
+      <h1>${escapeHtml(title)}</h1>
+      <p>Google sign-in could not be completed with this account.</p>
+      <div class="message">${escapeHtml(message)}</div>
+      <div class="actions">
+        <a class="button button-primary" href="${escapeHtml(loginUrl)}">Back to sign in</a>
+        <button class="button button-secondary" type="button" onclick="window.close()">Close window</button>
+      </div>
+      <p class="footnote">Use your institutional ${escapeHtml(STAFF_EMAIL_DOMAIN_LABEL || "staff")} account to continue.</p>
+    </main>
+    <script>
+      (function () {
+        var payload = ${JSON.stringify(popupMessage)};
+        var openerOrigin = ${JSON.stringify(origin)};
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(JSON.parse(payload), openerOrigin);
+            setTimeout(function () { window.close(); }, 240);
+          }
+        } catch (error) {
+          // Ignore popup messaging failures and leave the page visible.
+        }
+      })();
+    </script>
+  </body>
+</html>`;
+};
+
+const respondGoogleAuthError = (res, { frontendOrigin, title, message }) => {
+  res
+    .status(200)
+    .type("html")
+    .send(renderGoogleAuthErrorPage({ title, message, frontendOrigin }));
 };
 
 const buildResetUrl = (token) => {
@@ -715,21 +954,41 @@ router.get("/google/start", (req, res) => {
 });
 
 router.get("/google/callback", async (req, res) => {
+  const frontendOrigin = resolveGoogleAuthFrontendOrigin(req.query?.state);
   try {
-    const { code, state } = req.query;
+    const { code, state, error: providerError } = req.query;
+    if (providerError) {
+      return respondGoogleAuthError(res, {
+        frontendOrigin,
+        title: "Sign-in canceled",
+        message: resolveGoogleProviderError(providerError),
+      });
+    }
     if (!code || !state) {
-      return res.status(400).json({ error: "Missing OAuth code." });
+      return respondGoogleAuthError(res, {
+        frontendOrigin,
+        title: "Sign-in unavailable",
+        message: "Google sign-in could not be completed.",
+      });
     }
 
     let statePayload;
     try {
       statePayload = jwt.verify(state, getJwtSecret());
     } catch (error) {
-      return res.status(400).json({ error: "Invalid OAuth state." });
+      return respondGoogleAuthError(res, {
+        frontendOrigin,
+        title: "Session expired",
+        message: "Your sign-in session expired. Please try again.",
+      });
     }
 
     if (!statePayload || statePayload.purpose !== "google") {
-      return res.status(400).json({ error: "Invalid OAuth state." });
+      return respondGoogleAuthError(res, {
+        frontendOrigin,
+        title: "Session expired",
+        message: "Your sign-in session expired. Please try again.",
+      });
     }
 
     const requestedRole = normalizeGoogleRole(statePayload.role);
@@ -742,12 +1001,20 @@ router.get("/google/callback", async (req, res) => {
     const { data } = await oauth2.userinfo.get();
 
     if (!data?.email || data.verified_email === false) {
-      return res.status(400).json({ error: "Google account email is not verified." });
+      return respondGoogleAuthError(res, {
+        frontendOrigin,
+        title: "Verified email required",
+        message: "Your Google account email must be verified before you can sign in.",
+      });
     }
 
     const normalizedEmail = data.email.toLowerCase().trim();
     if (requestedRole === "staff" && !hasStaffEmailDomain(normalizedEmail)) {
-      return res.status(403).json({ error: buildStaffDomainError() });
+      return respondGoogleAuthError(res, {
+        frontendOrigin,
+        title: "Use your staff account",
+        message: buildStaffDomainError(),
+      });
     }
     let user = await User.findOne({ email: normalizedEmail });
 
@@ -770,7 +1037,6 @@ router.get("/google/callback", async (req, res) => {
         user.role === "staff" &&
         requestedRole !== "staff"
       ) {
-        // Repair older Google accounts created before role state was preserved.
         updates.role = requestedRole;
       }
       if (Object.keys(updates).length > 0) {
@@ -789,7 +1055,11 @@ router.get("/google/callback", async (req, res) => {
         userAgent: req.userAgent || "",
         meta: { email: normalizedEmail, provider: "google", reason: "inactive" }
       });
-      return res.status(401).json({ error: "Account is inactive." });
+      return respondGoogleAuthError(res, {
+        frontendOrigin,
+        title: "Account inactive",
+        message: "Your account is inactive. Contact the administrator for access.",
+      });
     }
 
     const token = signAccessToken(user);
@@ -805,15 +1075,18 @@ router.get("/google/callback", async (req, res) => {
       userAgent: req.userAgent || "",
       meta: { email: normalizedEmail, provider: "google" }
     });
-    const frontendOrigin = normalizeRequestedFrontendOrigin(statePayload.frontendOrigin);
-    const redirectUrl = new URL("/login", frontendOrigin);
-    redirectUrl.searchParams.set("token", token);
-    redirectUrl.searchParams.set("provider", "google");
-    redirectUrl.searchParams.set("openerOrigin", frontendOrigin);
-    res.redirect(redirectUrl.toString());
+
+    return redirectGoogleAuth(res, {
+      frontendOrigin: statePayload.frontendOrigin,
+      token,
+    });
   } catch (error) {
     console.error("Google OAuth callback failed:", error?.message || error);
-    res.status(500).json({ error: "Google OAuth login failed." });
+    return respondGoogleAuthError(res, {
+      frontendOrigin,
+      title: "Sign-in failed",
+      message: "Google sign-in failed. Please try again.",
+    });
   }
 });
 
