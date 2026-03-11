@@ -633,7 +633,10 @@ export default function Login() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge className="border border-[#D7E0F8] bg-white/80 px-2 py-0.5 text-[11px] font-medium text-[#35429A]">
+                          <Badge
+                            variant="outline"
+                            className="border border-[#D7E0F8] bg-white/80 px-2 py-0.5 text-[11px] font-medium text-[#35429A]"
+                          >
                             Staff Google access
                           </Badge>
                         </div>
