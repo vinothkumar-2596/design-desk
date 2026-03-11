@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { AlertCircle, Palette, Users, Briefcase, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, LoaderCircle, Palette, Users, Briefcase, Eye, EyeOff } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 
@@ -39,6 +39,7 @@ const roleOptions: { value: UserRole; label: string; icon: React.ElementType; de
 ];
 
 const STAFF_EMAIL_DOMAIN = 'smvec.ac.in';
+const GOOGLE_ERROR_AUTO_DISMISS_MS = 10000;
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const hasStaffEmailDomain = (value: string) => normalizeEmail(value).endsWith(`@${STAFF_EMAIL_DOMAIN}`);
 const TREASURER_LOGIN_EMAIL = normalizeEmail(TREASURER_CREDENTIALS.email);
@@ -90,12 +91,13 @@ const consumeStoredGoogleAuthError = () => {
 export default function Login() {
   const { setTheme } = useTheme();
   const previousThemeRef = useRef<string | null>(null);
-  const lastGoogleAuthErrorRef = useRef('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('staff');
   const [isLoading, setIsLoading] = useState(false);
   const [googleAuthError, setGoogleAuthError] = useState('');
+  const [googleErrorProgress, setGoogleErrorProgress] = useState(100);
+  const [googleErrorSecondsLeft, setGoogleErrorSecondsLeft] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
@@ -171,7 +173,6 @@ export default function Login() {
 
   const clearGoogleAuthError = () => {
     setGoogleAuthError('');
-    lastGoogleAuthErrorRef.current = '';
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(GOOGLE_AUTH_ERROR_STORAGE_KEY);
     }
@@ -181,14 +182,35 @@ export default function Login() {
     const normalizedMessage = normalizeGoogleAuthError(message);
     if (!normalizedMessage) return;
     setGoogleAuthError(normalizedMessage);
-    if (lastGoogleAuthErrorRef.current === normalizedMessage) {
+  };
+
+  useEffect(() => {
+    if (!googleAuthError) {
+      setGoogleErrorProgress(100);
+      setGoogleErrorSecondsLeft(0);
       return;
     }
-    lastGoogleAuthErrorRef.current = normalizedMessage;
-    toast.error('Google sign-in failed', {
-      description: normalizedMessage,
-    });
-  };
+
+    const startedAt = Date.now();
+
+    const tick = () => {
+      const elapsed = Date.now() - startedAt;
+      const remaining = Math.max(0, GOOGLE_ERROR_AUTO_DISMISS_MS - elapsed);
+      setGoogleErrorProgress((remaining / GOOGLE_ERROR_AUTO_DISMISS_MS) * 100);
+      setGoogleErrorSecondsLeft(Math.ceil(remaining / 1000));
+
+      if (remaining === 0) {
+        setGoogleAuthError('');
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem(GOOGLE_AUTH_ERROR_STORAGE_KEY);
+        }
+      }
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 100);
+    return () => window.clearInterval(intervalId);
+  }, [googleAuthError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -646,24 +668,27 @@ export default function Login() {
                         <p className="mt-1 text-[12px] leading-6 text-[#5C6E95]">
                           {googleErrorDescription}
                         </p>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="border-[#D7E0F8] bg-white/85 text-[#35429A] hover:bg-[#EEF3FF]"
-                            onClick={clearGoogleAuthError}
-                          >
-                            Dismiss
-                          </Button>
+                        <div className="mt-4 space-y-3">
+                          <div className="h-1.5 overflow-hidden rounded-full bg-[#E3EBFF]">
+                            <div
+                              className="h-full rounded-full bg-[linear-gradient(90deg,#D9E6FF_0%,#B7C8FF_100%)] transition-[width] duration-100 ease-linear"
+                              style={{ width: `${googleErrorProgress}%` }}
+                            />
+                          </div>
+                          <div className="inline-flex items-center gap-2 rounded-full border border-[#D7E0F8] bg-white/80 px-3 py-1.5 text-[12px] font-medium text-[#5C6E95]">
+                            <LoaderCircle className="h-3.5 w-3.5 animate-spin text-[#35429A]" />
+                            <span>Closing automatically in {googleErrorSecondsLeft}s</span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 ) : null}
-                <p className="text-center text-xs text-muted-foreground mt-3">
-                  Staff must use their @smvec.ac.in account.
-                </p>
+                {!googleAuthError ? (
+                  <p className="mt-3 text-center text-xs text-muted-foreground">
+                    Staff must use their @smvec.ac.in account.
+                  </p>
+                ) : null}
               </>
             ) : null}
 
