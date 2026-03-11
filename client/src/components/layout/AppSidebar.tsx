@@ -56,10 +56,10 @@ const EMAIL_COMPOSE_OPENED_EVENT = 'designhub:gmail-compose-opened';
 const PORTAL_SHARE_URL = 'https://designdesk.vercel.app/';
 const PORTAL_DISPLAY_URL = 'designdesk.vercel.app';
 const PORTAL_SHARE_TEXT = 'Open the DesignDesk portal';
-const PORTAL_QR_LIGHT_IMAGE_SRC = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=svg&bgcolor=F7FAFF&color=1E2A5A&data=${encodeURIComponent(
+const PORTAL_QR_LIGHT_IMAGE_SRC = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=svg&qzone=1&bgcolor=F7FAFF&color=1E2A5A&data=${encodeURIComponent(
   PORTAL_SHARE_URL
 )}`;
-const PORTAL_QR_DARK_IMAGE_SRC = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=svg&bgcolor=081530&color=F3F7FF&data=${encodeURIComponent(
+const PORTAL_QR_DARK_IMAGE_SRC = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=svg&qzone=1&bgcolor=081530&color=F3F7FF&data=${encodeURIComponent(
   PORTAL_SHARE_URL
 )}`;
 const decodeValue = (value: string) => {
@@ -177,7 +177,7 @@ export function AppSidebar() {
       document.documentElement.style.removeProperty('--app-sidebar-width');
       return;
     }
-    const width = collapsed ? '5rem' : '18rem';
+    const width = collapsed ? '4rem' : '14.95rem';
     document.documentElement.style.setProperty('--app-sidebar-width', width);
     return () => {
       document.documentElement.style.removeProperty('--app-sidebar-width');
@@ -238,11 +238,11 @@ export function AppSidebar() {
   const getNavLinkClass = (path: string | null) => {
     const isActive = path ? location.pathname === path : false;
     return cn(
-      'flex w-full items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200',
+      'flex w-full items-center gap-[0.66rem] rounded-[1rem] px-[0.66rem] py-[0.525rem] transition-all duration-200',
       isActive
         ? 'border-none bg-primary/75 bg-gradient-to-br from-white/20 via-primary/80 to-primary/90 text-primary-foreground backdrop-blur-2xl dark:bg-primary/70 dark:text-primary-foreground'
         : 'border border-transparent text-[#475569] hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:backdrop-blur-xl dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground dark:hover:border-border',
-      collapsed && 'justify-center px-2'
+      collapsed && 'justify-center px-[0.4rem]'
     );
   };
 
@@ -331,35 +331,52 @@ export function AppSidebar() {
       <aside
         className={cn(
           'group/sidebar z-40 flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none transition-all duration-300 h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
-          collapsed ? 'w-20' : 'w-72'
+          collapsed ? 'w-16' : 'w-[14.95rem]'
         )}
       >
       {/* Header */}
-      <div className="group/sidebar-header flex items-center justify-between px-4 py-3.5 border-b border-[#D9E6FF]/70 dark:border-border">
+      <div
+        className={cn(
+          'group/sidebar-header border-b border-[#D9E6FF]/70 dark:border-border',
+          collapsed
+            ? 'relative flex items-center justify-center px-2 py-2.5'
+            : 'flex items-center justify-between px-[0.92rem] py-[0.8rem]'
+        )}
+      >
         <button
           type="button"
           onClick={() => {
             navigate('/dashboard');
           }}
           className={cn(
-            "animate-fade-in flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md",
-            collapsed ? "justify-center" : "min-w-0 flex-1"
+            "animate-fade-in flex items-center text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md",
+            collapsed
+              ? "justify-center transition-opacity duration-150 group-hover/sidebar:opacity-0 group-hover/sidebar:pointer-events-none group-focus-within/sidebar:opacity-0 group-focus-within/sidebar:pointer-events-none"
+              : "min-w-0 flex-1 gap-[0.66rem]"
           )}
           aria-label="Go to dashboard"
         >
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-white/85 via-[#EAF2FF]/80 to-[#DDE9FF]/70 border border-[#C9D7FF] backdrop-blur dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80 dark:shadow-none">
+          <span
+            className={cn(
+              'inline-flex items-center justify-center border border-[#C9D7FF] bg-gradient-to-br from-white/85 via-[#EAF2FF]/80 to-[#DDE9FF]/70 backdrop-blur dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80 dark:shadow-none',
+              collapsed ? 'h-8 w-8 rounded-[0.9rem]' : 'h-[2.35rem] w-[2.35rem] rounded-[1rem]'
+            )}
+          >
             <img
               src="/favicon.png"
               alt="DesignDesk"
-              className="h-8 w-8 rounded-lg object-contain p-0.5"
+              className={cn(
+                'rounded-lg object-contain p-0.5',
+                collapsed ? 'h-6 w-6' : 'h-[1.85rem] w-[1.85rem]'
+              )}
             />
           </span>
           {!collapsed && (
             <div className="min-w-0 leading-tight">
-              <h1 className="text-[1.05rem] font-bold tracking-[-0.01em] text-[#1E2A5A] dark:text-foreground premium-headline">
+              <h1 className="text-[0.95rem] font-bold tracking-[-0.01em] text-[#1E2A5A] dark:text-foreground premium-headline">
                 DesignDesk
               </h1>
-              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6B7A99] dark:text-muted-foreground premium-muted">
+              <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#6B7A99] dark:text-muted-foreground premium-muted">
                 Task Portal
               </p>
             </div>
@@ -370,12 +387,14 @@ export function AppSidebar() {
           size="icon-sm"
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
-            "opacity-0 transition-opacity duration-150 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100 group-hover/sidebar-header:opacity-100 group-focus-within/sidebar-header:opacity-100 text-[#6B7A99] dark:text-muted-foreground hover:bg-white/70 dark:hover:bg-muted hover:text-[#1E2A5A] dark:hover:text-foreground",
-            collapsed ? "ml-0" : "ml-2"
+            'text-[#6B7A99] dark:text-muted-foreground hover:bg-white/70 dark:hover:bg-muted hover:text-[#1E2A5A] dark:hover:text-foreground',
+            collapsed
+              ? 'pointer-events-none absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-[0.9rem] border border-[#C9D7FF] bg-white/80 opacity-0 shadow-none transition-opacity duration-150 group-hover/sidebar:pointer-events-auto group-hover/sidebar:opacity-100 group-focus-within/sidebar:pointer-events-auto group-focus-within/sidebar:opacity-100 focus-visible:ring-0 focus-visible:ring-offset-0 dark:border-slate-700/70 dark:bg-slate-900/80'
+              : 'ml-2 h-[2.35rem] w-[2.35rem] opacity-0 transition-opacity duration-150 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100 group-hover/sidebar-header:opacity-100 group-focus-within/sidebar-header:opacity-100'
           )}
         >
           {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-3.5 w-3.5" />
           ) : (
             <ChevronLeft className="h-4 w-4" />
           )}
@@ -384,19 +403,19 @@ export function AppSidebar() {
 
       {/* User Info */}
       {!collapsed && (
-        <div className="p-4 border-b border-[#D9E6FF]/70 dark:border-border animate-fade-in">
-          <div className="flex items-center gap-3">
+        <div className="px-[0.92rem] py-[0.8rem] border-b border-[#D9E6FF]/70 dark:border-border animate-fade-in">
+          <div className="flex items-center gap-[0.66rem]">
             <UserAvatar
               name={user.name}
               avatar={user.avatar}
-              className="h-10 w-10 border border-white/10"
-              fallbackClassName="text-sm"
+              className="h-[2.35rem] w-[2.35rem] border border-white/10"
+              fallbackClassName="text-xs"
             />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[#1E2A5A] dark:text-foreground truncate">
+              <p className="text-[13px] font-medium text-[#1E2A5A] dark:text-foreground truncate">
                 {user.name}
               </p>
-              <div className="flex items-center gap-1 text-xs text-[#6B7A99] dark:text-muted-foreground">
+              <div className="flex items-center gap-1 text-[11px] text-[#6B7A99] dark:text-muted-foreground">
                 {getRoleIcon(user.role)}
                 <span>{getRoleLabel(user.role)}</span>
               </div>
@@ -408,7 +427,7 @@ export function AppSidebar() {
       {/* Navigation */}
       <nav
         className={cn(
-          "flex-1 p-3 space-y-1.5 scrollbar-thin",
+          "flex-1 px-[0.66rem] py-[0.525rem] space-y-[0.3rem] scrollbar-thin",
           collapsed ? "overflow-visible" : "overflow-y-auto overflow-x-hidden"
         )}
       >
@@ -424,9 +443,9 @@ export function AppSidebar() {
                   getNavLinkClass(item.href)
                 )}
               >
-                <item.icon className="h-5 w-5 flex-shrink-0" />
+                <item.icon className="h-[1.16rem] w-[1.16rem] flex-shrink-0" />
                 {!collapsed && (
-                  <span className="text-sm font-medium animate-fade-in">
+                  <span className="text-[13px] font-medium animate-fade-in">
                     {item.title}
                   </span>
                 )}
@@ -442,12 +461,12 @@ export function AppSidebar() {
       </nav>
 
       {!collapsed && (
-        <div className="px-3 pb-3">
-          <div className="rounded-2xl border border-[#D9E6FF] bg-white/72 dark:bg-card/78 dark:border-border px-3 py-2 shadow-none">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#8A97B2] dark:text-muted-foreground">
+        <div className="px-[0.66rem] pb-[0.66rem]">
+          <div className="rounded-[1.26rem] border border-[#D9E6FF] bg-white/72 dark:bg-card/78 dark:border-border px-[0.66rem] py-[0.525rem] shadow-none">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8A97B2] dark:text-muted-foreground">
               Quick Access
             </p>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-[0.4rem] flex items-center gap-[0.4rem]">
               {quickAccessItems.map((item) => {
                 const tooltip = (
                   <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border pl-4 pr-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
@@ -464,17 +483,17 @@ export function AppSidebar() {
                         <a
                           href={item.href}
                           aria-label={item.label}
-                          className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                          className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                         >
-                          <item.icon className="h-4 w-4" />
+                          <item.icon className="h-[0.92rem] w-[0.92rem]" />
                         </a>
                       ) : (
                         <Link
                           to={item.href}
                           aria-label={item.label}
-                          className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                          className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                         >
-                          <item.icon className="h-4 w-4" />
+                          <item.icon className="h-[0.92rem] w-[0.92rem]" />
                         </Link>
                       )}
                     </div>
@@ -491,9 +510,9 @@ export function AppSidebar() {
                         onClick={() => {
                           window.dispatchEvent(new CustomEvent('designhub:open-search'));
                         }}
-                        className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                        className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                       >
-                        <item.icon className="h-4 w-4" />
+                        <item.icon className="h-[0.92rem] w-[0.92rem]" />
                       </button>
                     </div>
                   );
@@ -509,9 +528,9 @@ export function AppSidebar() {
                         onClick={() => {
                           window.dispatchEvent(new CustomEvent('designhub:open-guidelines'));
                         }}
-                        className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                        className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                       >
-                        <item.icon className="h-4 w-4" />
+                        <item.icon className="h-[0.92rem] w-[0.92rem]" />
                       </button>
                     </div>
                   );
@@ -525,9 +544,9 @@ export function AppSidebar() {
                         type="button"
                         aria-label={item.label}
                         onClick={openEmailDesignRequest}
-                        className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                        className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                       >
-                        <item.icon className="h-4 w-4" />
+                        <item.icon className="h-[0.92rem] w-[0.92rem]" />
                       </button>
                     </div>
                   );
@@ -539,9 +558,9 @@ export function AppSidebar() {
                     <button
                       type="button"
                       aria-label={item.label}
-                      className="group flex h-9 w-9 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                      className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                     >
-                      <item.icon className="h-4 w-4" />
+                      <item.icon className="h-[0.92rem] w-[0.92rem]" />
                     </button>
                   </div>
                 );
@@ -556,14 +575,14 @@ export function AppSidebar() {
               </span>
               <Link
                 to="/new-request"
-                className="mt-3 flex flex-col items-center gap-2 rounded-2xl border border-[#D9E6FF] bg-white/72 dark:bg-card/78 dark:border-border px-3 py-4 text-center shadow-none transition dark:transition-none"
+                className="mt-2.5 flex flex-col items-center gap-1.5 rounded-[1.2rem] border border-[#D9E6FF] bg-white/72 dark:bg-card/78 dark:border-border px-2.5 py-3 text-center shadow-none transition dark:transition-none"
               >
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-primary-foreground shadow-none">
-                  <Plus className="h-6 w-6" />
+                <span className="flex h-10 w-10 items-center justify-center rounded-[1.1rem] bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-primary-foreground shadow-none">
+                  <Plus className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="text-sm font-semibold text-[#1E2A5A] dark:text-foreground">Create New Request</p>
-                  <p className="text-xs text-[#6B7A99] dark:text-muted-foreground">Turn your idea into a design</p>
+                  <p className="text-[13px] font-semibold text-[#1E2A5A] dark:text-foreground">Create New Request</p>
+                  <p className="text-[11px] text-[#6B7A99] dark:text-muted-foreground">Turn your idea into a design</p>
                 </div>
               </Link>
             </div>
@@ -572,8 +591,8 @@ export function AppSidebar() {
       )}
 
       {collapsed && (
-        <div className="px-3 pb-3 space-y-3">
-          <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border px-2 py-2 shadow-none">
+        <div className="px-[0.525rem] pb-[0.66rem] space-y-[0.66rem]">
+          <div className="rounded-[1.2rem] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border px-[0.4rem] py-[0.4rem] shadow-none">
             {quickAccessItems.map((item) => {
               const tooltip = (
                 <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border px-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
@@ -590,17 +609,17 @@ export function AppSidebar() {
                       <a
                         href={item.href}
                         aria-label={item.label}
-                        className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
+                        className="group mx-auto my-1 flex h-[1.85rem] w-[1.85rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
                       >
-                        <item.icon className="h-4 w-4" />
+                        <item.icon className="h-[0.92rem] w-[0.92rem]" />
                       </a>
                     ) : (
                       <Link
                         to={item.href}
                         aria-label={item.label}
-                        className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
+                        className="group mx-auto my-1 flex h-[1.85rem] w-[1.85rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
                       >
-                        <item.icon className="h-4 w-4" />
+                        <item.icon className="h-[0.92rem] w-[0.92rem]" />
                       </Link>
                     )}
                   </div>
@@ -617,9 +636,9 @@ export function AppSidebar() {
                       onClick={() => {
                         window.dispatchEvent(new CustomEvent('designhub:open-search'));
                       }}
-                      className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
+                      className="group mx-auto my-1 flex h-[1.85rem] w-[1.85rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
                     >
-                      <item.icon className="h-4 w-4" />
+                      <item.icon className="h-[0.92rem] w-[0.92rem]" />
                     </button>
                   </div>
                 );
@@ -635,9 +654,9 @@ export function AppSidebar() {
                       onClick={() => {
                         window.dispatchEvent(new CustomEvent('designhub:open-guidelines'));
                       }}
-                      className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
+                      className="group mx-auto my-1 flex h-[1.85rem] w-[1.85rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
                     >
-                      <item.icon className="h-4 w-4" />
+                      <item.icon className="h-[0.92rem] w-[0.92rem]" />
                     </button>
                   </div>
                 );
@@ -651,9 +670,9 @@ export function AppSidebar() {
                       type="button"
                       aria-label={item.label}
                       onClick={openEmailDesignRequest}
-                      className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
+                      className="group mx-auto my-1 flex h-[1.85rem] w-[1.85rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
                     >
-                      <item.icon className="h-4 w-4" />
+                      <item.icon className="h-[0.92rem] w-[0.92rem]" />
                     </button>
                   </div>
                 );
@@ -662,8 +681,8 @@ export function AppSidebar() {
               return (
                 <div key={`quick-collapsed-${item.label}`} className="relative group hover:z-20">
                   {tooltip}
-                  <div className="group mx-auto my-1 flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground">
-                    <item.icon className="h-4 w-4" />
+                  <div className="group mx-auto my-1 flex h-[1.85rem] w-[1.85rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground">
+                    <item.icon className="h-[0.92rem] w-[0.92rem]" />
                   </div>
                 </div>
               );
@@ -676,9 +695,9 @@ export function AppSidebar() {
               </span>
               <Link
                 to="/new-request"
-                className="flex h-12 w-full items-center justify-center rounded-2xl bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-primary-foreground shadow-none"
+                className="flex h-10 w-full items-center justify-center rounded-[1.1rem] bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-primary-foreground shadow-none"
               >
-                <Plus className="h-5 w-5" />
+                <Plus className="h-4 w-4" />
               </Link>
             </div>
           )}
@@ -686,7 +705,7 @@ export function AppSidebar() {
       )}
 
       {/* Footer */}
-      <div className="p-3 border-t border-[#D9E6FF]/70 dark:border-transparent space-y-1">
+      <div className="px-2.5 py-2.5 border-t border-[#D9E6FF]/70 dark:border-transparent space-y-0.5">
         <div className="relative group hover:z-20">
           {renderCollapsedTooltip('Settings')}
           <Link
@@ -697,8 +716,8 @@ export function AppSidebar() {
               "group"
             )}
           >
-            <Settings className="h-5 w-5" />
-            {!collapsed && <span className="text-sm font-medium">Settings</span>}
+            <Settings className="h-[1.1rem] w-[1.1rem]" />
+            {!collapsed && <span className="text-[13px] font-medium">Settings</span>}
           </Link>
         </div>
         <div className="relative group hover:z-20">
@@ -711,8 +730,8 @@ export function AppSidebar() {
               "group"
             )}
           >
-            <HelpCircle className="h-5 w-5" />
-            {!collapsed && <span className="text-sm font-medium">Help Center</span>}
+            <HelpCircle className="h-[1.1rem] w-[1.1rem]" />
+            {!collapsed && <span className="text-[13px] font-medium">Help Center</span>}
           </Link>
         </div>
         <div className="relative group hover:z-20">
@@ -728,8 +747,8 @@ export function AppSidebar() {
               "group"
             )}
           >
-            <LogOut className="h-5 w-5" />
-            {!collapsed && <span className="text-sm font-medium">Logout</span>}
+            <LogOut className="h-[1.1rem] w-[1.1rem]" />
+            {!collapsed && <span className="text-[13px] font-medium">Logout</span>}
           </button>
         </div>
       </div>
@@ -741,101 +760,84 @@ export function AppSidebar() {
             type="button"
             aria-label="Show DesignDesk QR code"
             className={cn(
-              'fixed bottom-4 left-4 z-30 hidden items-center rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-left text-[#475569] shadow-none transition-all duration-300 md:bottom-6 md:left-6 md:flex dark:border-border dark:bg-card/95 dark:bg-none dark:text-foreground',
-              collapsed ? 'w-20 justify-center px-3 py-3' : 'w-72 gap-3 px-4 py-3'
+              'fixed bottom-4 left-4 z-30 hidden items-center justify-center text-[#475569] shadow-none transition-all duration-300 md:bottom-6 md:left-6 md:flex dark:text-foreground',
+              collapsed
+                ? 'w-16 rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] px-0 py-3 dark:border-border dark:bg-card/95 dark:bg-none'
+                : 'bg-transparent p-0'
             )}
           >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#C9D7FF]/80 bg-white/72 supports-[backdrop-filter]:bg-white/56 backdrop-blur-xl text-[#1E2A5A] dark:border-[#33548E]/72 dark:bg-[rgba(12,27,61,0.68)] dark:text-slate-100">
-              <QrCode className="h-5 w-5" />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1.15rem] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#23396F] shadow-none dark:border-border dark:bg-card/95 dark:bg-none dark:text-slate-100">
+              <QrCode className="h-[1.1rem] w-[1.1rem]" />
             </span>
-            {!collapsed && (
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-[#1E2A5A] dark:text-foreground">
-                  Scan DesignDesk
-                </p>
-                <p className="mt-1 text-xs leading-5 text-[#6B7A99] dark:text-muted-foreground">
-                  Hover to show the portal QR for mobile scan or sharing.
-                </p>
-              </div>
-            )}
           </button>
         </HoverCardTrigger>
         <HoverCardContent
           side="top"
           align="start"
           sideOffset={14}
-          className="hidden w-72 border-none bg-transparent p-0 text-[#475569] shadow-none md:block dark:text-foreground"
+          className="hidden w-[14.95rem] origin-bottom-left border-none bg-transparent p-0 text-[#475569] shadow-none data-[state=open]:duration-300 data-[state=closed]:duration-200 data-[side=top]:slide-in-from-bottom-4 md:block dark:text-foreground"
         >
-          <div className="rounded-[24px] border border-[#D9E6FF] bg-white/86 px-3 py-3.5 dark:border-border dark:bg-slate-900/75">
-            <div className="grid grid-cols-[5.6rem_minmax(0,1fr)] items-center gap-2.5">
-              <div className="shrink-0 rounded-none bg-[#F7FAFF] p-1.5 dark:bg-slate-950/60">
+          <div className="rounded-[24px] border border-[#D9E6FF] bg-white/86 shadow-[0_18px_40px_-24px_rgba(30,42,90,0.45)] dark:border-border dark:bg-card/95 dark:bg-none dark:p-0 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)]">
+            <div className="rounded-[23px] bg-white/86 px-2.5 py-2 dark:bg-transparent">
+              <div className="grid grid-cols-[3.95rem_minmax(0,1fr)] items-center gap-2">
                 <img
                   src={portalQrImageSrc}
                   alt="QR code to open the DesignDesk portal"
-                  className="h-[5.1rem] w-[5.1rem] rounded-none border border-[#E3EBFF] bg-white p-1 object-contain dark:border-[#223A70] dark:bg-[#081530]"
+                  className="ml-1 h-[3.65rem] w-[3.65rem] rounded-none border border-[#E3EBFF] bg-white p-[0.35rem] object-contain dark:border-transparent dark:bg-[#081530]"
                   loading="lazy"
                 />
-              </div>
 
-              <div className="min-w-0 flex-1">
+              <div className="ml-1 min-w-0 flex-1">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[#1E2A5A] dark:text-foreground">
+                  <p className="text-[13px] font-semibold leading-tight text-[#1E2A5A] dark:text-foreground">
                     Scan DesignDesk
                   </p>
                 </div>
 
-                <div className="mt-3 rounded-2xl border border-[#D9E6FF] bg-[#F7FAFF] px-3 py-2 dark:border-border dark:bg-slate-950/40">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8A97B2] dark:text-muted-foreground">
-                    Portal Link
-                  </p>
-                  <p className="mt-1 truncate text-xs font-medium text-[#1E2A5A] dark:text-foreground">
-                    {PORTAL_DISPLAY_URL}
-                  </p>
-                </div>
-
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-1.5 flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={sharePortalLink}
-                    className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+                    className="icon-action-press inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
                     title="Share"
                     aria-label="Share DesignDesk portal"
                   >
-                    <Share2 className="h-4 w-4" />
+                    <Share2 className="h-3.5 w-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={sharePortalLinkOnWhatsApp}
-                    className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+                    className="icon-action-press inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
                     title="Share via WhatsApp"
                     aria-label="Share DesignDesk portal via WhatsApp"
                   >
-                    <MessageCircle className="h-4 w-4" />
+                    <MessageCircle className="h-3.5 w-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={sharePortalLinkByEmail}
-                    className="icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
+                    className="icon-action-press inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none"
                     title="Share via Email"
                     aria-label="Share DesignDesk portal via Email"
                   >
-                    <Mail className="h-4 w-4" />
+                    <Mail className="h-3.5 w-3.5" />
                   </button>
                   <button
                     type="button"
                     data-success={portalLinkCopied}
                     onClick={copyPortalLink}
                     className={cn(
-                      'icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none',
+                      'icon-action-press inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#DCE6FF] bg-white text-slate-400 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground dark:transition-none',
                       portalLinkCopied && 'border-primary/50 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/20 dark:text-primary'
                     )}
                     title={portalLinkCopied ? 'Copied' : 'Copy link'}
                     aria-label={portalLinkCopied ? 'Portal link copied' : 'Copy DesignDesk portal link'}
                   >
-                    {portalLinkCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {portalLinkCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                   </button>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </HoverCardContent>
