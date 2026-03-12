@@ -17,10 +17,6 @@ const router = express.Router();
 const getJwtSecret = () => process.env.JWT_SECRET || "dev-secret";
 const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 const REFRESH_COOKIE_NAME = process.env.REFRESH_COOKIE_NAME || "refreshToken";
-const GOOGLE_REDIRECT_ENV_KEYS = [
-  "GOOGLE_CALLBACK_URL",
-  "GOOGLE_OAUTH_REDIRECT_URI",
-];
 const DEV_FRONTEND_ORIGINS = [
   "http://localhost:5173",
   "https://designdesk.vercel.app",
@@ -78,43 +74,28 @@ const getRefreshTokenFromRequest = (req) => {
   return cookies[REFRESH_COOKIE_NAME] || null;
 };
 
-const getGoogleRedirectUri = () => {
-  const invalidRedirectKeys = [];
-  let redirectUri = "";
-  for (const key of GOOGLE_REDIRECT_ENV_KEYS) {
-    const value = String(process.env[key] || "").trim();
-    if (!value) continue;
-    try {
-      const parsed = new URL(value);
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        invalidRedirectKeys.push(key);
-        continue;
-      }
-      redirectUri = value;
-      break;
-    } catch {
-      invalidRedirectKeys.push(key);
-    }
-  }
-  if (redirectUri) {
-    return redirectUri;
-  }
-  if (invalidRedirectKeys.length > 0) {
-    throw new Error(
-      `Google OAuth redirect URI is invalid in: ${invalidRedirectKeys.join(", ")}`
-    );
-  }
-  throw new Error("Google OAuth is not configured");
-};
-
 const getGoogleClient = () => {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-  const redirectUri = getGoogleRedirectUri();
   if (!clientId || !clientSecret) {
     throw new Error("Google OAuth is not configured");
   }
-  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  return new google.auth.OAuth2(clientId, clientSecret);
+};
+
+const getRequestOrigin = (req) => {
+  const forwardedProto = String(req.get("x-forwarded-proto") || "").split(",")[0].trim();
+  const forwardedHost = String(req.get("x-forwarded-host") || "").split(",")[0].trim();
+  const protocol = forwardedProto || req.protocol || "http";
+  const host = forwardedHost || req.get("host");
+  if (!host) {
+    throw new Error("Request host is unavailable");
+  }
+  return `${protocol}://${host}`;
+};
+
+const getGoogleRedirectUri = (req) => {
+  return new URL("/api/auth/google/callback", getRequestOrigin(req)).toString();
 };
 
 const normalizeRole = (role) => {
@@ -840,7 +821,7 @@ router.post("/password/change", requireAuth, authLimiter, async (req, res) => {
 
 router.get("/google/start", (req, res) => {
   try {
-    const redirectUri = getGoogleRedirectUri();
+    const redirectUri = getGoogleRedirectUri(req);
     const role = normalizeGoogleRole(req.query.role);
     if (role !== "staff") {
       return res.status(403).json({ error: "Google sign-in is available for staff accounts only." });
@@ -856,9 +837,10 @@ router.get("/google/start", (req, res) => {
       access_type: "online",
       scope: ["openid", "email", "profile"],
       prompt: "select_account",
+      redirect_uri: redirectUri,
       state: stateToken,
     });
-    res.json({ url, redirectUri });
+    res.json({ url });
   } catch (error) {
     console.error("Google OAuth start failed:", error?.message || error);
     res.status(500).json({ error: "Google OAuth is not configured." });
@@ -906,7 +888,10 @@ router.get("/google/callback", async (req, res) => {
     const requestedRole = normalizeGoogleRole(statePayload.role);
 
     const oauthClient = getGoogleClient();
-    const { tokens } = await oauthClient.getToken(code);
+    const { tokens } = await oauthClient.getToken({
+      code,
+      redirect_uri: getGoogleRedirectUri(req),
+    });
     oauthClient.setCredentials(tokens);
 
     const oauth2 = google.oauth2({ auth: oauthClient, version: "v2" });

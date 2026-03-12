@@ -4,7 +4,22 @@ import { requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
 
-router.get("/auth-url", requireRole(["staff", "designer", "treasurer"]), async (_req, res) => {
+const getRequestOrigin = (req) => {
+  const forwardedProto = String(req.get("x-forwarded-proto") || "").split(",")[0].trim();
+  const forwardedHost = String(req.get("x-forwarded-host") || "").split(",")[0].trim();
+  const protocol = forwardedProto || req.protocol || "http";
+  const host = forwardedHost || req.get("host");
+  if (!host) {
+    throw new Error("Request host is unavailable");
+  }
+  return `${protocol}://${host}`;
+};
+
+const getDriveRedirectUri = (req) => {
+  return new URL("/api/drive/callback", getRequestOrigin(req)).toString();
+};
+
+router.get("/auth-url", requireRole(["staff", "designer", "treasurer"]), async (req, res) => {
   try {
     try {
       const connection = await getDriveConnectionInfo();
@@ -17,7 +32,7 @@ router.get("/auth-url", requireRole(["staff", "designer", "treasurer"]), async (
       // No active Drive session. Fall through to OAuth URL generation.
     }
 
-    const url = getDriveAuthUrl();
+    const url = getDriveAuthUrl(getDriveRedirectUri(req));
     res.json({ url });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate auth URL." });
@@ -40,7 +55,7 @@ router.get("/callback", async (req, res) => {
         .status(400)
         .json({ error: "Missing OAuth code. Start from /api/drive/auth-url and complete consent." });
     }
-    const { tokens, tokenPath } = await saveDriveToken(String(code));
+    const { tokens, tokenPath } = await saveDriveToken(String(code), getDriveRedirectUri(req));
 
     if (tokenPath) {
       return res.send(`Drive connected. Token saved to ${tokenPath}. You can close this tab.`);

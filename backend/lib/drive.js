@@ -208,13 +208,12 @@ const resolveOAuthToken = () => {
   return JSON.parse(fs.readFileSync(tokenPath, "utf-8"));
 };
 
-const getOAuthClient = () => {
+const getOAuthClient = (redirectUri = "") => {
   const clientId = readEnv("GOOGLE_DRIVE_CLIENT_ID", "GOOGLE_CLIENT_ID");
   const clientSecret = readEnv("GOOGLE_DRIVE_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET");
-  const redirectUri = readEnv("GOOGLE_DRIVE_REDIRECT_URI", "GOOGLE_REDIRECT_URI");
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !clientSecret) {
     throw new Error(
-      "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REDIRECT_URI (or GOOGLE_DRIVE_CLIENT_ID/SECRET/REDIRECT_URI) must be set for OAuth."
+      "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET (or GOOGLE_DRIVE_CLIENT_ID/GOOGLE_DRIVE_CLIENT_SECRET) must be set for OAuth."
     );
   }
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
@@ -244,13 +243,14 @@ export const getDriveAuthClient = async () => {
   return oauth;
 };
 
-export const getDriveAuthUrl = () => {
-  const oauth = getOAuthClient();
+export const getDriveAuthUrl = (redirectUri) => {
+  const oauth = getOAuthClient(redirectUri);
   return oauth.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: true,
     scope: [DRIVE_SCOPE_FULL],
+    redirect_uri: redirectUri,
   });
 };
 
@@ -267,9 +267,12 @@ export const getDriveConnectionInfo = async () => {
   };
 };
 
-export const saveDriveToken = async (code) => {
-  const oauth = getOAuthClient();
-  const { tokens } = await oauth.getToken(code);
+export const saveDriveToken = async (code, redirectUri) => {
+  const oauth = getOAuthClient(redirectUri);
+  const { tokens } = await oauth.getToken({
+    code,
+    redirect_uri: redirectUri,
+  });
   const tokenPath = resolveTokenPath();
   if (tokenPath) {
     fs.mkdirSync(path.dirname(tokenPath), { recursive: true });

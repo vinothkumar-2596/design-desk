@@ -41,7 +41,7 @@ export const getApiUrl = (): string | undefined => {
     if (typeof window !== 'undefined') {
         const hostname = window.location.hostname;
         if (isLoopbackHost(hostname)) {
-            return 'https://designdesk.vercel.app';
+            return 'http://localhost:4000';
         }
     }
 
