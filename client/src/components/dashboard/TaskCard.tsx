@@ -347,7 +347,7 @@ export function TaskCard({
           <div className="w-px h-3 bg-slate-200 dark:bg-slate-700 mx-1" />
           <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-400">
             <Clock className="h-3.5 w-3.5" />
-            <span className="whitespace-nowrap">{format(task.createdAt, 'MMM d')}</span>
+            <span className="whitespace-nowrap">{format(task.createdAt, 'MMM d, h:mm a')}</span>
           </div>
         </div>
 

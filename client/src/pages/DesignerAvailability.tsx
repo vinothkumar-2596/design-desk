@@ -68,6 +68,7 @@ export default function DesignerAvailability() {
     )
   );
   const showTaskSearch = userRole !== 'staff';
+  const showDesignerPicker = userRole !== 'staff';
   const showDesignerScope = Boolean(
     userRole === 'treasurer' ||
     userRole === 'admin' ||
@@ -487,6 +488,8 @@ export default function DesignerAvailability() {
     userRole === 'staff'
       ? 'See which dates are busy. Task names stay hidden for staff.'
       : 'See which dates are busy and which tasks are committed.';
+  const getAvailabilityTaskLabel = (title: string) =>
+    userRole === 'staff' ? 'Design team committed with some work' : title;
 
   return (
     <DashboardLayout>
@@ -501,7 +504,7 @@ export default function DesignerAvailability() {
               </p>
             </div>
             <div className="availability-top__actions w-full">
-              {designerOptions.length > 1 && (
+              {showDesignerPicker && designerOptions.length > 1 && (
                 <div className="min-w-[220px] flex-[1.35]">
                   <Select value={designerId} onValueChange={setSelectedDesignerId}>
                     <SelectTrigger className="w-full rounded-full border-[rgba(53,66,154,0.2)] bg-white/95 px-4 py-2 shadow-none focus:border-[rgba(53,66,154,0.2)] focus:ring-[rgba(53,66,154,0.2)] focus:ring-offset-0 dark:border-slate-700/60 dark:bg-slate-900/80 dark:text-slate-100">
@@ -518,6 +521,13 @@ export default function DesignerAvailability() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              )}
+              {!showDesignerPicker && activeDesigner && (
+                <div className="min-w-[220px] flex-[1.35]">
+                  <div className="w-full rounded-full border-[rgba(53,66,154,0.2)] bg-white/95 px-4 py-2 text-sm font-semibold text-foreground shadow-none dark:border-slate-700/60 dark:bg-slate-900/80 dark:text-slate-100">
+                    {activeDesigner.name}
+                  </div>
                 </div>
               )}
               {showTaskSearch && (
@@ -613,9 +623,9 @@ export default function DesignerAvailability() {
                             gridColumn: `${task.startIndex + 1} / ${task.endIndex + 2}`,
                           }}
                         >
-                          <span className="availability-bar__label">{task.title}</span>
+                          <span className="availability-bar__label">{getAvailabilityTaskLabel(task.title)}</span>
                           <span className="availability-bar__tooltip">
-                            {task.title} - {format(task.rangeStart, 'MMM d')} -{' '}
+                            {getAvailabilityTaskLabel(task.title)} - {format(task.rangeStart, 'MMM d')} -{' '}
                             {format(task.rangeEnd, 'MMM d')}
                           </span>
                         </div>
@@ -673,7 +683,9 @@ export default function DesignerAvailability() {
                       key={task.id}
                       className={`availability-event ${priorityClasses[task.priority] || ''} dark:bg-none dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:shadow-none`}
                     >
-                      <div className="availability-event__title dark:text-slate-100">{task.title}</div>
+                      <div className="availability-event__title dark:text-slate-100">
+                        {getAvailabilityTaskLabel(task.title)}
+                      </div>
                       <div className="availability-event__meta dark:text-slate-400">
                         {format(task.start, 'MMM d')} - {format(task.end, 'MMM d')}
                       </div>

@@ -294,7 +294,7 @@ export function AppSidebar() {
   const getNavLinkClass = (path: string | null) => {
     const isActive = path ? location.pathname === path : false;
     return cn(
-      'flex w-full items-center gap-[0.66rem] rounded-[1rem] px-[0.66rem] py-[0.525rem] transition-all duration-200',
+      'flex w-full items-center gap-[0.66rem] rounded-[1rem] px-[0.66rem] py-[0.525rem] transition-colors duration-150',
       isActive
         ? 'border-none bg-primary/75 bg-gradient-to-br from-white/20 via-primary/80 to-primary/90 text-primary-foreground backdrop-blur-2xl dark:bg-primary/70 dark:text-primary-foreground'
         : 'border border-transparent text-[#475569] hover:border-[#CFE0FF] hover:bg-[#EEF4FF]/90 hover:text-[#1E2A5A] hover:backdrop-blur-xl dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground dark:hover:border-border',
@@ -386,7 +386,7 @@ export function AppSidebar() {
     <>
       <aside
         className={cn(
-          'group/sidebar z-40 flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none transition-all duration-300 h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
+          'group/sidebar z-40 flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none transition-[width] duration-200 ease-out h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
           collapsed ? 'w-16' : 'w-[14.95rem]'
         )}
       >
@@ -405,7 +405,7 @@ export function AppSidebar() {
             navigate('/dashboard');
           }}
           className={cn(
-            "animate-fade-in flex items-center text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md",
+            "flex items-center text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md",
             collapsed
               ? "justify-center transition-opacity duration-150 group-hover/sidebar:opacity-0 group-hover/sidebar:pointer-events-none group-focus-within/sidebar:opacity-0 group-focus-within/sidebar:pointer-events-none"
               : "min-w-0 flex-1 gap-[0.66rem]"
@@ -459,7 +459,7 @@ export function AppSidebar() {
 
       {/* User Info */}
       {!collapsed && (
-        <div className="px-[0.92rem] py-[0.8rem] border-b border-[#D9E6FF]/70 dark:border-border animate-fade-in">
+        <div className="px-[0.92rem] py-[0.8rem] border-b border-[#D9E6FF]/70 dark:border-border">
           <div className="flex items-center gap-[0.66rem]">
             <UserAvatar
               name={user.name}
@@ -501,7 +501,7 @@ export function AppSidebar() {
               >
                 <item.icon className="h-[1.16rem] w-[1.16rem] flex-shrink-0" />
                 {!collapsed && (
-                  <span className="text-[13px] font-medium animate-fade-in">
+                  <span className="text-[13px] font-medium">
                     {item.title}
                   </span>
                 )}
@@ -815,12 +815,7 @@ export function AppSidebar() {
           <button
             type="button"
             aria-label="Show DesignDesk QR code"
-            className={cn(
-              'fixed bottom-4 left-4 z-30 hidden items-center justify-center text-[#475569] shadow-none transition-all duration-300 md:bottom-6 md:left-6 md:flex dark:text-foreground',
-              collapsed
-                ? 'w-16 rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] px-0 py-3 dark:border-border dark:bg-card/95 dark:bg-none'
-                : 'bg-transparent p-0'
-            )}
+            className="fixed bottom-4 left-4 z-30 hidden h-16 w-16 items-center justify-center rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] px-0 py-3 text-[#475569] shadow-none transition-colors duration-200 ease-out md:bottom-6 md:left-6 md:flex dark:border-border dark:bg-card/95 dark:bg-none dark:text-foreground"
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1.15rem] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#23396F] shadow-none dark:border-border dark:bg-card/95 dark:bg-none dark:text-slate-100">
               <QrCode className="h-[1.1rem] w-[1.1rem]" />

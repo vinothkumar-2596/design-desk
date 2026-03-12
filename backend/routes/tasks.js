@@ -1308,7 +1308,7 @@ const buildAvailabilityTaskTitle = (task, user) => {
   if (role === "designer" && canAccessTask(task, user)) {
     return task?.title || "Untitled";
   }
-  return "Committed with work";
+  return "Design team committed with some work";
 };
 
 const buildAvailabilityDesignerScopeMaps = async (tasks = []) => {

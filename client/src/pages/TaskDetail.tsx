@@ -52,7 +52,7 @@ import {
   Folder,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { toast } from 'sonner';
 import {
   ApprovalStatus,
@@ -298,13 +298,17 @@ const isEditTaskHistoryChange = (entry?: Partial<TaskChange>) => {
 const glassPanelClass =
   'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF]/35 ring-0 rounded-2xl shadow-none dark:bg-card dark:border-border/55 dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent';
 const fileRowClass =
-  'flex items-center justify-between rounded-lg border border-transparent bg-gradient-to-r from-[#F7FAFF]/90 via-[#EEF4FF]/60 to-[#EAF2FF]/80 px-4 py-1.5 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-xl dark:bg-none dark:bg-slate-900/70 dark:border-slate-700/60 dark:text-slate-200';
+  'flex items-center justify-between rounded-lg border border-transparent bg-gradient-to-r from-[#F7FAFF]/90 via-[#EEF4FF]/60 to-[#EAF2FF]/80 px-3 py-1 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-xl dark:bg-none dark:bg-slate-900/70 dark:border-slate-700/60 dark:text-slate-200';
+const fileListShellClass =
+  'rounded-2xl border border-[#DCE6FF]/70 bg-white/35 p-1.5 dark:border-slate-700/60 dark:bg-slate-950/15';
+const fileListScrollClass =
+  'max-h-[30rem] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin';
 const fileActionButtonClass =
-  'icon-action-press h-9 w-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 text-[#223467] shadow-none transition-all duration-150 ease-out supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#D3E1FF] hover:bg-[#EEF4FF]/62 hover:text-[#223467] hover:shadow-none dark:border-slate-600/70 dark:bg-none dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/70 dark:hover:text-slate-100';
+  'icon-action-press h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-border dark:disabled:bg-muted dark:disabled:text-muted-foreground/65';
 const fileGlassPillButtonClass =
-  'h-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-3 text-[#223467] shadow-none transition-all duration-150 ease-out supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#D3E1FF] hover:bg-[#EEF4FF]/62 hover:text-[#223467] hover:shadow-none active:translate-y-[1px] active:scale-[0.98] dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/70 dark:hover:text-slate-100';
+  'h-8 rounded-lg border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-2.5 text-[#223467] shadow-none transition-all duration-150 ease-out supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#D3E1FF] hover:bg-[#EEF4FF]/62 hover:text-[#223467] hover:shadow-none active:translate-y-[1px] active:scale-[0.98] dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/70 dark:hover:text-slate-100';
 const fileGlassIconButtonClass =
-  'h-9 w-9 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 text-[#223467] shadow-none transition-all duration-150 ease-out supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#D3E1FF] hover:bg-[#EEF4FF]/62 hover:text-[#223467] hover:shadow-none active:translate-y-[1px] active:scale-[0.94] dark:border-slate-600/70 dark:bg-none dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/70 dark:hover:text-slate-100';
+  'h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 active:translate-y-[1px] active:scale-[0.94] disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-border dark:disabled:bg-muted dark:disabled:text-muted-foreground/65';
 const badgeGlassClass =
   'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
 const changeHistoryCardClass = 'rounded-lg border border-border/60 bg-secondary/40';
@@ -404,7 +408,7 @@ export default function TaskDetail() {
   const [finalReviewNote, setFinalReviewNote] = useState('');
   const [annotationDialogOpen, setAnnotationDialogOpen] = useState(false);
   const [annotationDialogReadOnly, setAnnotationDialogReadOnly] = useState(false);
-  const [annotationTargetFile, setAnnotationTargetFile] = useState<OutputDisplayFile | null>(null);
+  const [annotationTargetFile, setAnnotationTargetFile] = useState<FileActionTarget | null>(null);
   const [draftReviewAnnotationsByFile, setDraftReviewAnnotationsByFile] = useState<
     Record<string, FinalDeliverableReviewAnnotation>
   >({});
@@ -2026,7 +2030,23 @@ export default function TaskDetail() {
     const mime = String(file.mime || '').trim().toLowerCase();
     return Boolean(file.url) && (mime.startsWith('image/') || isImageFile(file.name));
   };
-  const openReviewAnnotationDialog = (file: OutputDisplayFile, readOnly = false) => {
+  const canPreviewFile = (file: FileActionTarget) => {
+    const mime = String(file.mime || '').trim().toLowerCase();
+    const hasPreviewSource = Boolean(getPreviewUrl(file) || resolveStoredFileUrl(file));
+    return hasPreviewSource && (mime.startsWith('image/') || isImageFile(file.name));
+  };
+  const openFilePreviewDialog = (file: FileActionTarget) => {
+    if (!canPreviewFile(file)) return;
+    setAnnotationTargetFile(file);
+    setAnnotationDialogReadOnly(true);
+    setAnnotationDialogOpen(true);
+  };
+  const handleFileRowPreviewClick = (event: MouseEvent<HTMLElement>, file: FileActionTarget) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, select, [role="button"]')) return;
+    openFilePreviewDialog(file);
+  };
+  const openReviewAnnotationDialog = (file: FileActionTarget, readOnly = false) => {
     setAnnotationTargetFile(file);
     setAnnotationDialogReadOnly(readOnly);
     setAnnotationDialogOpen(true);
@@ -2085,7 +2105,7 @@ export default function TaskDetail() {
     if (designSourceVariant) {
       if (designSourceVariant.kind === 'image') {
         return (
-          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-[9px]">
+          <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-[8px]">
             <img
               src={designSourceVariant.iconSrc}
               alt={designSourceVariant.iconAlt}
@@ -2101,7 +2121,7 @@ export default function TaskDetail() {
       return (
         <div
           className={cn(
-            'relative flex h-11 w-12 shrink-0 flex-col items-center justify-between overflow-hidden rounded-[10px] border px-1.5 py-1.5',
+            'relative flex h-10 w-10 shrink-0 flex-col items-center justify-between overflow-hidden rounded-[9px] border px-1.5 py-1.5',
             designSourceVariant.cardClass
           )}
         >
@@ -2134,11 +2154,11 @@ export default function TaskDetail() {
       );
     }
     return (
-      <div className="relative h-9 w-12 overflow-hidden rounded-[6px] border border-transparent bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.6),_transparent_55%),linear-gradient(160deg,_rgba(236,244,255,0.85),_rgba(198,220,255,0.45))] backdrop-blur-xl dark:border-slate-700/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(100,116,139,0.35),_transparent_55%),linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.75))] dark:shadow-none">
+      <div className="relative h-8 w-10 overflow-hidden rounded-[6px] border border-transparent bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.6),_transparent_55%),linear-gradient(160deg,_rgba(236,244,255,0.85),_rgba(198,220,255,0.45))] backdrop-blur-xl dark:border-slate-700/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(100,116,139,0.35),_transparent_55%),linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.75))] dark:shadow-none">
         <div className="absolute inset-0 rounded-[6px] border border-transparent bg-gradient-to-br from-white/85 via-[#EEF4FF]/75 to-[#D5E5FF]/65 backdrop-blur-sm dark:bg-gradient-to-br dark:from-slate-800/95 dark:via-slate-700/90 dark:to-slate-700/70 dark:border-slate-700/60">
-          <div className="absolute left-2 top-2 h-1 w-6 rounded-full bg-[#D6E2FA]/70 dark:bg-slate-400/55" />
-          <div className="absolute left-2 top-4 h-1 w-8 rounded-full bg-[#DDE8FB]/70 dark:bg-slate-400/45" />
-          <div className="absolute left-2 top-6 h-1 w-5 rounded-full bg-[#DDE8FB]/70 dark:bg-slate-400/45" />
+          <div className="absolute left-2 top-1.5 h-1 w-5 rounded-full bg-[#D6E2FA]/70 dark:bg-slate-400/55" />
+          <div className="absolute left-2 top-3.5 h-1 w-6 rounded-full bg-[#DDE8FB]/70 dark:bg-slate-400/45" />
+          <div className="absolute left-2 top-5 h-1 w-4 rounded-full bg-[#DDE8FB]/70 dark:bg-slate-400/45" />
         </div>
         {previewUrl && (
           <img
@@ -2151,10 +2171,10 @@ export default function TaskDetail() {
             }}
           />
         )}
-        <span className="absolute bottom-1 left-1 z-20 rounded-[4px] border border-white/70 bg-white/55 px-1.5 py-0.5 text-[9px] font-semibold text-[#2C4A83] backdrop-blur-md dark:border-slate-600/70 dark:bg-slate-900/85 dark:text-slate-200 dark:shadow-none">
+        <span className="absolute bottom-0.5 left-0.5 z-20 rounded-[4px] border border-white/70 bg-white/55 px-1.5 py-0.5 text-[8px] font-semibold text-[#2C4A83] backdrop-blur-md dark:border-slate-600/70 dark:bg-slate-900/85 dark:text-slate-200 dark:shadow-none">
           {extLabel}
         </span>
-        <span className="absolute bottom-0 right-0 z-20 h-0 w-0 border-b-[12px] border-b-[#D8E4FF] border-l-[12px] border-l-transparent dark:border-b-slate-500/70" />
+        <span className="absolute bottom-0 right-0 z-20 h-0 w-0 border-b-[10px] border-b-[#D8E4FF] border-l-[10px] border-l-transparent dark:border-b-slate-500/70" />
       </div>
     );
   };
@@ -4484,7 +4504,7 @@ export default function TaskDetail() {
   };
 
   const renderChangeHistoryPanel = () => (
-    <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+    <div className={`${glassPanelClass} p-5 animate-slide-up`}>
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="font-semibold text-foreground">Change History</h2>
@@ -4611,7 +4631,7 @@ export default function TaskDetail() {
 
   return (
     <DashboardLayout hideGrid>
-      <div className="space-y-6 max-w-4xl select-none relative z-10">
+      <div className="relative z-10 max-w-4xl select-none space-y-5">
         {/* Back Button */}
         <Button
           variant="ghost"
@@ -4678,11 +4698,11 @@ export default function TaskDetail() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           {/* Left Column - Details */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="space-y-5 lg:col-span-2">
             {/* Description */}
-            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+            <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-3">Description</h2>
               <p className="text-muted-foreground whitespace-pre-wrap">
                 {taskState.description}
@@ -4690,7 +4710,7 @@ export default function TaskDetail() {
             </div>
 
             {canEditTask && (
-              <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+              <div className={`${glassPanelClass} p-5 animate-slide-up`}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-semibold text-foreground">Edit Task</h2>
                   <Tooltip>
@@ -4847,7 +4867,7 @@ export default function TaskDetail() {
             )}
 
             {canAcceptTask && (
-              <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+              <div className={`${glassPanelClass} p-5 animate-slide-up`}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="font-semibold text-foreground">Task Acceptance</h2>
@@ -4871,7 +4891,7 @@ export default function TaskDetail() {
 
             {/* Status Update (Designer/Admin only) */}
             {canDesignerActions && normalizedTaskStatus !== 'completed' && (
-              <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+              <div className={`${glassPanelClass} p-5 animate-slide-up`}>
                 <h2 className="font-semibold text-foreground mb-3">Update Status</h2>
                 <div className="flex gap-3">
                   <Select
@@ -4941,9 +4961,9 @@ export default function TaskDetail() {
               </div>
             </div> */}
 
-            {/* Files */}
-            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
-              <h2 className="font-semibold text-foreground mb-4">Files</h2>
+            {/* Job Requirement File */}
+            <div className={`${glassPanelClass} p-5 animate-slide-up`}>
+              <h2 className="font-semibold text-foreground mb-4">Job Requirement File</h2>
 
               {/* Input Files */}
               {inputFiles.length > 0 && (
@@ -4969,21 +4989,28 @@ export default function TaskDetail() {
                     </button>
                   </div>
                   {showReferenceFileList && (
-                    <div className="space-y-2">
+                    <div className={cn(inputFiles.length > 8 && fileListShellClass)}>
+                      <div className={cn('space-y-1.5', inputFiles.length > 8 && fileListScrollClass)}>
                       {inputFiles.map((file, index) => {
                         const isCopied = copiedFileKey === getFileCopyFeedbackKey(file);
+                        const isPreviewable = canPreviewFile(file);
                         return (
                         <div
                           key={getFileListItemKey(file, index)}
-                          className={fileRowClass}
+                          className={cn(
+                            fileRowClass,
+                            isPreviewable &&
+                              'cursor-pointer transition-colors hover:bg-white/55 dark:hover:bg-slate-800/85'
+                          )}
+                          onClick={(event) => handleFileRowPreviewClick(event, file)}
                         >
-                          <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
                             {renderFilePreview(file)}
                             <div className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-medium">
+                              <span className="block truncate text-[13px] font-medium text-foreground">
                                 {toTitleCaseFileName(file.name)}
                               </span>
-                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                              <span className="mt-0.5 block text-[11px] text-muted-foreground">
                                 {(() => {
                                   const sizeLabel = formatFileSize(file.size);
                                   return sizeLabel || '';
@@ -4991,7 +5018,7 @@ export default function TaskDetail() {
                               </span>
                             </div>
                           </div>
-                          <div className="flex shrink-0 items-center gap-2">
+                          <div className="flex shrink-0 items-center gap-1.5">
                             {canRemoveFiles && (
                               <Button
                                 variant="ghost"
@@ -5040,6 +5067,7 @@ export default function TaskDetail() {
                           </div>
                         </div>
                       )})}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -5076,26 +5104,33 @@ export default function TaskDetail() {
                   {showWorkingFileList && (
                     <>
                       {workingFiles.length > 0 ? (
-                        <div className="space-y-2">
+                        <div className={cn(workingFiles.length > 8 && fileListShellClass)}>
+                          <div className={cn('space-y-1.5', workingFiles.length > 8 && fileListScrollClass)}>
                           {workingFiles.map((file, index) => {
                             const isCopied = copiedFileKey === getFileCopyFeedbackKey(file);
+                            const isPreviewable = canPreviewFile(file);
                             return (
                             <div
                               key={getFileListItemKey(file, index)}
-                              className={fileRowClass}
+                              className={cn(
+                                fileRowClass,
+                                isPreviewable &&
+                                  'cursor-pointer transition-colors hover:bg-white/55 dark:hover:bg-slate-800/85'
+                              )}
+                              onClick={(event) => handleFileRowPreviewClick(event, file)}
                             >
-                              <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
                                 {renderFilePreview(file)}
                                 <div className="min-w-0 flex-1">
-                                  <span className="block truncate text-sm font-medium">
+                                  <span className="block truncate text-[13px] font-medium text-foreground">
                                     {toTitleCaseFileName(file.name)}
                                   </span>
-                                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
                                     {formatFileSize(file.size) || 'Working file'}
                                   </span>
                                 </div>
                               </div>
-                              <div className="flex shrink-0 items-center gap-2">
+                              <div className="flex shrink-0 items-center gap-1.5">
                                 {canManageWorkingFiles && (
                                   <Button
                                     variant="ghost"
@@ -5143,6 +5178,7 @@ export default function TaskDetail() {
                               </div>
                             </div>
                           )})}
+                          </div>
                         </div>
                       ) : (
                         <div className="rounded-xl border border-dashed border-[#D9E6FF]/80 bg-[#F8FBFF]/75 px-4 py-3 text-sm text-muted-foreground dark:border-border/70 dark:bg-card/70">
@@ -5338,7 +5374,8 @@ export default function TaskDetail() {
                           </p>
                         </div>
                       )}
-                      <div className="space-y-2">
+                      <div className={cn(finalDeliverableFiles.length > 8 && fileListShellClass)}>
+                        <div className={cn('space-y-1.5', finalDeliverableFiles.length > 8 && fileListScrollClass)}>
                         {finalDeliverableFiles.map((file, index) => {
                           const displayFile = toOutputFile(file, index);
                           const isLinkCard = isLinkOnlyFile(displayFile) && isGoogleDriveLinkFile(displayFile);
@@ -5366,30 +5403,39 @@ export default function TaskDetail() {
                             fileHasReviewFeedback &&
                             (canAnnotateFile || shouldAllowViewingRejectedAnnotations);
                           const canReplaceThisFile = canReplaceRejectedFinalFile && !isLinkCard;
+                          const isPreviewable = canPreviewFile(displayFile);
                           return (
-                            <div key={getFileListItemKey(displayFile, index)} className={fileRowClass}>
+                            <div
+                              key={getFileListItemKey(displayFile, index)}
+                              className={cn(
+                                fileRowClass,
+                                isPreviewable &&
+                                  'cursor-pointer transition-colors hover:bg-white/55 dark:hover:bg-slate-800/85'
+                              )}
+                              onClick={(event) => handleFileRowPreviewClick(event, displayFile)}
+                            >
                               {isLinkCard ? (
-                                <div className="flex min-w-0 items-center gap-3">
-                                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#CFDBF8]/65 bg-gradient-to-br from-[#EEF4FF]/90 to-[#DCE8FF]/75 dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-800/90 dark:to-slate-700/70">
-                                    <Folder className="h-5 w-5 text-[#4A5EA1] dark:text-slate-200" />
+                                <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#CFDBF8]/65 bg-gradient-to-br from-[#EEF4FF]/90 to-[#DCE8FF]/75 dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-800/90 dark:to-slate-700/70">
+                                    <Folder className="h-4 w-4 text-[#4A5EA1] dark:text-slate-200" />
                                   </div>
                                   <div className="min-w-0 flex-1">
-                                    <span className="block truncate text-sm font-semibold text-foreground">
+                                    <span className="block truncate text-[13px] font-semibold text-foreground">
                                       {displayName}
                                     </span>
-                                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
                                       {getLinkSubLabel(displayFile.url || '')}
                                     </span>
                                   </div>
                                 </div>
                               ) : (
-                                <div className="flex min-w-0 items-center gap-3">
+                                <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
                                   {renderFilePreview(displayFile)}
                                   <div className="min-w-0 flex-1">
-                                    <span className="block truncate text-sm font-medium">
+                                    <span className="block truncate text-[13px] font-medium text-foreground">
                                       {displayName}
                                     </span>
-                                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
                                       {(() => {
                                         const sizeLabel = formatFileSize(displayFile.size);
                                         return sizeLabel || '';
@@ -5403,7 +5449,7 @@ export default function TaskDetail() {
                                   </div>
                                 </div>
                               )}
-                              <div className="flex shrink-0 items-center gap-2">
+                              <div className="flex shrink-0 items-center gap-1.5">
                                 {canAnnotateFile && (
                                   <Button
                                     variant="ghost"
@@ -5492,6 +5538,7 @@ export default function TaskDetail() {
                             </div>
                           );
                         })}
+                        </div>
                       </div>
                     </>
                   )}
@@ -5944,7 +5991,7 @@ export default function TaskDetail() {
             )}
 
             {/* Internal Chat */}
-            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+            <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                 <MessageSquare className="h-5 w-5" />
                 Internal Chat ({taskState.comments.length})
@@ -6019,7 +6066,7 @@ export default function TaskDetail() {
           {/* Right Column - Metadata */}
           <div className="space-y-6">
             {/* Task Info */}
-            <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+            <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Details</h2>
               <dl className="space-y-4">
                 <div>
@@ -6176,7 +6223,7 @@ export default function TaskDetail() {
             </div>
 
             {/* Status Timeline */}
-            <div className={`${glassPanelClass} p-6 overflow-hidden animate-slide-up`}>
+            <div className={`${glassPanelClass} p-5 overflow-hidden animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Status</h2>
               {(() => {
                 const steps: DisplayTaskStatus[] = [
@@ -6190,35 +6237,33 @@ export default function TaskDetail() {
                 ];
                 const currentIndex = steps.indexOf(normalizedTaskStatus);
                 return (
-                  <div className="space-y-3 sm:space-y-4">
+                  <div className="space-y-3">
                     {steps.map((step, index) => {
                       const isCurrent = index === currentIndex;
                       const isPast = index < currentIndex;
                       return (
-                        <div key={step} className="flex items-start gap-3 sm:gap-4">
+                        <div key={step} className="flex items-start gap-3">
                           <div className="relative flex flex-col items-center">
-                            <div className="flex h-9 w-9 sm:h-12 sm:w-12 items-center justify-center">
+                            <div className="relative flex h-9 w-9 items-center justify-center overflow-visible">
                               {isPast ? (
-                                <span className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary/85 text-white dark:bg-primary/80 dark:shadow-none">
-                                  <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/85 text-white dark:bg-primary/80 dark:shadow-none">
+                                  <Check className="h-3.5 w-3.5" />
                                 </span>
                               ) : isCurrent ? (
-                                <span className="flex h-12 w-12 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-white dark:bg-transparent">
-                                  <DotLottieReact
-                                    src="https://lottie.host/31b5d829-4d1f-42a6-ba16-3560e550c0ac/KTsiywVfWC.lottie"
-                                    loop
-                                    autoplay
-                                    className="h-11 w-11 sm:h-16 sm:w-16"
-                                  />
-                                </span>
+                                <DotLottieReact
+                                  src="https://lottie.host/31b5d829-4d1f-42a6-ba16-3560e550c0ac/KTsiywVfWC.lottie"
+                                  loop
+                                  autoplay
+                                  className="pointer-events-none absolute left-1/2 top-1/2 h-[2.7rem] w-[2.7rem] -translate-x-[52%] -translate-y-1/2"
+                                />
                               ) : (
-                                <span className="h-6 w-6 sm:h-8 sm:w-8 rounded-full border-2 border-[#D9E6FF] bg-white dark:border-slate-500/80 dark:bg-slate-800" />
+                                <span className="h-6 w-6 rounded-full border-2 border-[#D9E6FF] bg-white dark:border-slate-500/80 dark:bg-slate-800" />
                               )}
                             </div>
                             {index !== steps.length - 1 && (
                               <div
                                 className={cn(
-                                  'mt-1 h-8 sm:h-10 w-px rounded-full',
+                                  'mt-1 h-7 w-px rounded-full',
                                   isPast
                                     ? 'bg-primary/75 dark:bg-primary/55'
                                     : 'bg-[#D9E6FF] dark:bg-slate-700/70'
@@ -6226,10 +6271,10 @@ export default function TaskDetail() {
                               />
                             )}
                           </div>
-                          <div className={cn(changeHistoryCardClass, 'w-full min-w-0 flex-1 px-3 py-2 sm:px-4 sm:py-3')}>
+                          <div className={cn(changeHistoryCardClass, 'w-full min-w-0 flex-1 px-3 py-2')}>
                             <div
                               className={cn(
-                                'min-w-0 text-xs sm:text-sm font-semibold',
+                                'min-w-0 text-[13px] font-semibold leading-tight',
                                 isCurrent
                                   ? 'text-foreground dark:text-slate-100'
                                   : isPast
@@ -6241,7 +6286,7 @@ export default function TaskDetail() {
                             </div>
                             <div
                               className={cn(
-                                'mt-1 text-[11px] sm:text-xs',
+                                'mt-1 text-[11px] leading-relaxed',
                                 isCurrent
                                   ? 'text-muted-foreground dark:text-slate-300'
                                   : isPast
@@ -6260,7 +6305,7 @@ export default function TaskDetail() {
               })()}
             </div>
             {emergencyStatus && designVersions.length > 0 && (
-              <div className={`${glassPanelClass} p-6 animate-slide-up`}>
+              <div className={`${glassPanelClass} p-5 animate-slide-up`}>
                 <div className="mb-6">
                   <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
                     <History className="h-4 w-4 text-primary" />

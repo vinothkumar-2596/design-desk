@@ -1725,7 +1725,7 @@ function DashboardShell({
       <div className="flex min-h-[calc(100vh-2rem)] gap-4 md:gap-6 relative z-10">
         <div
           className="relative flex-shrink-0"
-          style={{ width: 'var(--app-sidebar-width, 18rem)' }}
+          style={{ width: 'var(--app-sidebar-width, 18rem)', transition: 'width 200ms ease-out' }}
         >
           <div
             aria-hidden="true"

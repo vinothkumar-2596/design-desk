@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -42,9 +43,15 @@ import {
   Monitor,
   BookOpen,
   Mail,
+  Minus,
   CheckCircle2,
+  Move,
+  Plus,
+  RotateCcw,
   ChevronDown,
   ChevronUp,
+  AlertTriangle,
+  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Task, TaskCategory, TaskChange, TaskUrgency } from '@/types';
@@ -89,6 +96,7 @@ import {
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
 import type { TaskDraft } from '@/lib/ai';
+import { cn } from '@/lib/utils';
 
 interface UploadedFile {
   id: string;
@@ -370,6 +378,36 @@ const getFileIcon = (fileName: string, className: string) => {
   }
   return <FileText className={className} />;
 };
+const getFileExtension = (fileName: string) => {
+  const extension = fileName.split('.').pop()?.trim().toUpperCase();
+  return extension ? extension.slice(0, 4) : 'FILE';
+};
+const IMAGE_FILE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
+const PDF_FILE_EXTENSIONS = new Set(['pdf']);
+const isImageAttachment = (fileName: string) => {
+  const extension = fileName.split('.').pop()?.trim().toLowerCase() || '';
+  return IMAGE_FILE_EXTENSIONS.has(extension);
+};
+const isPdfAttachment = (fileName: string) => {
+  const extension = fileName.split('.').pop()?.trim().toLowerCase() || '';
+  return PDF_FILE_EXTENSIONS.has(extension);
+};
+const getAttachmentPreviewKind = (fileName: string): 'image' | 'pdf' | 'none' => {
+  if (isImageAttachment(fileName)) return 'image';
+  if (isPdfAttachment(fileName)) return 'pdf';
+  return 'none';
+};
+const inferPreviewMimeType = (fileName: string) => {
+  const extension = fileName.split('.').pop()?.trim().toLowerCase() || '';
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'png') return 'image/png';
+  if (extension === 'gif') return 'image/gif';
+  if (extension === 'webp') return 'image/webp';
+  if (extension === 'bmp') return 'image/bmp';
+  if (extension === 'svg') return 'image/svg+xml';
+  if (extension === 'pdf') return 'application/pdf';
+  return '';
+};
 
 const createMailtoUrl = (to: string, subject: string, body: string) =>
   `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -411,6 +449,11 @@ const buildDriveViewUrl = (driveId?: string) => {
   if (!normalizedId) return '';
   return `https://drive.google.com/file/d/${encodeURIComponent(normalizedId)}/view?usp=drivesdk`;
 };
+const buildDrivePreviewUrl = (driveId?: string) => {
+  const normalizedId = String(driveId || '').trim();
+  if (!normalizedId) return '';
+  return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(normalizedId)}`;
+};
 const resolveUploadedDriveUrl = (data?: {
   id?: string;
   webViewLink?: string;
@@ -429,6 +472,7 @@ export default function NewRequest() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const apiUrl = API_URL;
   const defaultRequesterPhone = formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || '');
   const draftStorageKey = getRequestDraftStorageKey(user);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -439,6 +483,12 @@ export default function NewRequest() {
   const [uploadAnimation, setUploadAnimation] = useState<object | null>(null);
   const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [attachmentPreviewFile, setAttachmentPreviewFile] = useState<UploadedFile | null>(null);
+  const [attachmentPreviewResolvedUrl, setAttachmentPreviewResolvedUrl] = useState('');
+  const [attachmentPreviewState, setAttachmentPreviewState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [attachmentPreviewZoom, setAttachmentPreviewZoom] = useState(1);
+  const [attachmentPreviewPan, setAttachmentPreviewPan] = useState({ x: 0, y: 0 });
+  const [isAttachmentPreviewDragging, setIsAttachmentPreviewDragging] = useState(false);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -450,11 +500,20 @@ export default function NewRequest() {
   const [isEmergency, setIsEmergency] = useState(false);
   const [requesterPhone, setRequesterPhone] = useState(defaultRequesterPhone);
   const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [isAttachmentQueueExpanded, setIsAttachmentQueueExpanded] = useState(false);
+  const [isAttachmentQueueExpanded, setIsAttachmentQueueExpanded] = useState(true);
   const activeUploadRequestsRef = useRef(new Map<string, XMLHttpRequest>());
   const cancelledUploadIdsRef = useRef(new Set<string>());
   const hasRestoredDraftRef = useRef(false);
   const lastDraftStorageKeyRef = useRef('');
+  const attachmentPreviewViewportRef = useRef<HTMLDivElement | null>(null);
+  const attachmentPreviewObjectUrlRef = useRef<string | null>(null);
+  const attachmentPreviewDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
@@ -502,12 +561,115 @@ export default function NewRequest() {
   const attachmentQueueStatusText = isAttachmentQueueComplete
     ? `${attachmentQueueSummary.ready} completed, ready to submit`
     : `${attachmentQueueSummary.uploading} uploading, ${attachmentQueueSummary.ready} ready, ${attachmentQueueSummary.failed} issues`;
+  const attachmentQueuePrimaryLabel =
+    attachmentQueueSummary.uploading > 0
+      ? `Uploading ${attachmentQueueSummary.total} item${attachmentQueueSummary.total === 1 ? '' : 's'} (${attachmentQueueSummary.overallProgress}%)`
+      : hasAttachmentQueueIssues
+        ? `${attachmentQueueSummary.ready} completed, ${attachmentQueueSummary.failed} issue${attachmentQueueSummary.failed === 1 ? '' : 's'}`
+        : `${attachmentQueueSummary.ready} item${attachmentQueueSummary.ready === 1 ? '' : 's'} completed`;
+  const attachmentQueueFooterText =
+    attachmentQueueSummary.uploading > 0
+      ? `Upload in progress: ${attachmentQueueSummary.overallProgress}%`
+      : hasAttachmentQueueIssues
+        ? `${attachmentQueueSummary.failed} item${attachmentQueueSummary.failed === 1 ? '' : 's'} need attention before submit.`
+        : `${attachmentQueueSummary.ready} completed, ready to submit`;
+  const isAttachmentQueueUploading = attachmentQueueSummary.uploading > 0;
   const shouldCompactAttachmentQueue = files.length > 6;
   const attachmentQueueMaxHeightClass = shouldCompactAttachmentQueue
     ? isAttachmentQueueExpanded
       ? 'max-h-[30rem]'
       : 'max-h-[16rem]'
     : '';
+  const getAttachmentPreviewCandidates = (file?: UploadedFile | null) => {
+    if (!file || getAttachmentPreviewKind(file.name) === 'none' || file.uploading || file.error) {
+      return [] as string[];
+    }
+    const driveId = String(file.driveId || '').trim();
+    const apiDownloadUrl =
+      driveId && apiUrl ? `${apiUrl}/api/files/download/${encodeURIComponent(driveId)}` : '';
+    const webContentLink = String(file.webContentLink || '').trim();
+    const url = String(file.url || '').trim();
+    const thumbnailUrl = String(file.thumbnailUrl || '').trim();
+    const drivePreviewUrl =
+      driveId
+        ? buildDrivePreviewUrl(driveId) || `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveId)}&sz=w1600`
+        : '';
+    return Array.from(
+      new Set(
+        [apiDownloadUrl, webContentLink, url, drivePreviewUrl, thumbnailUrl]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      )
+    );
+  };
+  const isAttachmentPreviewable = (file?: UploadedFile | null) =>
+    getAttachmentPreviewCandidates(file).length > 0;
+  const attachmentPreviewKind = attachmentPreviewFile
+    ? getAttachmentPreviewKind(attachmentPreviewFile.name)
+    : 'none';
+  const clampAttachmentPreviewPan = (pan: { x: number; y: number }, zoom: number) => {
+    const viewport = attachmentPreviewViewportRef.current;
+    if (!viewport || zoom <= 1) return { x: 0, y: 0 };
+    const limitX = Math.max(0, ((zoom - 1) * viewport.clientWidth) / 2);
+    const limitY = Math.max(0, ((zoom - 1) * viewport.clientHeight) / 2);
+    return {
+      x: Math.max(-limitX, Math.min(limitX, pan.x)),
+      y: Math.max(-limitY, Math.min(limitY, pan.y)),
+    };
+  };
+  const resetAttachmentPreviewTransform = () => {
+    attachmentPreviewDragRef.current = null;
+    setIsAttachmentPreviewDragging(false);
+    setAttachmentPreviewZoom(1);
+    setAttachmentPreviewPan({ x: 0, y: 0 });
+  };
+  const updateAttachmentPreviewZoom = (nextZoom: number) => {
+    const normalizedZoom = Math.max(1, Math.min(5, Number(nextZoom.toFixed(2))));
+    setAttachmentPreviewZoom(normalizedZoom);
+    setAttachmentPreviewPan((prev) =>
+      normalizedZoom <= 1 ? { x: 0, y: 0 } : clampAttachmentPreviewPan(prev, normalizedZoom)
+    );
+    if (normalizedZoom <= 1) {
+      attachmentPreviewDragRef.current = null;
+      setIsAttachmentPreviewDragging(false);
+    }
+  };
+  const handleAttachmentPreviewWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!attachmentPreviewUrl || attachmentPreviewKind !== 'image') return;
+    event.preventDefault();
+    const delta = event.deltaY < 0 ? 0.2 : -0.2;
+    updateAttachmentPreviewZoom(attachmentPreviewZoom + delta);
+  };
+  const handleAttachmentPreviewPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (attachmentPreviewKind !== 'image' || attachmentPreviewZoom <= 1) return;
+    attachmentPreviewDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: attachmentPreviewPan.x,
+      originY: attachmentPreviewPan.y,
+    };
+    setIsAttachmentPreviewDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const handleAttachmentPreviewPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = attachmentPreviewDragRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const nextPan = {
+      x: dragState.originX + (event.clientX - dragState.startX),
+      y: dragState.originY + (event.clientY - dragState.startY),
+    };
+    setAttachmentPreviewPan(clampAttachmentPreviewPan(nextPan, attachmentPreviewZoom));
+  };
+  const handleAttachmentPreviewPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = attachmentPreviewDragRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    attachmentPreviewDragRef.current = null;
+    setIsAttachmentPreviewDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
   const hasDraftableChanges = useMemo(() => {
     const normalizedCurrentPhone = normalizeIndianPhone(requesterPhone);
     const normalizedDefaultPhone = normalizeIndianPhone(defaultRequesterPhone);
@@ -532,6 +694,125 @@ export default function NewRequest() {
     title,
     urgency,
   ]);
+  const attachmentPreviewUrl = attachmentPreviewResolvedUrl;
+
+  useEffect(() => {
+    resetAttachmentPreviewTransform();
+  }, [attachmentPreviewFile?.id, attachmentPreviewResolvedUrl]);
+
+  useEffect(() => {
+    const revokePreviewObjectUrl = () => {
+      if (attachmentPreviewObjectUrlRef.current) {
+        URL.revokeObjectURL(attachmentPreviewObjectUrlRef.current);
+        attachmentPreviewObjectUrlRef.current = null;
+      }
+    };
+
+    const activeFile = attachmentPreviewFile;
+    const candidates = getAttachmentPreviewCandidates(activeFile);
+    if (!activeFile || candidates.length === 0) {
+      revokePreviewObjectUrl();
+      setAttachmentPreviewResolvedUrl('');
+      setAttachmentPreviewState(activeFile ? 'error' : 'idle');
+      return;
+    }
+
+    let cancelled = false;
+    setAttachmentPreviewState('loading');
+    setAttachmentPreviewResolvedUrl('');
+
+    const previewKind = getAttachmentPreviewKind(activeFile.name);
+    const expectedMime = inferPreviewMimeType(activeFile.name);
+
+    const loadImageElement = (src: string) =>
+      new Promise<string>((resolve, reject) => {
+        const image = new window.Image();
+        image.onload = () => resolve(src);
+        image.onerror = () => reject(new Error(`Image load failed for ${src}`));
+        image.src = src;
+      });
+
+    const shouldAttemptAuthenticatedFetch = (src: string) => {
+      if (!src) return false;
+      try {
+        const parsed = new URL(src, window.location.origin);
+        const isSameOrigin = parsed.origin === window.location.origin;
+        const isApiDownloadPath = parsed.pathname.includes('/api/files/download/');
+        return isSameOrigin || isApiDownloadPath;
+      } catch {
+        return src.startsWith('/') || src.includes('/api/files/download/');
+      }
+    };
+
+    const resolvePreview = async () => {
+      revokePreviewObjectUrl();
+      for (const candidate of candidates) {
+        if (previewKind === 'image') {
+          try {
+            await loadImageElement(candidate);
+            if (cancelled) return;
+            setAttachmentPreviewResolvedUrl(candidate);
+            setAttachmentPreviewState('ready');
+            return;
+          } catch {
+            // Try authenticated fetch fallback below.
+          }
+        }
+
+        if (shouldAttemptAuthenticatedFetch(candidate)) {
+          try {
+            const response = await authFetch(candidate);
+            if (response.ok) {
+              const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+              if (
+                contentType.includes('text/html') ||
+                contentType.includes('application/json')
+              ) {
+                continue;
+              }
+              const rawBlob = await response.blob();
+              if (rawBlob && rawBlob.size > 0) {
+                const blob =
+                  expectedMime && (!rawBlob.type || rawBlob.type === 'application/octet-stream')
+                    ? new Blob([rawBlob], { type: expectedMime })
+                    : rawBlob;
+                const objectUrl = URL.createObjectURL(blob);
+                attachmentPreviewObjectUrlRef.current = objectUrl;
+                if (previewKind === 'image') {
+                  await loadImageElement(objectUrl);
+                }
+                if (cancelled) return;
+                setAttachmentPreviewResolvedUrl(objectUrl);
+                setAttachmentPreviewState('ready');
+                return;
+              }
+            }
+          } catch {
+            // Fall through to direct candidate loading.
+          }
+        }
+
+        if (previewKind === 'pdf') {
+          if (cancelled) return;
+          setAttachmentPreviewResolvedUrl(candidate);
+          setAttachmentPreviewState('ready');
+          return;
+        }
+      }
+
+      if (cancelled) return;
+      revokePreviewObjectUrl();
+      setAttachmentPreviewResolvedUrl('');
+      setAttachmentPreviewState('error');
+    };
+
+    resolvePreview();
+
+    return () => {
+      cancelled = true;
+      revokePreviewObjectUrl();
+    };
+  }, [attachmentPreviewFile, apiUrl]);
 
   const getPersistableDraftFiles = (sourceFiles: UploadedFile[]) =>
     sourceFiles
@@ -579,7 +860,7 @@ export default function NewRequest() {
         }))
       : [];
     setFiles(restoredFiles);
-    setIsAttachmentQueueExpanded(restoredFiles.length > 6);
+    setIsAttachmentQueueExpanded(true);
   };
 
   const clearSavedDraft = () => {
@@ -684,7 +965,7 @@ export default function NewRequest() {
   const glassInputClass =
     'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF] dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus-visible:ring-primary/40 dark:focus-visible:border-slate-500/60';
   const queueGlassCardClass =
-    'relative overflow-hidden rounded-[22px] border border-[#CBD9FF]/60 bg-gradient-to-br from-white/92 via-[#F8FBFF]/84 to-[#E8F1FF]/86 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-[#F8FBFF]/62 supports-[backdrop-filter]:to-[#E8F1FF]/64 backdrop-blur-2xl shadow-none ring-1 ring-white/60 dark:border-slate-700/60 dark:bg-[linear-gradient(140deg,rgba(10,18,38,0.84),rgba(15,28,58,0.76),rgba(18,37,76,0.72))] dark:ring-white/5';
+    'relative overflow-hidden rounded-[22px] border border-[#CBD9FF]/60 bg-gradient-to-br from-white/92 via-[#F8FBFF]/84 to-[#E8F1FF]/86 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-[#F8FBFF]/62 supports-[backdrop-filter]:to-[#E8F1FF]/64 backdrop-blur-2xl shadow-none ring-1 ring-white/60 dark:border-border dark:bg-card/78 dark:bg-none dark:ring-0';
   const queueActionButtonClass =
     'inline-flex h-8 items-center rounded-full border border-[#D3E1FF] bg-gradient-to-r from-white/88 via-[#F3F7FF]/80 to-[#EAF2FF]/86 px-3 text-xs font-semibold text-[#223467] shadow-none transition-all duration-150 hover:border-[#C4D6FF] hover:bg-[#EEF4FF] dark:border-slate-700/60 dark:bg-slate-900/72 dark:text-slate-200 dark:hover:bg-slate-900/82';
   const queueDangerButtonClass =
@@ -692,8 +973,11 @@ export default function NewRequest() {
   const queueFileRowClass =
     'flex items-start justify-between gap-3 rounded-[18px] border border-[#D7E3FF]/80 bg-gradient-to-r from-white/85 via-[#F4F8FF]/74 to-[#EAF2FF]/82 px-4 py-2.5 supports-[backdrop-filter]:from-white/62 supports-[backdrop-filter]:via-[#F4F8FF]/54 supports-[backdrop-filter]:to-[#EAF2FF]/58 backdrop-blur-xl shadow-none dark:border-slate-700/60 dark:bg-[linear-gradient(135deg,rgba(11,21,44,0.76),rgba(15,28,58,0.72),rgba(18,37,76,0.68))]';
   const queueIconButtonClass =
-    'shrink-0 rounded-full border border-[#D8E4FF] bg-white/60 p-1.5 text-[#6D7FA8] shadow-none transition-colors hover:border-[#C4D6FF] hover:bg-[#F1F6FF] hover:text-[#223467] dark:border-slate-700/60 dark:bg-slate-900/72 dark:text-slate-300 dark:hover:bg-slate-800/90 dark:hover:text-slate-100';
-  const apiUrl = API_URL;
+    'shrink-0 rounded-full border border-[#D8E4FF] bg-white/60 p-1.5 text-[#6D7FA8] shadow-none transition-colors hover:border-[#C4D6FF] hover:bg-[#F1F6FF] hover:text-[#223467] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground';
+  const queuePanelRowClass =
+    'rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2.5 dark:border-border dark:bg-slate-900/70';
+  const queueCollapseButtonClass =
+    'inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted';
 
   // Minimum deadline is 3 office-working days from now.
   const todayDate = startOfDay(new Date());
@@ -1825,200 +2109,186 @@ export default function NewRequest() {
             </div>
 
             {files.length > 0 && (
-              <div className="space-y-3">
-                <div className={queueGlassCardClass}>
-                  <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-white/70 dark:bg-white/10" />
-                  <div className="pointer-events-none absolute -left-8 top-1 h-24 w-24 rounded-full bg-white/55 blur-3xl dark:bg-slate-200/5" />
-                  <div className="pointer-events-none absolute -right-6 bottom-[-24px] h-28 w-28 rounded-full bg-[#DDE9FF]/80 blur-3xl dark:bg-[#35579E]/18" />
-                  <div className="relative px-4 py-3">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div className="min-w-0 flex-1 space-y-1.5">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6D7FA8] dark:text-slate-400">
-                          Attachment Queue
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold leading-none text-foreground">
-                            Upload queue
-                          </p>
-                          {isAttachmentQueueComplete && (
-                            <span className="inline-flex h-6 items-center gap-1 rounded-full border border-[#D7E3FF] bg-[#EEF4FF]/90 px-2.5 text-[11px] font-semibold text-[#223467] dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-200">
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              Completed
-                            </span>
-                          )}
-                        </div>
-                        <p
-                          className={`text-xs leading-5 ${
-                            isAttachmentQueueComplete
-                              ? 'text-[#223467] dark:text-slate-200'
-                              : hasAttachmentQueueIssues
-                                ? 'text-amber-700 dark:text-amber-300'
-                                : 'text-muted-foreground'
-                          }`}
+              <div className={queueGlassCardClass}>
+                <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-white/70 dark:bg-white/5" />
+                <div className="pointer-events-none absolute -left-8 top-1 h-24 w-24 rounded-full bg-white/55 blur-3xl dark:hidden" />
+                <div className="pointer-events-none absolute -right-6 bottom-[-24px] h-28 w-28 rounded-full bg-[#DDE9FF]/80 blur-3xl dark:hidden" />
+                <div className="relative px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{attachmentQueuePrimaryLabel}</p>
+                      <p
+                        className={`mt-1 text-xs ${
+                          hasAttachmentQueueIssues
+                            ? 'text-amber-700 dark:text-amber-300'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
+                        {attachmentQueueStatusText}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {isAttachmentQueueUploading && (
+                        <button
+                          type="button"
+                          onClick={handleCancelActiveUploads}
+                          className="rounded-full px-2 py-1 text-[11px] font-semibold text-primary/80 hover:text-primary dark:text-slate-300 dark:hover:text-slate-100"
                         >
-                          {attachmentQueueStatusText}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
-                        {attachmentQueueSummary.uploading > 0 ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className={queueDangerButtonClass}
-                            onClick={handleCancelActiveUploads}
-                          >
-                            Cancel uploads
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className={queueActionButtonClass}
-                            onClick={handleClearAttachmentQueue}
-                          >
-                            Clear queue
-                          </Button>
-                        )}
-                        {shouldCompactAttachmentQueue && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className={queueActionButtonClass}
-                            onClick={() => setIsAttachmentQueueExpanded((prev) => !prev)}
-                          >
-                            {isAttachmentQueueExpanded ? 'Compact view' : 'Expand queue'}
-                            {isAttachmentQueueExpanded ? (
-                              <ChevronUp className="ml-1 h-3.5 w-3.5" />
-                            ) : (
-                              <ChevronDown className="ml-1 h-3.5 w-3.5" />
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                    {!isAttachmentQueueComplete && (
-                      <div className="mt-3 rounded-2xl border border-white/50 bg-white/45 px-3.5 py-3 supports-[backdrop-filter]:bg-white/28 backdrop-blur-xl dark:border-slate-700/50 dark:bg-slate-950/40">
-                        <div className="flex items-center justify-between text-[11px] font-medium text-[#6D7FA8] dark:text-slate-400">
-                          <span>Overall progress</span>
-                          <span>{attachmentQueueSummary.overallProgress}%</span>
-                        </div>
-                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#D7E3FF]/90 dark:bg-slate-800/90">
-                          <div
-                            className="h-full rounded-full bg-[#9FBCFF] transition-all duration-300 dark:bg-slate-300/70"
-                            style={{ width: `${attachmentQueueSummary.overallProgress}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className={`${attachmentQueueMaxHeightClass} space-y-2 overflow-y-auto pr-1`}>
-                  {files.map((file) => (
-                    <div
-                      key={file.id}
-                      className={queueFileRowClass}
-                    >
-                      <div className="flex min-w-0 flex-1 items-start gap-3">
-                        <div className="shrink-0 pt-0.5">
-                          {getFileIcon(file.name, 'h-5 w-5 text-primary')}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-foreground">
-                                {file.name}
-                              </p>
-                              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                                <span
-                                  className={
-                                    file.error ? 'text-destructive' : 'text-muted-foreground'
-                                  }
-                                >
-                                  {file.uploading
-                                    ? 'Uploading'
-                                    : file.error
-                                      ? 'Needs attention'
-                                      : 'Completed'}
-                                </span>
-                                <span className="text-muted-foreground">
-                                  {formatFileSize(file.size)}
-                                </span>
-                                {file.uploading && typeof file.progress === 'number' && (
-                                  <span className="text-muted-foreground">
-                                    {Math.round(file.progress)}%
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeFile(file.id)}
-                              className={queueIconButtonClass}
-                              aria-label={`Remove ${file.name}`}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                          {file.error ? (
-                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                              <p className="text-xs text-destructive">{file.error}</p>
-                              {shouldPromptDriveReconnect(file.error) && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-6 px-2 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white"
-                                  onClick={async (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    try {
-                                      await openDriveReconnectWindow();
-                                    } catch (error) {
-                                      const message = error instanceof Error ? error.message : 'Failed to get auth URL';
-                                      toast.error('Drive reconnect failed', { description: message });
-                                    }
-                                  }}
-                                >
-                                  Connect
-                                </Button>
-                              )}
-                            </div>
-                          ) : null}
-                          {file.uploading && typeof file.progress === 'number' && (
-                            <div className="mt-2 flex items-center gap-2">
-                              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#D7E3FF]/90 dark:bg-slate-800/90">
-                                <div
-                                  className="h-full rounded-full bg-[#9FBCFF] transition-all duration-300 dark:bg-slate-300/70"
-                                  style={{
-                                    width: `${Math.max(
-                                      0,
-                                      Math.min(100, Number(file.progress || 0))
-                                    )}%`,
-                                  }}
-                                />
-                              </div>
-                              <span className="w-9 text-right text-[11px] font-medium text-muted-foreground">
-                                {Math.round(file.progress)}%
-                              </span>
-                            </div>
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setIsAttachmentQueueExpanded((prev) => !prev)}
+                        className={queueCollapseButtonClass}
+                        aria-label={isAttachmentQueueExpanded ? 'Hide attachment uploads' : 'Show attachment uploads'}
+                      >
+                        <ChevronDown
+                          className={cn(
+                            'h-4 w-4 transition-transform',
+                            isAttachmentQueueExpanded ? 'rotate-180' : ''
                           )}
-                        </div>
+                        />
+                      </button>
+                      {attachmentQueueSummary.uploading === 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearAttachmentQueue}
+                          className={queueCollapseButtonClass}
+                          aria-label="Clear attachment uploads"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {isAttachmentQueueUploading && (
+                    <div className="mt-3 rounded-2xl border border-white/50 bg-white/45 px-3.5 py-3 supports-[backdrop-filter]:bg-white/28 backdrop-blur-xl dark:border-border dark:bg-card/80">
+                      <div className="text-[11px] font-medium text-[#6D7FA8] dark:text-slate-400">
+                        <span>Overall progress</span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-[1fr_auto] items-center gap-2">
+                        <Progress
+                          value={attachmentQueueSummary.overallProgress}
+                          className="h-1.5 rounded-full bg-[#E7EEFF] dark:bg-muted"
+                        />
+                        <span className="min-w-[3rem] text-right text-[11px] font-semibold tabular-nums text-foreground/90 dark:text-slate-100">
+                          {attachmentQueueSummary.overallProgress}%
+                        </span>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  )}
+                  {isAttachmentQueueExpanded && (
+                    <div className="mt-3 space-y-2 border-t border-[#E1E9FF] pt-3 dark:border-border">
+                      <div
+                        className={cn(
+                          'space-y-2',
+                          attachmentQueueMaxHeightClass && attachmentQueueMaxHeightClass,
+                          shouldCompactAttachmentQueue && 'overflow-y-auto pr-1'
+                        )}
+                      >
+                        {files.map((file) => {
+                          const extension = getFileExtension(file.name);
+                          const isPreviewable = isAttachmentPreviewable(file);
 
-                {shouldCompactAttachmentQueue && (
-                  <p className="text-[11px] text-muted-foreground">
-                    {isAttachmentQueueComplete
-                      ? 'All files are uploaded. Submit whenever you are ready.'
-                      : 'Large upload batches stay inside this scroll area, so the submit section remains visible.'}
-                  </p>
-                )}
+                          return (
+                            <div
+                              key={file.id}
+                              className={cn(
+                                queuePanelRowClass,
+                                isPreviewable &&
+                                  'cursor-pointer transition-colors hover:border-[#C9D9FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted/80'
+                              )}
+                              onClick={() => {
+                                if (!isPreviewable) return;
+                                setAttachmentPreviewFile(file);
+                              }}
+                              onKeyDown={(event) => {
+                                if (!isPreviewable) return;
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  setAttachmentPreviewFile(file);
+                                }
+                              }}
+                              role={isPreviewable ? 'button' : undefined}
+                              tabIndex={isPreviewable ? 0 : -1}
+                              aria-label={isPreviewable ? `Preview ${file.name}` : undefined}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-3">
+                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:border dark:border-border dark:bg-muted dark:text-foreground">
+                                    {extension}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="block truncate text-xs font-medium text-foreground">
+                                      {file.name}
+                                    </span>
+                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                      {formatFileSize(file.size)}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    {file.error && (
+                                      <>
+                                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                                        <span className="font-semibold text-red-500">Failed</span>
+                                      </>
+                                    )}
+                                    {!file.uploading && !file.error && (
+                                      <>
+                                        <Check className="h-4 w-4 text-primary" />
+                                        <span className="font-semibold text-primary">Completed</span>
+                                      </>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      removeFile(file.id);
+                                    }}
+                                    className={queueIconButtonClass}
+                                    aria-label={`Remove ${file.name}`}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                              {file.error ? (
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <p className="text-xs text-destructive">{file.error}</p>
+                                  {shouldPromptDriveReconnect(file.error) && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-6 px-2 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white"
+                                      onClick={async (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        try {
+                                          await openDriveReconnectWindow();
+                                        } catch (error) {
+                                          const message = error instanceof Error ? error.message : 'Failed to get auth URL';
+                                          toast.error('Drive reconnect failed', { description: message });
+                                        }
+                                      }}
+                                    >
+                                      Connect
+                                    </Button>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{attachmentQueueFooterText}</p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -2050,6 +2320,126 @@ export default function NewRequest() {
           </div>
         </form>
       </div>
+      <Dialog
+        open={Boolean(attachmentPreviewFile)}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetAttachmentPreviewTransform();
+            setAttachmentPreviewFile(null);
+          }
+        }}
+      >
+        <DialogContent className="w-[92vw] max-w-[78rem] overflow-hidden border-[#D9E6FF] bg-white/95 p-0 shadow-none dark:border-border dark:bg-card">
+          <div className="border-b border-[#E7EEFF] px-5 py-4 dark:border-border">
+            <DialogHeader>
+              <DialogTitle className="truncate text-left text-base font-semibold text-foreground">
+                {attachmentPreviewFile?.name || 'Attachment preview'}
+              </DialogTitle>
+              <DialogDescription className="text-left text-xs text-muted-foreground">
+                Previewing uploaded attachment
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+          <div className="h-[76vh] overflow-hidden bg-[#F8FBFF] p-4 sm:p-5 dark:bg-slate-950/40">
+            {attachmentPreviewState === 'loading' ? (
+              <div className="flex min-h-full items-center justify-center rounded-[1.5rem] border border-[#D9E6FF] bg-white/85 px-4 py-10 text-center text-sm text-muted-foreground dark:border-border dark:bg-card/80">
+                Loading preview...
+              </div>
+            ) : attachmentPreviewUrl ? (
+              <div className="relative flex h-full min-h-0 flex-col rounded-[1.5rem] border border-[#D9E6FF] bg-white/80 p-3 dark:border-border dark:bg-card/80">
+                {attachmentPreviewKind === 'image' ? (
+                  <>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[1rem] border border-[#E1E9FF] bg-white/80 px-3 py-2 dark:border-border dark:bg-card/85">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Move className="h-3.5 w-3.5" />
+                        <span>Scroll to zoom. Drag to pan.</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => updateAttachmentPreviewZoom(attachmentPreviewZoom - 0.2)}
+                          className={queueIconButtonClass}
+                          aria-label="Zoom out"
+                        >
+                          <Minus className="h-4 w-4" />
+                        </button>
+                        <div className="min-w-[4.5rem] rounded-full border border-[#E1E9FF] bg-[#F8FBFF] px-3 py-1 text-center text-[11px] font-semibold tabular-nums text-[#223467] dark:border-border dark:bg-muted dark:text-foreground">
+                          {Math.round(attachmentPreviewZoom * 100)}%
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateAttachmentPreviewZoom(attachmentPreviewZoom + 0.2)}
+                          className={queueIconButtonClass}
+                          aria-label="Zoom in"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={resetAttachmentPreviewTransform}
+                          className={queueIconButtonClass}
+                          aria-label="Reset zoom"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                      ref={attachmentPreviewViewportRef}
+                      className={cn(
+                        'relative min-h-0 flex-1 overflow-hidden rounded-[1.2rem] border border-[#E1E9FF] bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.98),_rgba(244,248,255,0.92)_45%,_rgba(232,239,251,0.88)_100%)] dark:border-border dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.96),rgba(12,23,52,0.92))]',
+                        attachmentPreviewZoom > 1
+                          ? isAttachmentPreviewDragging
+                            ? 'cursor-grabbing'
+                            : 'cursor-grab'
+                          : 'cursor-zoom-in'
+                      )}
+                      onWheel={handleAttachmentPreviewWheel}
+                      onDoubleClick={() =>
+                        updateAttachmentPreviewZoom(attachmentPreviewZoom > 1 ? 1 : 2)
+                      }
+                      onPointerDown={handleAttachmentPreviewPointerDown}
+                      onPointerMove={handleAttachmentPreviewPointerMove}
+                      onPointerUp={handleAttachmentPreviewPointerEnd}
+                      onPointerCancel={handleAttachmentPreviewPointerEnd}
+                    >
+                      <div
+                        className="h-full w-full touch-none select-none"
+                        style={{
+                          transform: `translate(${attachmentPreviewPan.x}px, ${attachmentPreviewPan.y}px) scale(${attachmentPreviewZoom})`,
+                          transformOrigin: 'center center',
+                          transition: isAttachmentPreviewDragging ? 'none' : 'transform 160ms ease-out',
+                        }}
+                      >
+                        <img
+                          src={attachmentPreviewUrl}
+                          alt={attachmentPreviewFile?.name || 'Attachment preview'}
+                          className="block h-full w-full select-none object-contain"
+                          draggable={false}
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="min-h-0 flex-1 overflow-hidden rounded-[1.2rem] border border-[#E1E9FF] bg-white dark:border-border dark:bg-card">
+                    <iframe
+                      src={attachmentPreviewUrl}
+                      title={attachmentPreviewFile?.name || 'PDF preview'}
+                      className="h-full w-full border-0"
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex min-h-full items-center justify-center rounded-[1.5rem] border border-dashed border-[#D9E6FF] bg-white/85 px-4 py-10 text-center text-sm text-muted-foreground dark:border-border dark:bg-card/80">
+                {attachmentPreviewState === 'error'
+                  ? 'Unable to load preview for this file.'
+                  : 'Preview is not available for this file.'}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={showCancelDraftDialog} onOpenChange={setShowCancelDraftDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
