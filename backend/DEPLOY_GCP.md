@@ -33,6 +33,8 @@ Minimum required values:
 
 Recommended: store sensitive values in Secret Manager.
 
+Use a dedicated Cloud Run env file such as `cloudrun.env`. Do not reuse local `backend/.env` with `--env-vars-file`, because Cloud Run reserves names like `PORT` and sets them automatically.
+
 ```bash
 echo -n "<your-mongodb-uri>" | gcloud secrets create MONGODB_URI --data-file=-
 echo -n "<your-jwt-secret>" | gcloud secrets create JWT_SECRET --data-file=-
@@ -58,10 +60,23 @@ This will:
 
 ## 6) Set runtime env vars/secrets on Cloud Run
 
+Create `cloudrun.env` from `cloudrun.env.example` and fill in only runtime values intended for Cloud Run. Do not include `PORT`.
+
 ```bash
 gcloud run services update design-desk-backend \
   --region asia-south1 \
-  --set-env-vars NODE_ENV=production,FRONTEND_URL=https://your-frontend-domain \
+  --env-vars-file cloudrun.env \
+  --set-secrets MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest
+```
+
+If you deploy directly from source instead of using `cloudbuild.yaml`, the same rule applies:
+
+```bash
+gcloud run deploy design-desk-backend \
+  --source . \
+  --region asia-south1 \
+  --allow-unauthenticated \
+  --env-vars-file cloudrun.env \
   --set-secrets MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest
 ```
 

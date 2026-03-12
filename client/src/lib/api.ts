@@ -3,19 +3,44 @@
  * Follows Infrastructure & Database Migration Guidelines Section 6.2.
  */
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+const isLoopbackHost = (value: string): boolean => LOOPBACK_HOSTS.has(value.toLowerCase());
+
+const isUnsafeLoopbackUrlForCurrentOrigin = (value: string): boolean => {
+    if (typeof window === 'undefined') return false;
+
+    try {
+        const parsed = new URL(value);
+        return isLoopbackHost(parsed.hostname) && !isLoopbackHost(window.location.hostname);
+    } catch {
+        return false;
+    }
+};
+
 export const getApiUrl = (): string | undefined => {
     // Priority 1: Environment variable (standard for Vite)
     const envUrl = import.meta.env.VITE_API_URL;
-    if (envUrl) return envUrl;
+    if (envUrl) {
+        if (!isUnsafeLoopbackUrlForCurrentOrigin(envUrl)) {
+            return envUrl;
+        }
+        console.error('Ignoring loopback VITE_API_URL on a non-localhost site:', envUrl);
+    }
 
     // Priority 2: Alternative name sometimes used in production migrations
     const altEnvUrl = import.meta.env.NEXT_PUBLIC_API_BASE_URL;
-    if (altEnvUrl) return altEnvUrl;
+    if (altEnvUrl) {
+        if (!isUnsafeLoopbackUrlForCurrentOrigin(altEnvUrl)) {
+            return altEnvUrl;
+        }
+        console.error('Ignoring loopback NEXT_PUBLIC_API_BASE_URL on a non-localhost site:', altEnvUrl);
+    }
 
     // Priority 3: Localhost fallback for development only
     if (typeof window !== 'undefined') {
         const hostname = window.location.hostname;
-        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') {
+        if (isLoopbackHost(hostname)) {
             return 'http://localhost:4000';
         }
     }
