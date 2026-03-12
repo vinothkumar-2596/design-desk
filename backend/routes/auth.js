@@ -21,6 +21,15 @@ const GOOGLE_REDIRECT_ENV_KEYS = [
   "GOOGLE_CALLBACK_URL",
   "GOOGLE_OAUTH_REDIRECT_URI",
 ];
+const DEV_FRONTEND_ORIGINS = [
+  "http://localhost:5173",
+  "https://designdesk.vercel.app",
+  "http://localhost:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:8080",
+  "http://127.0.0.1:8081",
+];
 
 const hashToken = (value) => {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -150,6 +159,24 @@ const getFrontendOrigin = () => {
   return parseOrigin(base) || "http://localhost:8080";
 };
 
+const getAllowedFrontendOrigins = () => {
+  const configuredOrigins = new Set([getFrontendOrigin()]);
+  const extraOrigins = String(process.env.FRONTEND_ORIGINS || "")
+    .split(",")
+    .map((entry) => parseOrigin(entry.trim()))
+    .filter(Boolean);
+
+  for (const origin of extraOrigins) {
+    configuredOrigins.add(origin);
+  }
+
+  for (const origin of DEV_FRONTEND_ORIGINS) {
+    configuredOrigins.add(origin);
+  }
+
+  return configuredOrigins;
+};
+
 const decodeJwtPayload = (value) => {
   try {
     const decoded = jwt.decode(String(value || ""));
@@ -164,14 +191,7 @@ const normalizeRequestedFrontendOrigin = (requestedOrigin) => {
   const requested = parseOrigin(requestedOrigin);
   if (!requested) return fallback;
 
-  const configuredOrigins = new Set([fallback]);
-  const extraOrigins = String(process.env.FRONTEND_ORIGINS || "")
-    .split(",")
-    .map((entry) => parseOrigin(entry.trim()))
-    .filter(Boolean);
-  for (const origin of extraOrigins) {
-    configuredOrigins.add(origin);
-  }
+  const configuredOrigins = getAllowedFrontendOrigins();
   if (configuredOrigins.has(requested)) {
     return requested;
   }
