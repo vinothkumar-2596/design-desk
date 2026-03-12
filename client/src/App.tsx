@@ -24,6 +24,8 @@ import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import EmailTask from "./pages/EmailTask";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsService from "./pages/TermsService";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,6 +44,8 @@ const App = () => (
                 <Routes>
                   <Route path="/" element={<Index />} />
                   <Route path="/login" element={<Login />} />
+                  <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                  <Route path="/terms-service" element={<TermsService />} />
                   <Route path="/email-task" element={<EmailTask />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
                   <Route path="/dashboard" element={<Dashboard />} />

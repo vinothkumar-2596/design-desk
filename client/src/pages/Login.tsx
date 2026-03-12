@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   API_URL,
@@ -689,6 +689,18 @@ export default function Login() {
                     Staff must use their @smvec.ac.in account.
                   </p>
                 ) : null}
+
+                <p className="mt-4 text-center text-[11px] leading-5 text-muted-foreground">
+                  By continuing, you acknowledge the project{' '}
+                  <Link to="/privacy-policy" className="font-semibold text-primary hover:underline">
+                    Privacy Policy
+                  </Link>
+                  {' '}and{' '}
+                  <Link to="/terms-service" className="font-semibold text-primary hover:underline">
+                    Terms of Service
+                  </Link>
+                  .
+                </p>
               </>
             ) : null}
 
