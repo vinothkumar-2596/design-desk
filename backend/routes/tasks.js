@@ -201,15 +201,383 @@ const normalizeAssignedName = (value) => {
   return raw.replace(/\(.*?\)/g, "").trim();
 };
 
-const mapOutputFileToFinal = (file) => ({
-  name: file?.name || "",
-  url: file?.url || "",
-  size: typeof file?.size === "number" ? file.size : undefined,
-  mime: file?.mime || "",
-  thumbnailUrl: file?.thumbnailUrl || "",
-  uploadedAt: file?.uploadedAt || new Date(),
-  uploadedBy: file?.uploadedBy || ""
-});
+const DRIVE_FILE_ID_PATTERNS = [
+  /\/api\/files\/download\/([A-Za-z0-9_-]{10,})/i,
+  /\/file(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+  /\/document(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+  /\/spreadsheets(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+  /\/presentation(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+  /\/forms(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+];
+
+const extractDriveId = (...values) => {
+  for (const value of values) {
+    const source = String(value || "").trim();
+    if (!source) continue;
+    if (/^[A-Za-z0-9_-]{10,}$/.test(source)) {
+      return source;
+    }
+    try {
+      const parsed = new URL(source, "https://drive.google.com");
+      const idFromQuery = String(parsed.searchParams.get("id") || "").trim();
+      if (idFromQuery) {
+        return idFromQuery;
+      }
+      const decodedPath = decodeURIComponent(parsed.pathname || "");
+      for (const pattern of DRIVE_FILE_ID_PATTERNS) {
+        const match = decodedPath.match(pattern);
+        if (match?.[1]) {
+          return match[1];
+        }
+      }
+    } catch {
+      // Fall through to raw regex extraction.
+    }
+    for (const pattern of DRIVE_FILE_ID_PATTERNS) {
+      const match = source.match(pattern);
+      if (match?.[1]) {
+        return match[1];
+      }
+    }
+    const queryMatch = source.match(/[?&]id=([A-Za-z0-9_-]{10,})/i);
+    if (queryMatch?.[1]) {
+      return queryMatch[1];
+    }
+  }
+  return "";
+};
+
+const buildDriveViewUrl = (driveId) => {
+  const normalizedId = String(driveId || "").trim();
+  if (!normalizedId) return "";
+  return `https://drive.google.com/file/d/${encodeURIComponent(normalizedId)}/view?usp=drivesdk`;
+};
+
+const buildDriveDownloadUrl = (driveId) => {
+  const normalizedId = String(driveId || "").trim();
+  if (!normalizedId) return "";
+  return `https://drive.google.com/uc?id=${encodeURIComponent(normalizedId)}&export=download`;
+};
+
+const normalizeTaskFileLinks = (file) => {
+  const fileData =
+    typeof file?.toObject === "function" ? file.toObject() : { ...(file || {}) };
+  const url = String(fileData?.url || "").trim();
+  const driveId =
+    String(fileData?.driveId || "").trim() ||
+    extractDriveId(fileData?.webViewLink, fileData?.webContentLink, url);
+  const webViewLink =
+    String(fileData?.webViewLink || "").trim() ||
+    (driveId ? buildDriveViewUrl(driveId) : "");
+  const webContentLink =
+    String(fileData?.webContentLink || "").trim() ||
+    (driveId ? buildDriveDownloadUrl(driveId) : "");
+
+  return {
+    ...fileData,
+    url: url || webViewLink || webContentLink,
+    driveId,
+    webViewLink,
+    webContentLink,
+  };
+};
+
+const normalizeTaskFileCollection = (files) =>
+  Array.isArray(files) ? files.map((file) => normalizeTaskFileLinks(file)) : [];
+
+const normalizeFileNameKey = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+const toFiniteNumber = (value) => {
+  const numeric = typeof value === "string" ? Number(value) : value;
+  return Number.isFinite(numeric) ? numeric : undefined;
+};
+
+const hasUsableTaskFileLink = (file) => {
+  const normalizedFile = normalizeTaskFileLinks(file);
+  return Boolean(
+    String(normalizedFile?.url || "").trim() ||
+    String(normalizedFile?.driveId || "").trim() ||
+    String(normalizedFile?.webViewLink || "").trim() ||
+    String(normalizedFile?.webContentLink || "").trim()
+  );
+};
+
+const mergeResolvedFileData = (file, resolvedFile) => {
+  const target =
+    typeof file?.toObject === "function" ? file.toObject() : { ...(file || {}) };
+  const normalizedTarget = normalizeTaskFileLinks(target);
+  const normalizedResolved = normalizeTaskFileLinks(resolvedFile);
+
+  return {
+    ...target,
+    name: String(target?.name || normalizedResolved?.name || "").trim(),
+    url: String(
+      normalizedTarget?.url ||
+      normalizedResolved?.url ||
+      normalizedResolved?.webViewLink ||
+      normalizedResolved?.webContentLink ||
+      ""
+    ).trim(),
+    driveId: String(normalizedTarget?.driveId || normalizedResolved?.driveId || "").trim(),
+    webViewLink: String(
+      normalizedTarget?.webViewLink || normalizedResolved?.webViewLink || ""
+    ).trim(),
+    webContentLink: String(
+      normalizedTarget?.webContentLink || normalizedResolved?.webContentLink || ""
+    ).trim(),
+    size: toFiniteNumber(target?.size) ?? toFiniteNumber(normalizedResolved?.size),
+    mime: String(target?.mime || normalizedResolved?.mime || "").trim(),
+    thumbnailUrl: String(
+      target?.thumbnailUrl || normalizedResolved?.thumbnailUrl || ""
+    ).trim(),
+    uploadedAt: target?.uploadedAt || normalizedResolved?.uploadedAt,
+    uploadedBy: String(target?.uploadedBy || normalizedResolved?.uploadedBy || "").trim(),
+  };
+};
+
+const fileLinkFieldsChanged = (file, nextFile) => {
+  const current = normalizeTaskFileLinks(file);
+  const next = normalizeTaskFileLinks(nextFile);
+  const stringFields = [
+    "name",
+    "url",
+    "driveId",
+    "webViewLink",
+    "webContentLink",
+    "mime",
+    "thumbnailUrl",
+    "uploadedBy",
+  ];
+
+  if (
+    stringFields.some(
+      (field) => String(current?.[field] || "").trim() !== String(next?.[field] || "").trim()
+    )
+  ) {
+    return true;
+  }
+
+  return toFiniteNumber(current?.size) !== toFiniteNumber(next?.size);
+};
+
+const findMatchingTaskFile = (files, targetFile) => {
+  const target = normalizeTaskFileLinks(targetFile);
+  const targetDriveId = String(target?.driveId || "").trim();
+  const targetNameKey = normalizeFileNameKey(target?.name);
+  const targetSize = toFiniteNumber(target?.size);
+  const targetUrl = String(target?.url || "").trim();
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const candidate of Array.isArray(files) ? files : []) {
+    const normalizedCandidate = normalizeTaskFileLinks(candidate);
+    if (!hasUsableTaskFileLink(normalizedCandidate)) continue;
+
+    let score = 0;
+    if (
+      targetDriveId &&
+      normalizedCandidate.driveId &&
+      normalizedCandidate.driveId === targetDriveId
+    ) {
+      score += 10;
+    }
+    if (
+      targetNameKey &&
+      normalizeFileNameKey(normalizedCandidate.name) === targetNameKey
+    ) {
+      score += 5;
+    }
+    if (
+      targetSize !== undefined &&
+      toFiniteNumber(normalizedCandidate.size) === targetSize
+    ) {
+      score += 3;
+    }
+    if (targetUrl && normalizedCandidate.url === targetUrl) {
+      score += 1;
+    }
+
+    if (score > bestScore) {
+      bestMatch = normalizedCandidate;
+      bestScore = score;
+    }
+  }
+
+  return bestScore > 0 ? bestMatch : null;
+};
+
+const searchDriveFileByName = async (drive, targetFile) => {
+  const targetName = String(targetFile?.name || "").trim();
+  if (!targetName) return null;
+
+  const response = await drive.files.list({
+    q: [
+      `name = '${targetName.replace(/'/g, "\\'")}'`,
+      "mimeType != 'application/vnd.google-apps.folder'",
+      "trashed = false",
+    ].join(" and "),
+    fields:
+      "files(id,name,size,thumbnailLink,webViewLink,webContentLink,mimeType,modifiedTime)",
+    spaces: "drive",
+    pageSize: 10,
+    orderBy: "modifiedTime desc",
+    includeItemsFromAllDrives: true,
+    supportsAllDrives: true,
+  });
+
+  const candidates = Array.isArray(response?.data?.files) ? response.data.files : [];
+  if (candidates.length === 0) return null;
+
+  const targetSize = toFiniteNumber(targetFile?.size);
+  const exactSizeMatches =
+    targetSize === undefined
+      ? []
+      : candidates.filter((file) => toFiniteNumber(file?.size) === targetSize);
+  const selected = exactSizeMatches[0] || candidates[0];
+  if (!selected?.id) return null;
+
+  return normalizeTaskFileLinks({
+    name: selected.name || targetName,
+    url: selected.webViewLink || selected.webContentLink || buildDriveViewUrl(selected.id),
+    driveId: selected.id,
+    webViewLink: selected.webViewLink || "",
+    webContentLink: selected.webContentLink || "",
+    size: toFiniteNumber(selected.size) ?? targetSize,
+    mime: selected.mimeType || "",
+    thumbnailUrl: selected.thumbnailLink || "",
+  });
+};
+
+const isSameTaskFileCandidate = (candidate, targetFile) => {
+  const normalizedCandidate = normalizeTaskFileLinks(candidate);
+  const normalizedTarget = normalizeTaskFileLinks(targetFile);
+  const candidateDriveId = String(normalizedCandidate?.driveId || "").trim();
+  const targetDriveId = String(normalizedTarget?.driveId || "").trim();
+  if (candidateDriveId && targetDriveId && candidateDriveId === targetDriveId) {
+    return true;
+  }
+
+  const candidateNameKey = normalizeFileNameKey(normalizedCandidate?.name);
+  const targetNameKey = normalizeFileNameKey(normalizedTarget?.name);
+  if (!candidateNameKey || !targetNameKey || candidateNameKey !== targetNameKey) {
+    return false;
+  }
+
+  const candidateSize = toFiniteNumber(normalizedCandidate?.size);
+  const targetSize = toFiniteNumber(normalizedTarget?.size);
+  if (candidateSize !== undefined && targetSize !== undefined) {
+    return candidateSize === targetSize;
+  }
+
+  return true;
+};
+
+const applyResolvedFileToOutputFiles = (task, targetFile, resolvedFile) => {
+  const outputFiles = Array.isArray(task?.files)
+    ? task.files.filter((file) => normalizeValue(file?.type) === "output")
+    : [];
+  let changed = false;
+
+  for (const outputFile of outputFiles) {
+    if (!isSameTaskFileCandidate(outputFile, targetFile)) continue;
+
+    const merged = mergeResolvedFileData(outputFile, resolvedFile);
+    if (!fileLinkFieldsChanged(outputFile, merged)) continue;
+
+    Object.assign(outputFile, merged);
+    changed = true;
+  }
+
+  return changed;
+};
+
+const repairMissingFinalDeliverableFiles = async (task) => {
+  if (!task) return task;
+
+  task = await ensureFinalDeliverableVersions(task);
+  const versions = Array.isArray(task.finalDeliverableVersions)
+    ? task.finalDeliverableVersions
+    : [];
+  if (versions.length === 0) return task;
+
+  const outputFiles = Array.isArray(task.files)
+    ? task.files.filter((file) => normalizeValue(file?.type) === "output")
+    : [];
+  let drive = null;
+  let versionsChanged = false;
+  let outputFilesChanged = false;
+
+  for (const version of versions) {
+    if (!Array.isArray(version?.files)) continue;
+
+    for (let index = 0; index < version.files.length; index += 1) {
+      const currentFile = version.files[index];
+      let resolvedFile = normalizeTaskFileLinks(currentFile);
+      const matchedOutput = findMatchingTaskFile(outputFiles, resolvedFile);
+
+      if (matchedOutput) {
+        resolvedFile = mergeResolvedFileData(resolvedFile, matchedOutput);
+      }
+
+      if (!hasUsableTaskFileLink(resolvedFile) && String(resolvedFile?.name || "").trim()) {
+        try {
+          if (!drive) {
+            drive = getDriveClient();
+          }
+          const driveMatch = await searchDriveFileByName(drive, resolvedFile);
+          if (driveMatch) {
+            resolvedFile = mergeResolvedFileData(resolvedFile, driveMatch);
+          }
+        } catch (error) {
+          console.error("Drive final-file repair lookup failed:", error?.message || error);
+        }
+      }
+
+      if (fileLinkFieldsChanged(currentFile, resolvedFile)) {
+        Object.assign(currentFile, resolvedFile);
+        versionsChanged = true;
+      }
+
+      if (applyResolvedFileToOutputFiles(task, currentFile, resolvedFile)) {
+        outputFilesChanged = true;
+      }
+    }
+  }
+
+  if (!versionsChanged && !outputFilesChanged) {
+    return task;
+  }
+
+  if (versionsChanged) {
+    task.markModified("finalDeliverableVersions");
+  }
+  if (outputFilesChanged) {
+    task.markModified("files");
+  }
+  await task.save();
+  return task;
+};
+
+const mapOutputFileToFinal = (file) => {
+  const normalizedFile = normalizeTaskFileLinks(file);
+  return {
+    name: normalizedFile?.name || "",
+    url: normalizedFile?.url || "",
+    driveId: normalizedFile?.driveId || "",
+    webViewLink: normalizedFile?.webViewLink || "",
+    webContentLink: normalizedFile?.webContentLink || "",
+    size: typeof normalizedFile?.size === "number" ? normalizedFile.size : undefined,
+    mime: normalizedFile?.mime || "",
+    thumbnailUrl: normalizedFile?.thumbnailUrl || "",
+    uploadedAt: normalizedFile?.uploadedAt || new Date(),
+    uploadedBy: normalizedFile?.uploadedBy || ""
+  };
+};
 
 const buildLegacyFinalVersion = (task) => {
   const files = Array.isArray(task?.files)
@@ -533,7 +901,24 @@ const resolveFinalDeliverableReviewState = (task) => {
 
 const buildTaskPayloadForViewer = (task, viewer) => {
   const payload = typeof task?.toJSON === "function" ? task.toJSON() : { ...(task || {}) };
-  payload.finalDeliverableVersions = normalizeFinalDeliverableVersions(task);
+  payload.files = Array.isArray(payload.files)
+    ? payload.files.map((file) => normalizeTaskFileLinks(file))
+    : [];
+  const normalizedOutputFiles = payload.files.filter(
+    (file) => normalizeValue(file?.type) === "output"
+  );
+  payload.finalDeliverableVersions = normalizeFinalDeliverableVersions(task).map((version) => ({
+    ...(typeof version?.toObject === "function" ? version.toObject() : { ...(version || {}) }),
+    files: Array.isArray(version?.files)
+      ? version.files.map((file) => {
+        const normalizedFile = normalizeTaskFileLinks(file);
+        const matchedOutput = findMatchingTaskFile(normalizedOutputFiles, normalizedFile);
+        return matchedOutput
+          ? mergeResolvedFileData(normalizedFile, matchedOutput)
+          : normalizedFile;
+      })
+      : [],
+  }));
   const reviewState = resolveFinalDeliverableReviewState(task);
   payload.finalDeliverableReviewStatus = reviewState.status;
   payload.finalDeliverableReviewedBy = reviewState.reviewedBy;
@@ -1412,7 +1797,7 @@ router.get("/", globalLimiter, async (req, res) => {
           )
         ).filter(Boolean)
         : tasks;
-    res.json(filteredTasks);
+    res.json(filteredTasks.map((task) => buildTaskPayloadForViewer(task, req.user)));
   } catch (error) {
     res.status(500).json({ error: "Failed to load tasks." });
   }
@@ -1516,6 +1901,7 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
       ...req.body,
       requesterId,
       requesterEmail,
+      files: normalizeTaskFileCollection(req.body?.files),
       changeHistory: [createdEntry, ...(Array.isArray(req.body.changeHistory) ? req.body.changeHistory : [])]
     };
     if (!payload.deadline) {
@@ -1556,12 +1942,14 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
         ? { ...baseDedupeQuery, requesterEmail }
         : null;
     if (dedupeQuery) {
-      const existingTask = await Task.findOne(dedupeQuery).sort({ createdAt: -1 });
+      let existingTask = await Task.findOne(dedupeQuery).sort({ createdAt: -1 });
       if (existingTask) {
-        return res.status(200).json(existingTask);
+        existingTask = await hydrateMissingFileMeta(existingTask);
+        return res.status(200).json(buildTaskPayloadForViewer(existingTask, req.user));
       }
     }
-    const task = await Task.create(payload);
+    let task = await Task.create(payload);
+    task = await hydrateMissingFileMeta(task);
     req.auditTargetId = task.id || task._id?.toString?.() || "";
 
     await Activity.create({
@@ -1702,52 +2090,89 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
       )).catch(err => console.error("Background Notification Error (Create Task):", err));
     }
 
-    res.status(201).json(task);
+    res.status(201).json(buildTaskPayloadForViewer(task, req.user));
   } catch (error) {
     console.error("Failed to create task:", error);
     res.status(400).json({ error: "Failed to create task." });
   }
 });
 
-const extractDriveId = (url) => {
-  if (!url || typeof url !== "string") return null;
-  try {
-    const parsed = new URL(url);
-    if (!parsed.hostname.includes("drive.google.com")) return null;
-    const idFromQuery = parsed.searchParams.get("id");
-    if (idFromQuery) return idFromQuery;
-    const match = parsed.pathname.match(/\/file\/d\/([^/]+)/);
-    return match?.[1] || null;
-  } catch {
-    return null;
-  }
-};
-
 const hydrateMissingFileMeta = async (task) => {
   if (!task?.files?.length) return task;
   const pending = task.files.filter(
     (file) =>
-      (file.size === undefined || !file.thumbnailUrl) && extractDriveId(file.url)
+      (
+        file.size === undefined ||
+        !file.thumbnailUrl ||
+        !file.driveId ||
+        !file.webViewLink ||
+        !file.webContentLink ||
+        !file.url
+      ) &&
+      (
+        extractDriveId(file?.driveId, file?.webViewLink, file?.webContentLink, file?.url) ||
+        String(file?.name || "").trim()
+      )
   );
   if (pending.length === 0) return task;
   try {
     const drive = getDriveClient();
     let changed = false;
     for (const file of pending) {
-      const fileId = extractDriveId(file.url);
+      let resolved = normalizeTaskFileLinks(file);
+      let fileId = extractDriveId(
+        resolved?.driveId,
+        resolved?.webViewLink,
+        resolved?.webContentLink,
+        resolved?.url
+      );
+      if (!fileId) {
+        const driveMatch = await searchDriveFileByName(drive, resolved);
+        if (driveMatch) {
+          resolved = mergeResolvedFileData(resolved, driveMatch);
+          fileId = String(resolved?.driveId || "").trim();
+        }
+      }
       if (!fileId) continue;
+      if (!resolved.driveId) {
+        resolved.driveId = fileId;
+      }
+      if (!resolved.webViewLink) {
+        resolved.webViewLink = buildDriveViewUrl(fileId);
+      }
+      if (!resolved.webContentLink) {
+        resolved.webContentLink = buildDriveDownloadUrl(fileId);
+      }
+      if (!resolved.url) {
+        resolved.url = resolved.webViewLink || resolved.webContentLink || "";
+      }
       const response = await drive.files.get({
         fileId,
-        fields: "id,size,thumbnailLink",
+        fields: "id,size,thumbnailLink,mimeType,webViewLink,webContentLink,name",
+        supportsAllDrives: true,
       });
       const sizeValue = response?.data?.size ? Number(response.data.size) : undefined;
-      if (!Number.isFinite(sizeValue)) continue;
       if (Number.isFinite(sizeValue)) {
-        file.size = sizeValue;
-        changed = true;
+        resolved.size = sizeValue;
       }
-      if (response?.data?.thumbnailLink && !file.thumbnailUrl) {
-        file.thumbnailUrl = response.data.thumbnailLink;
+      if (response?.data?.thumbnailLink) {
+        resolved.thumbnailUrl = response.data.thumbnailLink;
+      }
+      if (response?.data?.mimeType && !resolved.mime) {
+        resolved.mime = response.data.mimeType;
+      }
+      if (response?.data?.webViewLink && !resolved.webViewLink) {
+        resolved.webViewLink = response.data.webViewLink;
+      }
+      if (response?.data?.webContentLink && !resolved.webContentLink) {
+        resolved.webContentLink = response.data.webContentLink;
+      }
+      if (!resolved.url) {
+        resolved.url =
+          resolved.webViewLink || resolved.webContentLink || buildDriveViewUrl(fileId);
+      }
+      if (fileLinkFieldsChanged(file, resolved)) {
+        Object.assign(file, resolved);
         changed = true;
       }
     }
@@ -1765,6 +2190,7 @@ router.get("/:id", ensureTaskAccess, async (req, res) => {
   try {
     let task = req.task;
     task = await hydrateMissingFileMeta(task);
+    task = await repairMissingFinalDeliverableFiles(task);
     const accessContext =
       req.taskAccessContext || await resolveTaskAccessContext(task, req.user);
     const payload = buildTaskPayloadForViewer(task, req.user);
@@ -1794,7 +2220,8 @@ router.get("/:id/changes", ensureTaskAccess, async (req, res) => {
 
 router.get("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
   try {
-    const task = req.task;
+    let task = req.task;
+    task = await repairMissingFinalDeliverableFiles(task);
     const versions = buildTaskPayloadForViewer(task, req.user).finalDeliverableVersions || [];
     res.json(versions);
   } catch (error) {
@@ -1905,15 +2332,20 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
       0
     );
     const nextVersion = maxVersion + 1;
-    const versionFiles = files.map((file) => ({
-      name: file?.name || "",
-      url: file?.url || "",
-      size: typeof file?.size === "number" ? file.size : undefined,
-      mime: file?.mime || "",
-      thumbnailUrl: file?.thumbnailUrl || "",
-      uploadedAt,
-      uploadedBy: userId || ""
-    }));
+    const versionFiles = files.map((file) =>
+      normalizeTaskFileLinks({
+        name: file?.name || "",
+        url: file?.url || "",
+        driveId: file?.driveId || "",
+        webViewLink: file?.webViewLink || "",
+        webContentLink: file?.webContentLink || "",
+        size: typeof file?.size === "number" ? file.size : undefined,
+        mime: file?.mime || "",
+        thumbnailUrl: file?.thumbnailUrl || "",
+        uploadedAt,
+        uploadedBy: userId || ""
+      })
+    );
 
     const newVersion = {
       version: nextVersion,
@@ -1931,6 +2363,9 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
     const outputFiles = versionFiles.map((file) => ({
       name: file.name,
       url: file.url,
+      driveId: file.driveId || "",
+      webViewLink: file.webViewLink || "",
+      webContentLink: file.webContentLink || "",
       type: "output",
       uploadedAt: file.uploadedAt,
       uploadedBy: file.uploadedBy,
@@ -3186,6 +3621,9 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
     };
 
     const nextSet = { ...(Object.keys(updates).length > 0 ? updates : {}) };
+    if (Array.isArray(nextSet.files)) {
+      nextSet.files = normalizeTaskFileCollection(nextSet.files);
+    }
     if (hasFileUploadChange) {
       delete nextSet.status;
       delete nextSet.assignedToId;
@@ -3206,10 +3644,14 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       updateDoc.$set = { ...(updateDoc.$set || {}), approvalStatus: "pending" };
     }
 
-    const updatedTask = await Task.findByIdAndUpdate(req.params.id, updateDoc, {
+    let updatedTask = await Task.findByIdAndUpdate(req.params.id, updateDoc, {
       new: true,
       runValidators: true
     });
+    if (updatedTask && (hasFileUploadChange || Array.isArray(nextSet.files))) {
+      updatedTask = await hydrateMissingFileMeta(updatedTask);
+      updatedTask = await repairMissingFinalDeliverableFiles(updatedTask);
+    }
 
     req.auditTargetId = updatedTask?.id || updatedTask?._id?.toString?.() || "";
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -36,6 +42,7 @@ import {
   Monitor,
   BookOpen,
   Mail,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -51,9 +58,6 @@ import {
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import Box from '@mui/material/Box';
-import LinearProgress, { LinearProgressProps } from '@mui/material/LinearProgress';
-import Typography from '@mui/material/Typography';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Sheet,
@@ -74,6 +78,14 @@ import {
   OFFICE_REGION_LABEL,
 } from '@/lib/officeCalendar';
 import { upsertLocalTask } from '@/lib/taskStorage';
+import {
+  clearRequestDraft,
+  getRequestDraftStorageKey,
+  loadRequestDraft,
+  saveRequestDraft,
+  type RequestDraftFile,
+  type RequestDraftPayload,
+} from '@/lib/requestDrafts';
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
 import type { TaskDraft } from '@/lib/ai';
@@ -84,6 +96,8 @@ interface UploadedFile {
   size: number;
   driveId?: string;
   url?: string;
+  webViewLink?: string;
+  webContentLink?: string;
   thumbnailUrl?: string;
   extractedContent?: string;
   uploading?: boolean;
@@ -409,30 +423,18 @@ const resolveUploadedDriveUrl = (data?: {
   return buildDriveViewUrl(data?.id);
 };
 
-function LinearProgressWithLabel(props: LinearProgressProps & { value: number }) {
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-      <Box sx={{ width: '100%', mr: 1 }}>
-        <LinearProgress variant="determinate" {...props} />
-      </Box>
-      <Box sx={{ minWidth: 35 }}>
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          {`${Math.round(props.value)}%`}
-        </Typography>
-      </Box>
-    </Box>
-  );
-}
-
 import { API_URL, authFetch, getAuthToken, openDriveReconnectWindow } from '@/lib/api';
 
 export default function NewRequest() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const defaultRequesterPhone = formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || '');
+  const draftStorageKey = getRequestDraftStorageKey(user);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showGuidelines, setShowGuidelines] = useState(true);
   const [showThankYou, setShowThankYou] = useState(false);
+  const [showCancelDraftDialog, setShowCancelDraftDialog] = useState(false);
   const [thankYouAnimation, setThankYouAnimation] = useState<object | null>(null);
   const [uploadAnimation, setUploadAnimation] = useState<object | null>(null);
   const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
@@ -446,10 +448,13 @@ export default function NewRequest() {
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [hasDeadlineInteracted, setHasDeadlineInteracted] = useState(false);
   const [isEmergency, setIsEmergency] = useState(false);
-  const [requesterPhone, setRequesterPhone] = useState(
-    formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || '')
-  );
+  const [requesterPhone, setRequesterPhone] = useState(defaultRequesterPhone);
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [isAttachmentQueueExpanded, setIsAttachmentQueueExpanded] = useState(false);
+  const activeUploadRequestsRef = useRef(new Map<string, XMLHttpRequest>());
+  const cancelledUploadIdsRef = useRef(new Set<string>());
+  const hasRestoredDraftRef = useRef(false);
+  const lastDraftStorageKeyRef = useRef('');
   const [isDragging, setIsDragging] = useState(false);
   const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
@@ -465,6 +470,187 @@ export default function NewRequest() {
         .join('\n\n'),
     [readyAttachments]
   );
+  const attachmentQueueSummary = useMemo(() => {
+    const total = files.length;
+    const uploading = files.filter((file) => file.uploading).length;
+    const failed = files.filter((file) => file.error).length;
+    const ready = files.filter((file) => !file.uploading && !file.error).length;
+    const completedProgress = files.reduce((sum, file) => {
+      if (file.error) return sum;
+      if (file.uploading) {
+        const progressValue = Number(file.progress ?? 0);
+        const normalizedProgress = Math.max(0, Math.min(100, progressValue));
+        return sum + normalizedProgress;
+      }
+      return sum + 100;
+    }, 0);
+    const overallProgress = total > 0 ? Math.round(completedProgress / total) : 0;
+    return {
+      total,
+      uploading,
+      failed,
+      ready,
+      overallProgress,
+    };
+  }, [files]);
+  const isAttachmentQueueComplete =
+    attachmentQueueSummary.total > 0 &&
+    attachmentQueueSummary.uploading === 0 &&
+    attachmentQueueSummary.failed === 0 &&
+    attachmentQueueSummary.ready === attachmentQueueSummary.total;
+  const hasAttachmentQueueIssues = attachmentQueueSummary.failed > 0;
+  const attachmentQueueStatusText = isAttachmentQueueComplete
+    ? `${attachmentQueueSummary.ready} completed, ready to submit`
+    : `${attachmentQueueSummary.uploading} uploading, ${attachmentQueueSummary.ready} ready, ${attachmentQueueSummary.failed} issues`;
+  const shouldCompactAttachmentQueue = files.length > 6;
+  const attachmentQueueMaxHeightClass = shouldCompactAttachmentQueue
+    ? isAttachmentQueueExpanded
+      ? 'max-h-[30rem]'
+      : 'max-h-[16rem]'
+    : '';
+  const hasDraftableChanges = useMemo(() => {
+    const normalizedCurrentPhone = normalizeIndianPhone(requesterPhone);
+    const normalizedDefaultPhone = normalizeIndianPhone(defaultRequesterPhone);
+    return Boolean(
+      title.trim() ||
+        description.trim() ||
+        category ||
+        urgency !== 'normal' ||
+        deadline ||
+        isEmergency ||
+        normalizedCurrentPhone !== normalizedDefaultPhone ||
+        files.length > 0
+    );
+  }, [
+    category,
+    deadline,
+    defaultRequesterPhone,
+    description,
+    files.length,
+    isEmergency,
+    requesterPhone,
+    title,
+    urgency,
+  ]);
+
+  const getPersistableDraftFiles = (sourceFiles: UploadedFile[]) =>
+    sourceFiles
+      .filter((file) => !file.uploading && !file.error)
+      .map((file) => ({
+        id: file.id,
+        name: file.name,
+        size: file.size,
+        driveId: file.driveId,
+        url: file.url,
+        webViewLink: file.webViewLink,
+        webContentLink: file.webContentLink,
+        thumbnailUrl: file.thumbnailUrl,
+      }));
+
+  const buildRequestDraftPayload = (sourceFiles: UploadedFile[]): RequestDraftPayload => ({
+    title,
+    description,
+    category,
+    urgency,
+    deadline: deadline ? deadline.toISOString() : '',
+    hasDeadlineInteracted,
+    isEmergency,
+    requesterPhone,
+    files: getPersistableDraftFiles(sourceFiles),
+    savedAt: new Date().toISOString(),
+  });
+
+  const applySavedDraft = (draft: RequestDraftPayload) => {
+    setTitle(String(draft.title || ''));
+    setDescription(String(draft.description || ''));
+    setCategory((draft.category as TaskCategory | '') || '');
+    setUrgency((draft.urgency as TaskUrgency) || 'normal');
+    const parsedDeadline = draft.deadline ? new Date(draft.deadline) : null;
+    setDeadline(parsedDeadline && !isNaN(parsedDeadline.getTime()) ? parsedDeadline : null);
+    setHasDeadlineInteracted(Boolean(draft.hasDeadlineInteracted || draft.deadline));
+    setIsEmergency(Boolean(draft.isEmergency));
+    setRequesterPhone(String(draft.requesterPhone || defaultRequesterPhone));
+    const restoredFiles = Array.isArray(draft.files)
+      ? draft.files.map((file) => ({
+          ...file,
+          uploading: false,
+          progress: 100,
+          error: undefined,
+        }))
+      : [];
+    setFiles(restoredFiles);
+    setIsAttachmentQueueExpanded(restoredFiles.length > 6);
+  };
+
+  const clearSavedDraft = () => {
+    clearRequestDraft(user);
+  };
+
+  const cancelTrackedUpload = (id: string) => {
+    const xhr = activeUploadRequestsRef.current.get(id);
+    if (!xhr) return false;
+    cancelledUploadIdsRef.current.add(id);
+    xhr.abort();
+    activeUploadRequestsRef.current.delete(id);
+    return true;
+  };
+
+  const stopActiveUploads = () => {
+    const activeIds = Array.from(activeUploadRequestsRef.current.keys());
+    activeIds.forEach((id) => {
+      cancelledUploadIdsRef.current.add(id);
+      const xhr = activeUploadRequestsRef.current.get(id);
+      xhr?.abort();
+      activeUploadRequestsRef.current.delete(id);
+    });
+    return activeIds.length;
+  };
+
+  const handleSaveDraft = (options?: { navigateAfter?: boolean }) => {
+    if (typeof window === 'undefined') return;
+    if (!hasDraftableChanges) {
+      toast.message('Nothing to save yet.');
+      return;
+    }
+    const navigateAfter = options?.navigateAfter === true;
+    const uploadingCount = files.filter((file) => file.uploading).length;
+    const filesForDraft = navigateAfter ? files.filter((file) => !file.uploading) : files;
+    const payload = buildRequestDraftPayload(filesForDraft);
+
+    if (navigateAfter && uploadingCount > 0) {
+      stopActiveUploads();
+      setFiles((prev) => prev.filter((file) => !file.uploading));
+    }
+
+    saveRequestDraft(user, payload);
+    toast.success(
+      uploadingCount > 0
+        ? navigateAfter
+          ? `Draft saved. ${uploadingCount} active uploads were cancelled.`
+          : `Draft saved. ${uploadingCount} active uploads are still running and not included yet.`
+        : 'Draft saved.'
+    );
+
+    if (navigateAfter) {
+      setShowCancelDraftDialog(false);
+      navigate('/dashboard');
+    }
+  };
+
+  const handleDiscardAndExit = () => {
+    stopActiveUploads();
+    clearSavedDraft();
+    setShowCancelDraftDialog(false);
+    navigate('/dashboard');
+  };
+
+  const handleCancelRequest = () => {
+    if (!hasDraftableChanges) {
+      navigate('/dashboard');
+      return;
+    }
+    setShowCancelDraftDialog(true);
+  };
 
   const applyAiDraft = (draft: TaskDraft) => {
     setTitle(draft.title);
@@ -497,6 +683,16 @@ export default function NewRequest() {
     'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border-0 ring-1 ring-black/5 rounded-2xl shadow-none dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:ring-white/5';
   const glassInputClass =
     'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF] dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus-visible:ring-primary/40 dark:focus-visible:border-slate-500/60';
+  const queueGlassCardClass =
+    'relative overflow-hidden rounded-[22px] border border-[#CBD9FF]/60 bg-gradient-to-br from-white/92 via-[#F8FBFF]/84 to-[#E8F1FF]/86 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-[#F8FBFF]/62 supports-[backdrop-filter]:to-[#E8F1FF]/64 backdrop-blur-2xl shadow-none ring-1 ring-white/60 dark:border-slate-700/60 dark:bg-[linear-gradient(140deg,rgba(10,18,38,0.84),rgba(15,28,58,0.76),rgba(18,37,76,0.72))] dark:ring-white/5';
+  const queueActionButtonClass =
+    'inline-flex h-8 items-center rounded-full border border-[#D3E1FF] bg-gradient-to-r from-white/88 via-[#F3F7FF]/80 to-[#EAF2FF]/86 px-3 text-xs font-semibold text-[#223467] shadow-none transition-all duration-150 hover:border-[#C4D6FF] hover:bg-[#EEF4FF] dark:border-slate-700/60 dark:bg-slate-900/72 dark:text-slate-200 dark:hover:bg-slate-900/82';
+  const queueDangerButtonClass =
+    'inline-flex h-8 items-center rounded-full border border-[#D3E1FF] bg-gradient-to-r from-white/88 via-[#F3F7FF]/80 to-[#EAF2FF]/86 px-3 text-xs font-semibold text-[#223467] shadow-none transition-all duration-150 hover:border-[#C4D6FF] hover:bg-[#EEF4FF] dark:border-slate-700/60 dark:bg-slate-900/72 dark:text-slate-200 dark:hover:bg-slate-900/82';
+  const queueFileRowClass =
+    'flex items-start justify-between gap-3 rounded-[18px] border border-[#D7E3FF]/80 bg-gradient-to-r from-white/85 via-[#F4F8FF]/74 to-[#EAF2FF]/82 px-4 py-2.5 supports-[backdrop-filter]:from-white/62 supports-[backdrop-filter]:via-[#F4F8FF]/54 supports-[backdrop-filter]:to-[#EAF2FF]/58 backdrop-blur-xl shadow-none dark:border-slate-700/60 dark:bg-[linear-gradient(135deg,rgba(11,21,44,0.76),rgba(15,28,58,0.72),rgba(18,37,76,0.68))]';
+  const queueIconButtonClass =
+    'shrink-0 rounded-full border border-[#D8E4FF] bg-white/60 p-1.5 text-[#6D7FA8] shadow-none transition-colors hover:border-[#C4D6FF] hover:bg-[#F1F6FF] hover:text-[#223467] dark:border-slate-700/60 dark:bg-slate-900/72 dark:text-slate-300 dark:hover:bg-slate-800/90 dark:hover:text-slate-100';
   const apiUrl = API_URL;
 
   // Minimum deadline is 3 office-working days from now.
@@ -604,8 +800,33 @@ export default function NewRequest() {
   }, []);
 
   useEffect(() => {
-    setRequesterPhone(formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || ''));
-  }, [user]);
+    setRequesterPhone(defaultRequesterPhone);
+  }, [defaultRequesterPhone]);
+
+  useEffect(() => {
+    if (lastDraftStorageKeyRef.current !== draftStorageKey) {
+      hasRestoredDraftRef.current = false;
+      lastDraftStorageKeyRef.current = draftStorageKey;
+    }
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (hasRestoredDraftRef.current) return;
+    if (location.state?.aiDraft) return;
+    if (typeof window === 'undefined') return;
+    const parsed = loadRequestDraft(user);
+    if (!parsed) {
+      hasRestoredDraftRef.current = true;
+      return;
+    }
+    applySavedDraft(parsed);
+    hasRestoredDraftRef.current = true;
+    toast.message(
+      parsed.savedAt
+        ? `Draft restored from ${format(new Date(parsed.savedAt), 'd MMM, h:mm a')}.`
+        : 'Draft restored.'
+    );
+  }, [draftStorageKey, location.state, user]);
 
   useEffect(() => {
     if (defaultsApplied) return;
@@ -648,6 +869,15 @@ export default function NewRequest() {
     );
   };
 
+  useEffect(
+    () => () => {
+      activeUploadRequestsRef.current.forEach((xhr) => xhr.abort());
+      activeUploadRequestsRef.current.clear();
+      cancelledUploadIdsRef.current.clear();
+    },
+    []
+  );
+
   const uploadFileWithProgress = (file: File, localId: string) =>
     new Promise<void>((resolve) => {
       if (!apiUrl) {
@@ -660,6 +890,7 @@ export default function NewRequest() {
       formData.append('file', file);
 
       const xhr = new XMLHttpRequest();
+      activeUploadRequestsRef.current.set(localId, xhr);
       xhr.open('POST', `${apiUrl}/api/files/upload`);
       const token = getAuthToken();
       if (token) {
@@ -676,6 +907,13 @@ export default function NewRequest() {
       };
 
       xhr.onload = () => {
+        activeUploadRequestsRef.current.delete(localId);
+        const wasCancelled = cancelledUploadIdsRef.current.has(localId);
+        cancelledUploadIdsRef.current.delete(localId);
+        if (wasCancelled) {
+          resolve();
+          return;
+        }
         if (xhr.status < 200 || xhr.status >= 300) {
           let errorMsg = 'Upload failed';
           try {
@@ -752,6 +990,8 @@ export default function NewRequest() {
         updateFile(localId, {
           driveId: data?.id,
           url: resolvedUrl,
+          webViewLink: data?.webViewLink,
+          webContentLink: data?.webContentLink,
           thumbnailUrl: data?.thumbnailLink,
           extractedContent: data?.extractedContent,
           uploading: false,
@@ -761,9 +1001,22 @@ export default function NewRequest() {
       };
 
       xhr.onerror = () => {
+        activeUploadRequestsRef.current.delete(localId);
+        const wasCancelled = cancelledUploadIdsRef.current.has(localId);
+        cancelledUploadIdsRef.current.delete(localId);
+        if (wasCancelled) {
+          resolve();
+          return;
+        }
         const errorMsg = 'Network error. Please check your connection.';
         updateFile(localId, { uploading: false, error: errorMsg });
         toast.error('File upload failed', { description: errorMsg });
+        resolve();
+      };
+
+      xhr.onabort = () => {
+        activeUploadRequestsRef.current.delete(localId);
+        cancelledUploadIdsRef.current.delete(localId);
         resolve();
       };
 
@@ -824,7 +1077,30 @@ export default function NewRequest() {
   };
 
   const removeFile = (id: string) => {
+    cancelTrackedUpload(id);
     setFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const handleCancelActiveUploads = () => {
+    const activeUploads = files.filter((file) => file.uploading);
+    if (activeUploads.length === 0) {
+      return;
+    }
+    activeUploads.forEach((file) => cancelTrackedUpload(file.id));
+    setFiles((prev) => prev.filter((file) => !file.uploading));
+    toast.message(
+      activeUploads.length === 1 ? 'Upload cancelled.' : `${activeUploads.length} uploads cancelled.`
+    );
+  };
+
+  const handleClearAttachmentQueue = () => {
+    activeUploadRequestsRef.current.forEach((xhr, id) => {
+      cancelledUploadIdsRef.current.add(id);
+      xhr.abort();
+    });
+    activeUploadRequestsRef.current.clear();
+    cancelledUploadIdsRef.current.clear();
+    setFiles([]);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -904,6 +1180,9 @@ export default function NewRequest() {
           files: files.map((file) => ({
             name: file.name,
             url: file.url || '',
+            driveId: file.driveId || '',
+            webViewLink: file.webViewLink || '',
+            webContentLink: file.webContentLink || '',
             type: 'input',
             size: file.size,
             thumbnailUrl: file.thumbnailUrl,
@@ -965,6 +1244,9 @@ export default function NewRequest() {
           id: file.driveId || file.id,
           name: file.name,
           url: file.url || '',
+          driveId: file.driveId || '',
+          webViewLink: file.webViewLink || '',
+          webContentLink: file.webContentLink || '',
           type: 'input',
           size: file.size,
           thumbnailUrl: file.thumbnailUrl,
@@ -984,6 +1266,7 @@ export default function NewRequest() {
     }
 
     setIsSubmitting(false);
+    clearSavedDraft();
     setShowThankYou(true);
   };
 
@@ -1542,82 +1825,253 @@ export default function NewRequest() {
             </div>
 
             {files.length > 0 && (
-              <div className="space-y-2">
-                {files.map((file) => (
-                  <div
-                    key={file.id}
-                    className="flex items-center justify-between rounded-lg border border-[#D7E3FF] bg-gradient-to-r from-[#F4F8FF]/90 via-[#EEF4FF]/70 to-[#E6F1FF]/80 px-4 py-3 supports-[backdrop-filter]:bg-[#EEF4FF]/60 backdrop-blur-xl dark:border-slate-700/60 dark:bg-none dark:bg-slate-900/60 dark:supports-[backdrop-filter]:bg-slate-900/60"
-                  >
-                    <div className="flex items-start gap-3 flex-1">
-                      {getFileIcon(file.name, 'h-5 w-5 text-primary')}
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-foreground">
-                          {file.name}
+              <div className="space-y-3">
+                <div className={queueGlassCardClass}>
+                  <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-white/70 dark:bg-white/10" />
+                  <div className="pointer-events-none absolute -left-8 top-1 h-24 w-24 rounded-full bg-white/55 blur-3xl dark:bg-slate-200/5" />
+                  <div className="pointer-events-none absolute -right-6 bottom-[-24px] h-28 w-28 rounded-full bg-[#DDE9FF]/80 blur-3xl dark:bg-[#35579E]/18" />
+                  <div className="relative px-4 py-3">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6D7FA8] dark:text-slate-400">
+                          Attachment Queue
                         </p>
-                        <div className="flex items-center gap-2">
-                          <p className={`text-xs ${file.error ? 'text-destructive' : 'text-muted-foreground'}`}>
-                            {file.uploading
-                              ? 'Uploading...'
-                              : file.error
-                                ? file.error
-                                : formatFileSize(file.size)}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold leading-none text-foreground">
+                            Upload queue
                           </p>
-                          {file.error && shouldPromptDriveReconnect(file.error) && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-6 px-2 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white"
-                              onClick={async (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                try {
-                                  await openDriveReconnectWindow();
-                                } catch (error) {
-                                  const message = error instanceof Error ? error.message : 'Failed to get auth URL';
-                                  toast.error('Drive reconnect failed', { description: message });
-                                }
-                              }}
-                            >
-                              Connect
-                            </Button>
+                          {isAttachmentQueueComplete && (
+                            <span className="inline-flex h-6 items-center gap-1 rounded-full border border-[#D7E3FF] bg-[#EEF4FF]/90 px-2.5 text-[11px] font-semibold text-[#223467] dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-200">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Completed
+                            </span>
                           )}
                         </div>
-                        {file.uploading && typeof file.progress === 'number' && (
-                          <div className="mt-2 w-full max-w-sm">
-                            <LinearProgressWithLabel value={file.progress} />
-                          </div>
+                        <p
+                          className={`text-xs leading-5 ${
+                            isAttachmentQueueComplete
+                              ? 'text-[#223467] dark:text-slate-200'
+                              : hasAttachmentQueueIssues
+                                ? 'text-amber-700 dark:text-amber-300'
+                                : 'text-muted-foreground'
+                          }`}
+                        >
+                          {attachmentQueueStatusText}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">
+                        {attachmentQueueSummary.uploading > 0 ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className={queueDangerButtonClass}
+                            onClick={handleCancelActiveUploads}
+                          >
+                            Cancel uploads
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className={queueActionButtonClass}
+                            onClick={handleClearAttachmentQueue}
+                          >
+                            Clear queue
+                          </Button>
+                        )}
+                        {shouldCompactAttachmentQueue && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className={queueActionButtonClass}
+                            onClick={() => setIsAttachmentQueueExpanded((prev) => !prev)}
+                          >
+                            {isAttachmentQueueExpanded ? 'Compact view' : 'Expand queue'}
+                            {isAttachmentQueueExpanded ? (
+                              <ChevronUp className="ml-1 h-3.5 w-3.5" />
+                            ) : (
+                              <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                            )}
+                          </Button>
                         )}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(file.id)}
-                      className="text-muted-foreground hover:text-destructive transition-colors"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+                    {!isAttachmentQueueComplete && (
+                      <div className="mt-3 rounded-2xl border border-white/50 bg-white/45 px-3.5 py-3 supports-[backdrop-filter]:bg-white/28 backdrop-blur-xl dark:border-slate-700/50 dark:bg-slate-950/40">
+                        <div className="flex items-center justify-between text-[11px] font-medium text-[#6D7FA8] dark:text-slate-400">
+                          <span>Overall progress</span>
+                          <span>{attachmentQueueSummary.overallProgress}%</span>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#D7E3FF]/90 dark:bg-slate-800/90">
+                          <div
+                            className="h-full rounded-full bg-[#9FBCFF] transition-all duration-300 dark:bg-slate-300/70"
+                            style={{ width: `${attachmentQueueSummary.overallProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ))}
+                </div>
+
+                <div className={`${attachmentQueueMaxHeightClass} space-y-2 overflow-y-auto pr-1`}>
+                  {files.map((file) => (
+                    <div
+                      key={file.id}
+                      className={queueFileRowClass}
+                    >
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <div className="shrink-0 pt-0.5">
+                          {getFileIcon(file.name, 'h-5 w-5 text-primary')}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-foreground">
+                                {file.name}
+                              </p>
+                              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                                <span
+                                  className={
+                                    file.error ? 'text-destructive' : 'text-muted-foreground'
+                                  }
+                                >
+                                  {file.uploading
+                                    ? 'Uploading'
+                                    : file.error
+                                      ? 'Needs attention'
+                                      : 'Completed'}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {formatFileSize(file.size)}
+                                </span>
+                                {file.uploading && typeof file.progress === 'number' && (
+                                  <span className="text-muted-foreground">
+                                    {Math.round(file.progress)}%
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeFile(file.id)}
+                              className={queueIconButtonClass}
+                              aria-label={`Remove ${file.name}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          {file.error ? (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                              <p className="text-xs text-destructive">{file.error}</p>
+                              {shouldPromptDriveReconnect(file.error) && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white"
+                                  onClick={async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    try {
+                                      await openDriveReconnectWindow();
+                                    } catch (error) {
+                                      const message = error instanceof Error ? error.message : 'Failed to get auth URL';
+                                      toast.error('Drive reconnect failed', { description: message });
+                                    }
+                                  }}
+                                >
+                                  Connect
+                                </Button>
+                              )}
+                            </div>
+                          ) : null}
+                          {file.uploading && typeof file.progress === 'number' && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#D7E3FF]/90 dark:bg-slate-800/90">
+                                <div
+                                  className="h-full rounded-full bg-[#9FBCFF] transition-all duration-300 dark:bg-slate-300/70"
+                                  style={{
+                                    width: `${Math.max(
+                                      0,
+                                      Math.min(100, Number(file.progress || 0))
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                              <span className="w-9 text-right text-[11px] font-medium text-muted-foreground">
+                                {Math.round(file.progress)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {shouldCompactAttachmentQueue && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {isAttachmentQueueComplete
+                      ? 'All files are uploaded. Submit whenever you are ready.'
+                      : 'Large upload batches stay inside this scroll area, so the submit section remains visible.'}
+                  </p>
+                )}
               </div>
             )}
           </div>
 
           {/* Submit Button */}
           <div className="flex items-center justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate('/dashboard')}
-            >
-              Cancel
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" disabled={isSubmitting}>
+                  Save Draft
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[180px]">
+                <DropdownMenuItem onSelect={() => handleSaveDraft()}>
+                  Save Draft
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={handleCancelRequest}
+                >
+                  Cancel Request
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button type="submit" disabled={!isFormValid() || isSubmitting}>
               {isSubmitting ? 'Submitting...' : 'Submit Request'}
             </Button>
           </div>
         </form>
       </div>
+      <Dialog open={showCancelDraftDialog} onOpenChange={setShowCancelDraftDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Leave this request?</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes. You can save this form as a draft and continue later, or
+              discard it and leave now.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="ghost" onClick={() => setShowCancelDraftDialog(false)}>
+              Continue Editing
+            </Button>
+            <Button type="button" variant="outline" onClick={handleDiscardAndExit}>
+              Discard
+            </Button>
+            <Button type="button" onClick={() => handleSaveDraft({ navigateAfter: true })}>
+              Save Draft
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={showThankYou} onOpenChange={(open) => (!open ? handleThankYouClose() : null)}>
         <DialogContent className="max-w-md overflow-hidden p-0">
           <div className="relative h-44 bg-primary/10">

@@ -217,12 +217,12 @@ type FileUploadResponse = {
 type PendingFinalFile = {
   name: string;
   url: string;
+  driveId?: string;
+  webViewLink?: string;
+  webContentLink?: string;
   size?: number;
   mime?: string;
   thumbnailUrl?: string;
-  webViewLink?: string;
-  webContentLink?: string;
-  driveId?: string;
 };
 type OutputDisplayFile = {
   id: string;
@@ -920,6 +920,7 @@ export default function TaskDetail() {
       setChangeHistory(hydrated?.changeHistory ?? []);
       setChangeCount(hydrated?.changeCount ?? 0);
       setApprovalStatus(hydrated?.approvalStatus);
+      persistTask(hydrated);
     });
 
 
@@ -946,6 +947,7 @@ export default function TaskDetail() {
       setChangeHistory(hydrated?.changeHistory ?? []);
       setChangeCount(hydrated?.changeCount ?? 0);
       setApprovalStatus(hydrated?.approvalStatus);
+      persistTask(hydrated);
     };
     window.addEventListener('designhub:task:updated', handleTaskUpdated);
     return () => window.removeEventListener('designhub:task:updated', handleTaskUpdated);
@@ -1280,8 +1282,81 @@ export default function TaskDetail() {
   const workingFiles = taskState.files.filter((f) => f.type === 'working');
   const outputFiles = taskState.files.filter((f) => f.type === 'output');
   const finalDeliverableVersions = useMemo<FinalDeliverableVersion[]>(() => {
+    const normalizeNameKey = (value?: string) =>
+      String(value || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+    const toSizeValue = (value?: number | string) => {
+      const numeric = typeof value === 'string' ? Number(value) : value;
+      return Number.isFinite(numeric) ? numeric : undefined;
+    };
+    const findMatchingOutputFile = (target?: {
+      name?: string;
+      url?: string;
+      driveId?: string;
+      size?: number | string;
+    }) => {
+      const targetNameKey = normalizeNameKey(target?.name);
+      const targetUrl = String(target?.url || '').trim();
+      const targetDriveId = String(target?.driveId || '').trim();
+      const targetSize = toSizeValue(target?.size);
+      let bestMatch: (typeof outputFiles)[number] | undefined;
+      let bestScore = 0;
+
+      for (const outputFile of outputFiles) {
+        let score = 0;
+        const outputNameKey = normalizeNameKey(outputFile.name);
+        const outputDriveId = String(outputFile.driveId || '').trim();
+        const outputUrl = String(outputFile.url || '').trim();
+        const outputSize = toSizeValue(outputFile.size);
+
+        if (targetDriveId && outputDriveId && targetDriveId === outputDriveId) {
+          score += 10;
+        }
+        if (targetNameKey && outputNameKey && targetNameKey === outputNameKey) {
+          score += 5;
+        }
+        if (targetSize !== undefined && outputSize === targetSize) {
+          score += 3;
+        }
+        if (targetUrl && outputUrl && targetUrl === outputUrl) {
+          score += 1;
+        }
+
+        if (score > bestScore) {
+          bestMatch = outputFile;
+          bestScore = score;
+        }
+      }
+
+      return bestScore > 0 ? bestMatch : undefined;
+    };
+
     const raw = taskState?.finalDeliverableVersions ?? [];
-    if (raw.length > 0) return raw;
+    if (raw.length > 0) {
+      return raw.map((version) => ({
+        ...version,
+        files:
+          version.files?.map((file) => {
+            const matchedOutput = findMatchingOutputFile(file);
+            if (!matchedOutput) return file;
+            return {
+              ...matchedOutput,
+              ...file,
+              url: file.url || matchedOutput.url || '',
+              driveId: file.driveId || matchedOutput.driveId,
+              webViewLink: file.webViewLink || matchedOutput.webViewLink,
+              webContentLink: file.webContentLink || matchedOutput.webContentLink,
+              size: file.size ?? matchedOutput.size,
+              mime: file.mime || matchedOutput.mime,
+              thumbnailUrl: file.thumbnailUrl || matchedOutput.thumbnailUrl,
+              uploadedAt: file.uploadedAt || matchedOutput.uploadedAt || new Date(),
+              uploadedBy: file.uploadedBy || matchedOutput.uploadedBy || '',
+            };
+          }) ?? [],
+      }));
+    }
     if (outputFiles.length === 0) return [];
     const fallbackUploadedAt = outputFiles[0]?.uploadedAt || taskState.updatedAt;
     const fallbackUploadedBy =
@@ -1297,6 +1372,9 @@ export default function TaskDetail() {
           id: file.id || `final-file-${index}`,
           name: file.name,
           url: file.url,
+          driveId: file.driveId,
+          webViewLink: file.webViewLink,
+          webContentLink: file.webContentLink,
           size: file.size,
           mime: file.mime,
           thumbnailUrl: file.thumbnailUrl,
@@ -1500,7 +1578,7 @@ export default function TaskDetail() {
       if (folderMatch?.[1]) {
         return { isGoogleDrive: true as const, itemType: 'folder' as const, itemId: folderMatch[1] };
       }
-      const fileMatch = path.match(/\/file\/d\/([^/?#]+)/);
+      const fileMatch = path.match(/\/file(?:\/u\/\d+)?\/d\/([^/?#]+)/);
       if (fileMatch?.[1]) {
         return { isGoogleDrive: true as const, itemType: 'file' as const, itemId: fileMatch[1] };
       }
@@ -1619,19 +1697,80 @@ export default function TaskDetail() {
     if (!ext) return titledBase;
     return `${titledBase}.${ext.toLowerCase()}`;
   };
-  const getDriveFileId = (url: string) => {
-    try {
-      const parsed = new URL(url);
-      if (parsed.hostname.includes('drive.google.com')) {
-        const idFromQuery = parsed.searchParams.get('id');
-        if (idFromQuery) return idFromQuery;
-        const pathMatch = parsed.pathname.match(/\/file\/d\/([^/]+)/);
-        if (pathMatch?.[1]) return pathMatch[1];
-      }
-      return null;
-    } catch {
-      return null;
+  const getDriveFileId = (value?: string) => {
+    const source = String(value || '').trim();
+    if (!source) return '';
+    if (/^[A-Za-z0-9_-]{10,}$/.test(source)) return source;
+
+    const driveMeta = getDriveLinkMeta(source);
+    if (driveMeta.isGoogleDrive && driveMeta.itemId) {
+      return driveMeta.itemId;
     }
+
+    try {
+      const parsed = new URL(
+        source,
+        typeof window !== 'undefined' ? window.location.origin : 'https://drive.google.com'
+      );
+      const idFromQuery = String(parsed.searchParams.get('id') || '').trim();
+      if (idFromQuery) return idFromQuery;
+
+      const decodedPath = decodeURIComponent(parsed.pathname || '');
+      const pathPatterns = [
+        /\/api\/files\/download\/([^/?#]+)/i,
+        /\/file(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+        /\/document(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+        /\/spreadsheets(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+        /\/presentation(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+        /\/forms(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+      ];
+      for (const pattern of pathPatterns) {
+        const match = decodedPath.match(pattern);
+        if (match?.[1]) return match[1];
+      }
+    } catch {
+      // Fall back to raw regex extraction below.
+    }
+
+    const rawPatterns = [
+      /[?&]id=([A-Za-z0-9_-]{10,})/i,
+      /\/api\/files\/download\/([A-Za-z0-9_-]{10,})/i,
+      /\/file(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+      /\/document(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+      /\/spreadsheets(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+      /\/presentation(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+      /\/forms(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+    ];
+    for (const pattern of rawPatterns) {
+      const match = source.match(pattern);
+      if (match?.[1]) return match[1];
+    }
+
+    return '';
+  };
+  const getResolvedDriveId = (file?: FileLinkLike | null) =>
+    String(file?.driveId || '').trim() ||
+    getDriveFileId(file?.webViewLink) ||
+    getDriveFileId(file?.webContentLink) ||
+    getDriveFileId(file?.url);
+  const getResolvedDriveMeta = (file?: FileLinkLike | null) => {
+    const candidates = [file?.url, file?.webViewLink, file?.webContentLink]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+
+    for (const candidate of candidates) {
+      const meta = getDriveLinkMeta(candidate);
+      if (meta.isGoogleDrive) {
+        return meta;
+      }
+    }
+
+    const driveId = getResolvedDriveId(file);
+    if (driveId) {
+      return { isGoogleDrive: true as const, itemType: 'file' as const, itemId: driveId };
+    }
+
+    return { isGoogleDrive: false as const, itemType: 'external' as const, itemId: '' };
   };
   const buildDriveViewUrl = (driveId?: string) => {
     const normalizedId = String(driveId || '').trim();
@@ -1669,7 +1808,7 @@ export default function TaskDetail() {
     if (file.thumbnailUrl) return file.thumbnailUrl;
     const resolvedUrl = resolveStoredFileUrl(file);
     if (!resolvedUrl) return '';
-    const driveId = getDriveFileId(resolvedUrl);
+    const driveId = getResolvedDriveId(file);
     if (driveId) {
       return `https://drive.google.com/thumbnail?id=${driveId}&sz=w400`;
     }
@@ -1684,8 +1823,7 @@ export default function TaskDetail() {
   const isLinkOnlyFile = (file: FileActionTarget) => {
     return String(file.mime || '').toLowerCase() === 'link';
   };
-  const isGoogleDriveLinkFile = (file: FileActionTarget) =>
-    Boolean(resolveStoredFileUrl(file) && getDriveLinkMeta(resolveStoredFileUrl(file)).isGoogleDrive);
+  const isGoogleDriveLinkFile = (file: FileActionTarget) => getResolvedDriveMeta(file).isGoogleDrive;
   const shouldUseLinkIcon = (file: FileActionTarget) => {
     const resolvedUrl = resolveStoredFileUrl(file);
     if (!resolvedUrl) return false;
@@ -1695,10 +1833,11 @@ export default function TaskDetail() {
   const getFileActionUrl = (file: FileActionTarget) => {
     const resolvedUrl = resolveStoredFileUrl(file);
     if (!resolvedUrl) return '';
-    const driveId = String(file.driveId || '').trim() || getDriveFileId(resolvedUrl);
+    const driveId = getResolvedDriveId(file);
+    const driveMeta = getResolvedDriveMeta(file);
     if (shouldUseLinkIcon(file)) {
-      if (driveId) {
-        return `https://drive.google.com/file/d/${driveId}/view`;
+      if (driveId && (!driveMeta.isGoogleDrive || driveMeta.itemType === 'file')) {
+        return buildDriveViewUrl(driveId);
       }
       return resolvedUrl;
     }
@@ -1737,7 +1876,7 @@ export default function TaskDetail() {
   };
   const getDirectDownloadUrl = (file: FileActionTarget) => {
     const resolvedUrl = resolveStoredFileUrl(file);
-    const driveId = String(file.driveId || '').trim() || getDriveFileId(resolvedUrl);
+    const driveId = getResolvedDriveId(file);
     if (driveId) {
       return buildDriveDirectDownloadUrl(driveId);
     }
@@ -1766,8 +1905,9 @@ export default function TaskDetail() {
   const getFileShareUrl = (file: FileActionTarget) => {
     const rawUrl = resolveStoredFileUrl(file);
     if (!rawUrl) return '';
-    const driveId = getDriveFileId(rawUrl);
-    if (driveId) {
+    const driveId = getResolvedDriveId(file);
+    const driveMeta = getResolvedDriveMeta(file);
+    if (driveId && (!driveMeta.isGoogleDrive || driveMeta.itemType === 'file')) {
       return buildDriveViewUrl(driveId);
     }
     return getFileActionUrl(file) || rawUrl;
@@ -1841,7 +1981,7 @@ export default function TaskDetail() {
       return;
     }
 
-    const driveId = getDriveFileId(resolveStoredFileUrl(file));
+    const driveId = getResolvedDriveId(file);
     if (driveId) {
       try {
         await downloadFileViaApi(file);
@@ -1875,6 +2015,9 @@ export default function TaskDetail() {
   const toPendingFinalFileFromVersionFile = (file: FinalDeliverableFile): PendingFinalFile => ({
     name: file.name || inferDriveItemNameFromUrl(file.url || ''),
     url: file.url || '',
+    driveId: file.driveId,
+    webViewLink: file.webViewLink,
+    webContentLink: file.webContentLink,
     size: file.size,
     mime: file.mime,
     thumbnailUrl: file.thumbnailUrl,
@@ -2213,6 +2356,7 @@ export default function TaskDetail() {
                       ? format(hydrated.proposedDeadline, 'yyyy-MM-dd')
                       : ''
                   );
+                  persistTask(hydrated);
                   return;
                 }
               }
@@ -2238,6 +2382,7 @@ export default function TaskDetail() {
         setDeadlineRequest(
           hydrated?.proposedDeadline ? format(hydrated.proposedDeadline, 'yyyy-MM-dd') : ''
         );
+        persistTask(hydrated);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Task not found';
         if (message.toLowerCase().includes('session expired')) {
@@ -3133,6 +3278,9 @@ export default function TaskDetail() {
     const uploadedFiles: Array<{
       name: string;
       url: string;
+      driveId?: string;
+      webViewLink?: string;
+      webContentLink?: string;
       size?: number;
       mime?: string;
       thumbnailUrl?: string;
@@ -3158,6 +3306,9 @@ export default function TaskDetail() {
           uploadedFiles.push({
             name: file.name,
             url: uploadedUrl,
+            driveId: data.id,
+            webViewLink: data.webViewLink,
+            webContentLink: data.webContentLink,
             size: file.size,
             mime: file.type || data.mimeType || '',
             thumbnailUrl: data.thumbnailLink,
@@ -3363,6 +3514,9 @@ export default function TaskDetail() {
       const replacement: PendingFinalFile = {
         name: selectedFile.name,
         url: uploadedUrl,
+        driveId: data.id,
+        webViewLink: data.webViewLink,
+        webContentLink: data.webContentLink,
         size: selectedFile.size,
         mime: selectedFile.type || data.mimeType || '',
         thumbnailUrl: data.thumbnailLink,
@@ -3535,11 +3689,16 @@ export default function TaskDetail() {
 
     setIsAddingFinalLink(true);
     try {
+      const driveLinkMeta = getDriveLinkMeta(trimmedUrl);
+      const driveId = driveLinkMeta.itemType === 'file' ? driveLinkMeta.itemId : '';
       setPendingFinalFiles((prev) => [
         ...prev,
         {
           name: inferredName,
           url: trimmedUrl,
+          driveId,
+          webViewLink: driveId ? buildDriveViewUrl(driveId) : '',
+          webContentLink: driveId ? buildDriveDirectDownloadUrl(driveId) : '',
           mime: 'link',
         },
       ]);
@@ -3660,6 +3819,9 @@ export default function TaskDetail() {
           id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           name: resolvedName,
           url: uploadedUrl,
+          driveId: data.id,
+          webViewLink: data.webViewLink,
+          webContentLink: data.webContentLink,
           type: selectedType,
           size: file.size,
           thumbnailUrl: data.thumbnailLink,
@@ -3975,6 +4137,9 @@ export default function TaskDetail() {
             id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name: file.name,
             url: uploadedUrl,
+            driveId: filePayload?.id,
+            webViewLink: filePayload?.webViewLink,
+            webContentLink: filePayload?.webContentLink,
             type: 'working',
             size: file.size,
             mime: file.type || filePayload?.mimeType || '',

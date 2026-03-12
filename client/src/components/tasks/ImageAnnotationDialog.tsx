@@ -214,7 +214,11 @@ const extractDriveIdFromUrl = (rawUrl: string) => {
 
     const decodedPath = decodeURIComponent(parsed.pathname || '');
     const pathPatterns = [
-      /\/file\/d\/([^/?#]+)/i,
+      /\/file(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+      /\/document(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+      /\/spreadsheets(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+      /\/presentation(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+      /\/forms(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
       /\/d\/([^/?#]+)/i,
       /\/api\/files\/download\/([^/?#]+)/i,
     ];
@@ -228,7 +232,11 @@ const extractDriveIdFromUrl = (rawUrl: string) => {
 
   const rawPatterns = [
     /[?&]id=([A-Za-z0-9_-]{10,})/i,
-    /\/file\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/file(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/document(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/spreadsheets(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/presentation(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/forms(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
     /\/d\/([A-Za-z0-9_-]{10,})/i,
     /\/api\/files\/download\/([A-Za-z0-9_-]{10,})/i,
   ];

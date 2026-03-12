@@ -67,6 +67,9 @@ export interface TaskFile {
   id: string;
   name: string;
   url: string;
+  driveId?: string;
+  webViewLink?: string;
+  webContentLink?: string;
   type: 'input' | 'output' | 'working';
   uploadedAt: Date;
   uploadedBy: string;
@@ -88,6 +91,9 @@ export interface FinalDeliverableFile {
   id: string;
   name: string;
   url: string;
+  driveId?: string;
+  webViewLink?: string;
+  webContentLink?: string;
   size?: number;
   mime?: string;
   thumbnailUrl?: string;

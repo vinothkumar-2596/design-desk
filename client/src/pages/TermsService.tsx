@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { legalPageStyles } from '@/lib/legalPageStyles';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -112,17 +113,17 @@ const TermsService = () => {
   const lastUpdated = 'March 12, 2026';
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#F7FAFF] via-[#EEF4FF] to-[#E5EEFF] dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
-      <div className="pointer-events-none absolute -left-24 top-0 h-80 w-80 rounded-full bg-[#DCE8FF]/90 blur-3xl dark:bg-[#233B7C]/35" />
-      <div className="pointer-events-none absolute right-0 top-32 h-72 w-72 rounded-full bg-[#EDF4FF]/85 blur-3xl dark:bg-[#314E98]/20" />
-      <div className="pointer-events-none absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-[#E3EDFF]/75 blur-3xl dark:bg-[#1E366C]/20" />
+    <div className={legalPageStyles.page}>
+      <div className={legalPageStyles.glowPrimary} />
+      <div className={legalPageStyles.glowSecondary} />
+      <div className={legalPageStyles.glowTertiary} />
 
-      <div className="relative mx-auto max-w-5xl px-6 py-10 sm:px-8 lg:px-10">
+      <div className="relative mx-auto max-w-6xl px-6 py-10 sm:px-8 lg:px-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button
             asChild
             variant="outline"
-            className="h-10 rounded-full border-[#C9D7FF] bg-white/82 px-5 text-[#1E2A5A] hover:bg-[#EEF4FF] dark:border-border dark:bg-card dark:text-foreground dark:hover:bg-muted"
+            className={legalPageStyles.topButton}
           >
             <Link to="/login">
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -130,30 +131,30 @@ const TermsService = () => {
             </Link>
           </Button>
 
-          <Badge className="rounded-full border border-[#D5E2FB] bg-white/85 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#3A4D82] dark:border-border dark:bg-card dark:text-muted-foreground">
+          <Badge variant="outline" className={legalPageStyles.topBadge}>
             Public document
           </Badge>
         </div>
 
-        <div className="mt-6 rounded-[32px] border border-[#C9D7FF]/70 bg-gradient-to-br from-white/90 via-[#F5F8FF]/82 to-[#EAF2FF]/78 p-8 shadow-none supports-[backdrop-filter]:bg-[#F5F8FF]/65 backdrop-blur-2xl dark:border-border dark:bg-card/90 dark:backdrop-blur-none sm:p-10">
+        <div className={legalPageStyles.shell}>
           <div className="max-w-3xl">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#6B7A99] dark:text-muted-foreground">
+            <p className={legalPageStyles.eyebrow}>
               DesignDesk
             </p>
-            <h1 className="mt-3 text-4xl font-bold text-[#1E2A5A] dark:text-foreground premium-headline">
+            <h1 className={legalPageStyles.title}>
               Terms of Service
             </h1>
-            <p className="mt-4 text-sm leading-7 text-[#5B6F93] dark:text-muted-foreground premium-body">
+            <p className={legalPageStyles.body}>
               These Terms of Service govern access to and use of the DesignDesk portal,
               including request submission, approvals, file handling, collaboration,
               notifications, and related workflow features provided through this project.
             </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-3 text-sm">
-              <div className="rounded-full border border-[#D7E0F8] bg-white/80 px-3 py-1.5 text-[#35429A] dark:border-border dark:bg-background/60 dark:text-slate-200">
+              <div className={legalPageStyles.infoChipPrimary}>
                 Last updated: {lastUpdated}
               </div>
-              <div className="rounded-full border border-[#D7E0F8] bg-white/80 px-3 py-1.5 text-[#5C6E95] dark:border-border dark:bg-background/60 dark:text-slate-300">
+              <div className={legalPageStyles.infoChipSecondary}>
                 Continued use of the portal means you accept these terms
               </div>
             </div>
@@ -165,26 +166,26 @@ const TermsService = () => {
               return (
                 <section
                   key={section.title}
-                  className="rounded-[26px] border border-[#D9E6FF] bg-white/78 p-6 supports-[backdrop-filter]:bg-white/62 backdrop-blur-xl dark:border-border dark:bg-slate-950/40 dark:backdrop-blur-none"
+                  className={legalPageStyles.section}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#D7E0F8] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(232,239,255,0.92))] text-[#35429A] dark:border-border dark:bg-background/60 dark:text-slate-200">
+                    <div className={legalPageStyles.sectionIcon}>
                       <Icon className="h-5 w-5" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-semibold text-[#1E2A5A] dark:text-foreground">
+                      <h2 className={legalPageStyles.sectionTitle}>
                         {section.title}
                       </h2>
-                      <p className="mt-2 text-sm leading-6 text-[#5C6E95] dark:text-muted-foreground">
+                      <p className={legalPageStyles.sectionBody}>
                         {section.description}
                       </p>
                     </div>
                   </div>
 
-                  <ul className="mt-5 space-y-3 text-sm leading-6 text-[#40557F] dark:text-slate-300">
+                  <ul className={legalPageStyles.sectionList}>
                     {section.points.map((point) => (
                       <li key={point} className="flex gap-3">
-                        <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#5F7CFF] dark:bg-[#9EB2FF]" />
+                        <span className={legalPageStyles.sectionDot} />
                         <span>{point}</span>
                       </li>
                     ))}
@@ -194,25 +195,25 @@ const TermsService = () => {
             })}
           </div>
 
-          <section className="mt-6 rounded-[26px] border border-[#D7E0F8] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(239,244,255,0.92))] p-6 dark:border-border dark:bg-background/40">
+          <section className={legalPageStyles.contactSection}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="max-w-2xl">
-                <div className="flex items-center gap-2 text-lg font-semibold text-[#1E2A5A] dark:text-foreground">
+                <div className={`flex items-center gap-2 ${legalPageStyles.contactTitle}`}>
                   <CheckCircle2 className="h-5 w-5" />
                   Contact
                 </div>
-                <p className="mt-2 text-sm leading-6 text-[#5C6E95] dark:text-muted-foreground">
+                <p className={legalPageStyles.contactBody}>
                   For questions about portal use, policy expectations, or enforcement,
                   contact the DesignDesk project team before relying on the service for
                   a request.
                 </p>
               </div>
-              <div className="rounded-2xl border border-[#D7E0F8] bg-white/85 px-4 py-3 text-sm dark:border-border dark:bg-slate-950/50">
+              <div className={legalPageStyles.contactCard}>
                 <div className="flex items-center gap-2 font-semibold text-[#1E2A5A] dark:text-foreground">
                   <Mail className="h-4 w-4" />
                   design@smvec.ac.in
                 </div>
-                <p className="mt-1 text-[#6B7A99] dark:text-muted-foreground">
+                <p className={legalPageStyles.contactMeta}>
                   DesignDesk support contact
                 </p>
               </div>

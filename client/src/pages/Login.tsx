@@ -692,11 +692,17 @@ export default function Login() {
 
                 <p className="mt-4 text-center text-[11px] leading-5 text-muted-foreground">
                   By continuing, you acknowledge the project{' '}
-                  <Link to="/privacy-policy" className="font-semibold text-primary hover:underline">
+                  <Link
+                    to="/privacy-policy"
+                    className="font-semibold text-[#35429A] underline-offset-4 transition-colors hover:text-[#2F3C8A] hover:underline dark:text-[#9FBCFF] dark:hover:text-[#C9D7FF]"
+                  >
                     Privacy Policy
                   </Link>
                   {' '}and{' '}
-                  <Link to="/terms-service" className="font-semibold text-primary hover:underline">
+                  <Link
+                    to="/terms-service"
+                    className="font-semibold text-[#35429A] underline-offset-4 transition-colors hover:text-[#2F3C8A] hover:underline dark:text-[#9FBCFF] dark:hover:text-[#C9D7FF]"
+                  >
                     Terms of Service
                   </Link>
                   .

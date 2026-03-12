@@ -35,12 +35,17 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { toast } from '@/components/ui/sonner';
 import { useTheme } from 'next-themes';
+import {
+  REQUEST_DRAFT_UPDATED_EVENT,
+  getRequestDraftStorageKey,
+  hasRequestDraft,
+} from '@/lib/requestDrafts';
 
 interface NavItem {
   title: string;
@@ -56,12 +61,8 @@ const EMAIL_COMPOSE_OPENED_EVENT = 'designhub:gmail-compose-opened';
 const PORTAL_SHARE_URL = 'https://designdesk.vercel.app';
 const PORTAL_DISPLAY_URL = 'designdesk.vercel.app';
 const PORTAL_SHARE_TEXT = 'Open the DesignDesk portal';
-const PORTAL_QR_LIGHT_IMAGE_SRC = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=svg&qzone=1&bgcolor=F7FAFF&color=1E2A5A&data=${encodeURIComponent(
-  PORTAL_SHARE_URL
-)}`;
-const PORTAL_QR_DARK_IMAGE_SRC = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=svg&qzone=1&bgcolor=081530&color=F3F7FF&data=${encodeURIComponent(
-  PORTAL_SHARE_URL
-)}`;
+const PORTAL_QR_LIGHT_IMAGE_SRC = '/portal-qr-light.svg';
+const PORTAL_QR_DARK_IMAGE_SRC = '/portal-qr-dark.svg';
 const decodeValue = (value: string) => {
   try {
     return decodeURIComponent(value || '');
@@ -166,6 +167,7 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const { theme = 'light', resolvedTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
+  const [hasSavedDraft, setHasSavedDraft] = useState(() => hasRequestDraft(user));
   const [portalLinkCopied, setPortalLinkCopied] = useState(false);
   const portalCopyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDarkTheme = (resolvedTheme || theme) === 'dark';
@@ -205,6 +207,19 @@ export function AppSidebar() {
     };
   }, []);
 
+  useEffect(() => {
+    setHasSavedDraft(hasRequestDraft(user));
+  }, [user?.id, user?.email]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    [PORTAL_QR_LIGHT_IMAGE_SRC, PORTAL_QR_DARK_IMAGE_SRC].forEach((src) => {
+      const image = new window.Image();
+      image.src = src;
+    });
+  }, []);
+
   if (!user) return null;
 
   const quickAccessItems = [
@@ -215,9 +230,50 @@ export function AppSidebar() {
     { label: 'Contact Design Coordinate Executive', icon: PhoneCall, href: 'tel:+919003776002' },
   ];
 
-  const filteredNavItems = navItems.filter((item) =>
-    item.roles.includes(user.role)
-  );
+  const filteredNavItems = useMemo(() => {
+    const items = navItems.filter((item) => item.roles.includes(user.role));
+    const shouldShowDraftNav =
+      (hasSavedDraft || location.pathname === '/drafts') &&
+      (user.role === 'staff' || user.role === 'treasurer');
+    if (!shouldShowDraftNav) {
+      return items;
+    }
+
+    const draftNavItem: NavItem = {
+      title: 'Drafts',
+      href: '/drafts',
+      icon: PenLine,
+      roles: ['staff', 'treasurer'],
+    };
+    const myRequestsIndex = items.findIndex((item) => item.href === '/my-requests');
+    const insertIndex = myRequestsIndex >= 0 ? myRequestsIndex + 1 : items.length;
+    items.splice(insertIndex, 0, draftNavItem);
+    return items;
+  }, [hasSavedDraft, location.pathname, user.role]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const draftKey = getRequestDraftStorageKey(user);
+    const syncDraftState = () => {
+      setHasSavedDraft(hasRequestDraft(user));
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== draftKey) return;
+      syncDraftState();
+    };
+    const handleDraftUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ key?: string }>).detail;
+      if (detail?.key && detail.key !== draftKey) return;
+      syncDraftState();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener(REQUEST_DRAFT_UPDATED_EVENT, handleDraftUpdated);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener(REQUEST_DRAFT_UPDATED_EVENT, handleDraftUpdated);
+    };
+  }, [user]);
 
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
@@ -577,7 +633,7 @@ export function AppSidebar() {
                 to="/new-request"
                 className="mt-2.5 flex flex-col items-center gap-1.5 rounded-[1.2rem] border border-[#D9E6FF] bg-white/72 dark:bg-card/78 dark:border-border px-2.5 py-3 text-center shadow-none transition dark:transition-none"
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-[1.1rem] bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-primary-foreground shadow-none">
+                <span className="flex h-10 w-10 items-center justify-center rounded-[1rem] bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-primary-foreground shadow-none">
                   <Plus className="h-5 w-5" />
                 </span>
                 <div>
@@ -695,7 +751,7 @@ export function AppSidebar() {
               </span>
               <Link
                 to="/new-request"
-                className="flex h-10 w-full items-center justify-center rounded-[1.1rem] bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-primary-foreground shadow-none"
+                className="flex h-10 w-full items-center justify-center rounded-[1rem] bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-primary-foreground shadow-none"
               >
                 <Plus className="h-4 w-4" />
               </Link>
@@ -784,7 +840,8 @@ export function AppSidebar() {
                   src={portalQrImageSrc}
                   alt="QR code to open the DesignDesk portal"
                   className="ml-1 h-[3.65rem] w-[3.65rem] rounded-none border border-[#E3EBFF] bg-white p-[0.35rem] object-contain dark:border-transparent dark:bg-[#081530]"
-                  loading="lazy"
+                  loading="eager"
+                  decoding="async"
                 />
 
               <div className="ml-1 min-w-0 flex-1">

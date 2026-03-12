@@ -14,6 +14,7 @@ import NewRequest from "./pages/NewRequest";
 import Tasks from "./pages/Tasks";
 import DesignerAvailability from "./pages/DesignerAvailability";
 import MyRequests from "./pages/MyRequests";
+import Drafts from "./pages/Drafts";
 import Approvals from "./pages/Approvals";
 import TaskDetail from "./pages/TaskDetail";
 import Activity from "./pages/Activity";
@@ -53,6 +54,7 @@ const App = () => (
                   <Route path="/tasks" element={<Tasks />} />
                   <Route path="/designer-availability" element={<DesignerAvailability />} />
                   <Route path="/my-requests" element={<MyRequests />} />
+                  <Route path="/drafts" element={<Drafts />} />
                   <Route path="/approvals" element={<Approvals />} />
                   <Route path="/task/:id" element={<TaskDetail />} />
                   <Route path="/tasks/:id" element={<TaskDetail />} />
