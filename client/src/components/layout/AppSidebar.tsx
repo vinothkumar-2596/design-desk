@@ -53,7 +53,7 @@ interface NavItem {
 const EMAIL_DRAFT_MAILTO_STORAGE_KEY = 'designhub:email-draft-mailto';
 const EMAIL_SEND_PENDING_KEY = 'designhub:gmail-send-pending';
 const EMAIL_COMPOSE_OPENED_EVENT = 'designhub:gmail-compose-opened';
-const PORTAL_SHARE_URL = 'https://designdesk.vercel.app/';
+const PORTAL_SHARE_URL = 'https://designdesk.vercel.app';
 const PORTAL_DISPLAY_URL = 'designdesk.vercel.app';
 const PORTAL_SHARE_TEXT = 'Open the DesignDesk portal';
 const PORTAL_QR_LIGHT_IMAGE_SRC = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=svg&qzone=1&bgcolor=F7FAFF&color=1E2A5A&data=${encodeURIComponent(

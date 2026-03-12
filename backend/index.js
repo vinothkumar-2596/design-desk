@@ -37,8 +37,6 @@ app.use((req, res, next) => {
 
 app.use(cors({
   origin: [
-    "https://antigravity.vercel.app",
-    "https://designdesk.vercel.app",
     process.env.FRONTEND_URL,
     "http://localhost:5173",
     "http://localhost:8080",
