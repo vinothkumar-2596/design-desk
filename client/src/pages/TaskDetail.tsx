@@ -1638,6 +1638,11 @@ export default function TaskDetail() {
     if (!normalizedId) return '';
     return `https://drive.google.com/file/d/${encodeURIComponent(normalizedId)}/view?usp=drivesdk`;
   };
+  const buildDriveDirectDownloadUrl = (driveId?: string) => {
+    const normalizedId = String(driveId || '').trim();
+    if (!normalizedId) return '';
+    return `https://drive.google.com/uc?id=${encodeURIComponent(normalizedId)}&export=download`;
+  };
   const resolveStoredFileUrl = (file?: FileLinkLike | null) => {
     const rawUrl = String(file?.url || '').trim();
     if (rawUrl) return rawUrl;
@@ -1690,7 +1695,7 @@ export default function TaskDetail() {
   const getFileActionUrl = (file: FileActionTarget) => {
     const resolvedUrl = resolveStoredFileUrl(file);
     if (!resolvedUrl) return '';
-    const driveId = getDriveFileId(resolvedUrl);
+    const driveId = String(file.driveId || '').trim() || getDriveFileId(resolvedUrl);
     if (shouldUseLinkIcon(file)) {
       if (driveId) {
         return `https://drive.google.com/file/d/${driveId}/view`;
@@ -1719,6 +1724,24 @@ export default function TaskDetail() {
       return plainMatch[1];
     }
     return fallbackName;
+  };
+  const openFileUrl = (url: string) => {
+    if (!url || typeof document === 'undefined') return;
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+  const getDirectDownloadUrl = (file: FileActionTarget) => {
+    const resolvedUrl = resolveStoredFileUrl(file);
+    const driveId = String(file.driveId || '').trim() || getDriveFileId(resolvedUrl);
+    if (driveId) {
+      return buildDriveDirectDownloadUrl(driveId);
+    }
+    return resolvedUrl;
   };
   const copyToClipboard = async (value: string) => {
     if (!value) return;
@@ -1780,7 +1803,19 @@ export default function TaskDetail() {
 
     const response = await authFetch(fileLinkUrl);
     if (!response.ok) {
-      throw new Error('Download failed');
+      let message = 'Download failed';
+      try {
+        const payload = await response.clone().json();
+        if (payload && typeof payload.error === 'string' && payload.error.trim()) {
+          message = payload.error.trim();
+        }
+      } catch {
+        const detail = await response.text().catch(() => '');
+        if (detail.trim()) {
+          message = detail.trim();
+        }
+      }
+      throw new Error(message);
     }
 
     const blob = await response.blob();
@@ -1811,6 +1846,11 @@ export default function TaskDetail() {
       try {
         await downloadFileViaApi(file);
       } catch {
+        const directDownloadUrl = getDirectDownloadUrl(file);
+        if (directDownloadUrl) {
+          openFileUrl(directDownloadUrl);
+          return;
+        }
         toast.error('Unable to download file right now. Please try again.');
       }
       return;
