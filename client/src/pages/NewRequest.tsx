@@ -559,6 +559,8 @@ export default function NewRequest() {
   const hasRestoredDraftRef = useRef(false);
   const lastDraftStorageKeyRef = useRef('');
   const latestFilesRef = useRef<UploadedFile[]>([]);
+  const autoDraftEnabledRef = useRef(true);
+  const persistDraftOnExitRef = useRef<() => void>(() => {});
   const attachmentPreviewViewportRef = useRef<HTMLDivElement | null>(null);
   const attachmentPreviewObjectUrlRef = useRef<string | null>(null);
   const attachmentPreviewDragRef = useRef<{
@@ -756,6 +758,43 @@ export default function NewRequest() {
   }, [files]);
 
   useEffect(() => {
+    persistDraftOnExitRef.current = () => {
+      if (typeof window === 'undefined') return;
+      if (!autoDraftEnabledRef.current || !hasDraftableChanges) return;
+      saveRequestDraft(user, buildRequestDraftPayload(latestFilesRef.current));
+    };
+  }, [
+    buildRequestDraftPayload,
+    hasDraftableChanges,
+    user,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const persistDraftOnExit = () => {
+      persistDraftOnExitRef.current();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        persistDraftOnExit();
+      }
+    };
+
+    window.addEventListener('pagehide', persistDraftOnExit);
+    window.addEventListener('beforeunload', persistDraftOnExit);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('pagehide', persistDraftOnExit);
+      window.removeEventListener('beforeunload', persistDraftOnExit);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      persistDraftOnExit();
+    };
+  }, []);
+
+  useEffect(() => {
     resetAttachmentPreviewTransform();
   }, [attachmentPreviewFile?.id, attachmentPreviewResolvedUrl]);
 
@@ -904,18 +943,20 @@ export default function NewRequest() {
         thumbnailUrl: file.thumbnailUrl,
       }));
 
-  const buildRequestDraftPayload = (sourceFiles: UploadedFile[]): RequestDraftPayload => ({
-    title,
-    description,
-    category,
-    urgency,
-    deadline: deadline ? deadline.toISOString() : '',
-    hasDeadlineInteracted,
-    isEmergency,
-    requesterPhone,
-    files: getPersistableDraftFiles(sourceFiles),
-    savedAt: new Date().toISOString(),
-  });
+  function buildRequestDraftPayload(sourceFiles: UploadedFile[]): RequestDraftPayload {
+    return {
+      title,
+      description,
+      category,
+      urgency,
+      deadline: deadline ? deadline.toISOString() : '',
+      hasDeadlineInteracted,
+      isEmergency,
+      requesterPhone,
+      files: getPersistableDraftFiles(sourceFiles),
+      savedAt: new Date().toISOString(),
+    };
+  }
 
   const applySavedDraft = (draft: RequestDraftPayload) => {
     setTitle(String(draft.title || ''));
@@ -995,6 +1036,7 @@ export default function NewRequest() {
   };
 
   const handleDiscardAndExit = () => {
+    autoDraftEnabledRef.current = false;
     stopActiveUploads();
     clearSavedDraft();
     setShowCancelDraftDialog(false);
@@ -1706,6 +1748,7 @@ export default function NewRequest() {
     }
 
     setIsSubmitting(false);
+    autoDraftEnabledRef.current = false;
     clearSavedDraft();
     setShowThankYou(true);
   };
@@ -2004,7 +2047,7 @@ export default function NewRequest() {
               </Label>
               <Input
                 id="title"
-                placeholder="e.g., Annual Report Cover Design"
+                placeholder="Enter project request title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className={`h-11 ${glassInputClass}`}

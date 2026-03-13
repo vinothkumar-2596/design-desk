@@ -1522,21 +1522,19 @@ export default function TaskDetail() {
   );
   const finalUploadProgress = useMemo(() => {
     if (finalUploadItems.length === 0) return 0;
-    const progressItems = finalUploadItems.some((item) => item.status === 'uploading')
-      ? finalUploadItems.filter((item) => item.status === 'uploading')
-      : finalUploadItems;
-    if (progressItems.length === 0) return 0;
-    const totalProgress = progressItems.reduce((sum, item) => {
+    const totalProgress = finalUploadItems.reduce((sum, item) => {
       if (item.status === 'done') return sum + 100;
       const raw = Number(item.progress);
       const normalized = Number.isFinite(raw) ? Math.max(0, Math.min(99, Math.round(raw))) : 0;
       return sum + normalized;
     }, 0);
-    return Math.max(0, Math.min(100, Math.round(totalProgress / progressItems.length)));
+    return Math.max(0, Math.min(100, Math.round(totalProgress / finalUploadItems.length)));
   }, [finalUploadItems]);
+  const hasPendingFinalUploads =
+    finalUploadTotals.uploading > 0;
   const finalUploadLabel =
-    finalUploadTotals.uploading > 0
-      ? `Uploading ${finalUploadTotals.uploading} item${finalUploadTotals.uploading === 1 ? '' : 's'} (${finalUploadProgress}%)`
+    hasPendingFinalUploads
+      ? `Uploading ${finalUploadItems.length} item${finalUploadItems.length === 1 ? '' : 's'} (${finalUploadProgress}%)`
       : finalUploadTotals.error > 0 && finalUploadTotals.done === 0
         ? 'Upload failed'
         : `${finalUploadTotals.done || finalUploadItems.length} upload${(finalUploadTotals.done || finalUploadItems.length) === 1 ? '' : 's'} complete`;
@@ -3639,7 +3637,7 @@ export default function TaskDetail() {
     }
     setFinalUploadItems((prev) =>
       prev.map((item) =>
-        item.status === 'uploading' ? { ...item, status: 'error' } : item
+        item.status !== 'done' ? { ...item, status: 'error' } : item
       )
     );
     setIsUploadingFinal(false);
@@ -5876,68 +5874,72 @@ export default function TaskDetail() {
                             </div>
                           </div>
                           {showFinalUploadList && (
-                            <div className="mt-3 space-y-2 border-t border-[#E1E9FF] pt-3 dark:border-border">
-                              {finalUploadItems.map((item) => {
-                                const extension = getFileExtension(item.name);
-                                const itemProgress =
-                                  item.status === 'done'
-                                    ? 100
-                                    : Math.max(0, Math.min(99, Math.round(Number(item.progress) || 0)));
-                                return (
-                                  <div
-                                    key={item.id}
-                                    className="rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2.5 dark:border-border dark:bg-card/95"
-                                  >
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="flex min-w-0 items-center gap-3">
-                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:bg-muted dark:text-slate-200">
-                                          {extension.slice(0, 4)}
+                            <div className="mt-3 border-t border-[#E1E9FF] pt-3 dark:border-border">
+                              <div className={cn(finalUploadItems.length > 8 && fileListShellClass)}>
+                                <div className={cn('space-y-2', finalUploadItems.length > 8 && fileListScrollClass)}>
+                                  {finalUploadItems.map((item) => {
+                                    const extension = getFileExtension(item.name);
+                                    const itemProgress =
+                                      item.status === 'done'
+                                        ? 100
+                                        : Math.max(0, Math.min(99, Math.round(Number(item.progress) || 0)));
+                                    return (
+                                      <div
+                                        key={item.id}
+                                        className="rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2.5 dark:border-border dark:bg-card/95"
+                                      >
+                                        <div className="flex items-center justify-between gap-3">
+                                          <div className="flex min-w-0 items-center gap-3">
+                                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:bg-muted dark:text-slate-200">
+                                              {extension.slice(0, 4)}
+                                            </div>
+                                            <span className="min-w-0 truncate text-xs font-medium text-foreground">
+                                              {item.name}
+                                            </span>
+                                          </div>
+                                          <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                                            {item.status === 'uploading' && (
+                                              <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/90">
+                                                  Uploading
+                                                </span>
+                                              </>
+                                            )}
+                                            {item.status === 'done' && (
+                                              <>
+                                                <Check className="h-4 w-4 text-emerald-500" />
+                                                <span className="font-semibold tabular-nums text-emerald-500">
+                                                  100%
+                                                </span>
+                                              </>
+                                            )}
+                                            {item.status === 'error' && (
+                                              <>
+                                                <AlertTriangle className="h-4 w-4 text-red-500" />
+                                                <span className="font-semibold text-red-500">Failed</span>
+                                              </>
+                                            )}
+                                          </div>
                                         </div>
-                                        <span className="min-w-0 truncate text-xs font-medium text-foreground">
-                                          {item.name}
-                                        </span>
-                                      </div>
-                                      <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                                         {item.status === 'uploading' && (
-                                          <>
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/90">
-                                              Uploading
+                                          <div className="mt-2.5 grid grid-cols-[1fr_auto] items-center gap-2">
+                                            <Progress
+                                              value={itemProgress}
+                                              className="h-1.5 rounded-full bg-[#E7EEFF] dark:bg-[#1A2748]"
+                                            />
+                                            <span className="min-w-[2.5rem] text-right text-[11px] font-semibold tabular-nums text-foreground/90 dark:text-slate-100">
+                                              {itemProgress}%
                                             </span>
-                                          </>
-                                        )}
-                                        {item.status === 'done' && (
-                                          <>
-                                            <Check className="h-4 w-4 text-emerald-500" />
-                                            <span className="font-semibold tabular-nums text-emerald-500">
-                                              100%
-                                            </span>
-                                          </>
-                                        )}
-                                        {item.status === 'error' && (
-                                          <>
-                                            <AlertTriangle className="h-4 w-4 text-red-500" />
-                                            <span className="font-semibold text-red-500">Failed</span>
-                                          </>
+                                          </div>
                                         )}
                                       </div>
-                                    </div>
-                                    {item.status === 'uploading' && (
-                                      <div className="mt-2.5 grid grid-cols-[1fr_auto] items-center gap-2">
-                                        <Progress
-                                          value={itemProgress}
-                                          className="h-1.5 rounded-full bg-[#E7EEFF] dark:bg-[#1A2748]"
-                                        />
-                                        <span className="min-w-[2.5rem] text-right text-[11px] font-semibold tabular-nums text-foreground/90 dark:text-slate-100">
-                                          {itemProgress}%
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                              {finalUploadTotals.uploading > 0 && (
-                                <p className="text-xs text-muted-foreground">
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {hasPendingFinalUploads && (
+                                <p className="mt-2 text-xs text-muted-foreground">
                                   Upload in progress: {finalUploadProgress}%
                                 </p>
                               )}
