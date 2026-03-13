@@ -1096,6 +1096,14 @@ export default function NewRequest() {
         end: startOfDay(range.end),
       })
     );
+  const isDateSuggestionAvailable = (value: Date) => {
+    const normalizedValue = startOfDay(value);
+    if (isBefore(normalizedValue, todayDate)) return false;
+    if (isOfficeClosedDate(normalizedValue)) return false;
+    if (hasDesignerConflict(normalizedValue)) return false;
+    if (!isEmergency && isBefore(normalizedValue, minDeadlineDate)) return false;
+    return true;
+  };
   const isDateBlocked = (value: Date) =>
     isOfficeClosedDate(value) || (!isEmergency && hasDesignerConflict(value));
   const getNextAvailableDeadline = (baseDate: Date) => {
@@ -1119,7 +1127,7 @@ export default function NewRequest() {
     let attempts = 0;
 
     while (suggestions.length < FREE_DATE_SUGGESTION_COUNT && attempts < 90) {
-      if (!isDateBlocked(candidate)) {
+      if (isDateSuggestionAvailable(candidate)) {
         suggestions.push(candidate);
       }
       candidate = addDays(candidate, 1);
@@ -2590,6 +2598,8 @@ export default function NewRequest() {
         onOpenUploader={openExistingUploader}
         hasAttachments={readyAttachments.length > 0}
         attachmentContext={taskBuddyAttachmentContext}
+        attachmentFiles={readyAttachments}
+        isDeadlineAvailable={isDateSuggestionAvailable}
         freeDateSuggestions={freeDateSuggestions}
       />
     </DashboardLayout >

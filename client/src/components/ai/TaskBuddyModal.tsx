@@ -3,8 +3,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sparkles, Send, Loader2, CheckCircle2, X, Paperclip, User, Mic } from 'lucide-react';
+import { Sparkles, Send, Loader2, CheckCircle2, X, Paperclip, User, Mic, Eye, Calendar as CalendarIcon } from 'lucide-react';
 import { sendMessageToAI, mapActionPayloadToDraft, type TaskDraft, type AIResponse, type TaskBuddyActionPayload } from '@/lib/ai';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+    AttachmentPreviewDialog,
+    isAttachmentPreviewable,
+    type AttachmentPreviewFile,
+} from '@/components/tasks/AttachmentPreviewDialog';
+import { Calendar as DateCalendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
 
 interface Message {
@@ -51,6 +59,17 @@ const buildAttachmentRequestMessage = () =>
 
 const READY_NUDGE_MESSAGE =
     'All required details are already collected. Return STATUS: READY now. Do not ask any more questions.';
+
+const CATEGORY_QUICK_OPTIONS: Array<{ label: string; value: TaskDraft['category'] }> = [
+    { label: 'Banner', value: 'banner' },
+    { label: 'Campaign or Others', value: 'campaign_or_others' },
+    { label: 'Social Media Creative', value: 'social_media_creative' },
+    { label: 'Website Assets', value: 'website_assets' },
+    { label: 'UI/UX', value: 'ui_ux' },
+    { label: 'LED Backdrop', value: 'led_backdrop' },
+    { label: 'Brochure', value: 'brochure' },
+    { label: 'Flyer', value: 'flyer' },
+];
 
 const DELIVERABLE_HINTS = [
     { label: 'LED backdrop', patterns: [/\bled\b/i, /\bbackdrop\b/i, /\bstage\b/i] },
@@ -300,7 +319,7 @@ const buildWizardState = (messages: Message[], attachmentsUploaded: boolean): Wi
             state.category = extractCategoryCandidate(content);
         } else if (pendingSlot === 'urgency' && !state.urgency) {
             state.urgency = extractUrgencyCandidate(content);
-        } else if (pendingSlot === 'deadline' && !state.deadline) {
+        } else if (pendingSlot === 'deadline') {
             state.deadline = content;
         } else if (pendingSlot === 'attachments' && state.attachmentState === 'unknown') {
             state.attachmentState = attachmentsUploaded ? 'provided' : 'skipped';
@@ -374,7 +393,7 @@ const isSlotSatisfied = (slot: WizardSlot, state: WizardState, attachmentsUpload
         case 'urgency':
             return Boolean(state.urgency);
         case 'deadline':
-            return Boolean(state.deadline);
+            return Boolean(parseDeadlineToIso(state.deadline));
         case 'attachments':
             return attachmentsUploaded || state.attachmentState !== 'unknown';
         default:
@@ -402,7 +421,7 @@ const buildLiveTaskContext = (state: WizardState, attachmentsUploaded: boolean) 
         state.details ? `- details: ${state.details}` : '',
         state.category ? `- category: ${state.category}` : '',
         state.urgency ? `- urgency: ${state.urgency}` : '',
-        state.deadline ? `- deadline: ${state.deadline}` : '',
+        parseDeadlineToIso(state.deadline) ? `- deadline: ${state.deadline}` : '',
         attachmentsUploaded
             ? '- attachments: already uploaded'
             : state.attachmentState === 'skipped'
@@ -606,6 +625,21 @@ const parseDeadlineToIso = (value: string) => {
 
     return '';
 };
+
+const parseIsoToLocalDate = (isoDate: string) => {
+    const normalized = normalizeSpace(isoDate);
+    const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const [, year, month, day] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+};
+
+const formatDeadlineChipValue = (date: Date) =>
+    date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+    });
 
 const toTitleCase = (value: string) =>
     normalizeSpace(value)
@@ -857,10 +891,13 @@ interface TaskBuddyModalProps {
     onOpenUploader?: () => void;
     hasAttachments?: boolean;
     attachmentContext?: string;
+    attachmentFiles?: AttachmentPreviewFile[];
+    isDeadlineAvailable?: (date: Date) => boolean;
     freeDateSuggestions?: Date[];
 }
 
-export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage, autoSendInitialMessage = false, onOpenUploader, hasAttachments, attachmentContext, freeDateSuggestions = [] }: TaskBuddyModalProps) {
+export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage, autoSendInitialMessage = false, onOpenUploader, hasAttachments, attachmentContext, attachmentFiles = [], isDeadlineAvailable, freeDateSuggestions = [] }: TaskBuddyModalProps) {
+    const { user } = useAuth();
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -881,6 +918,37 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
     const initialAutoSentRef = useRef(false);
     const [quotaBlocked, setQuotaBlocked] = useState(false);
     const [localFallbackMode, setLocalFallbackMode] = useState(false);
+    const [attachmentPreviewFile, setAttachmentPreviewFile] = useState<AttachmentPreviewFile | null>(null);
+    const [deadlineCalendarOpen, setDeadlineCalendarOpen] = useState(false);
+    const requesterName = useMemo(() => {
+        const normalizedName = normalizeSpace(user?.name || '');
+        return normalizedName ? normalizedName.split(' ')[0] : '';
+    }, [user?.name]);
+    const requesterContext = useMemo(() => {
+        const contextLines = [
+            user?.name ? `- requester name: ${user.name}` : '',
+            user?.email ? `- requester email: ${user.email}` : '',
+            user?.department ? `- requester department: ${user.department}` : '',
+            user?.role ? `- requester role: ${user.role}` : '',
+        ].filter(Boolean);
+
+        if (contextLines.length === 0) return '';
+
+        return [
+            'REQUESTER LOGIN DETAILS:',
+            ...contextLines,
+            '- Use these confirmed details when relevant.',
+            '- Do not ask again for requester identity details already known.',
+        ].join('\n');
+    }, [user?.department, user?.email, user?.name, user?.role]);
+    const personalizeAssistantMessage = (content: string) => {
+        const normalized = normalizeSpace(content);
+        if (!normalized || !requesterName) return normalized;
+        if (inferQuestionSlot(normalized) === 'deliverable') {
+            return `${requesterName}, what should be designed?`;
+        }
+        return normalized;
+    };
 
     const [showWelcome, setShowWelcome] = useState(true);
     const uploadFollowUpMessage =
@@ -908,6 +976,34 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 .filter(Boolean) as Array<{ label: string; value: string }>,
         [freeDateSuggestions]
     );
+    const selectedDeadlineDate = useMemo(() => {
+        const deadlineValue = buildWizardState(messages, Boolean(hasAttachments)).deadline;
+        const isoDeadline = parseDeadlineToIso(deadlineValue);
+        return isoDeadline ? parseIsoToLocalDate(isoDeadline) : null;
+    }, [messages, hasAttachments]);
+
+    const isCalendarDateDisabled = (date: Date) => {
+        const normalized = new Date(date);
+        normalized.setHours(0, 0, 0, 0);
+
+        if (Number.isNaN(normalized.getTime())) {
+            return true;
+        }
+
+        if (isDeadlineAvailable) {
+            return !isDeadlineAvailable(normalized);
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return normalized < today;
+    };
+
+    const handleDeadlineCalendarSelect = (date?: Date) => {
+        if (!date) return;
+        setDeadlineCalendarOpen(false);
+        void handleSend(formatDeadlineChipValue(date));
+    };
 
     const getScrollViewport = () =>
         scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
@@ -929,6 +1025,8 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             initialAutoSentRef.current = false;
             setQuotaBlocked(false);
             setLocalFallbackMode(false);
+            setAttachmentPreviewFile(null);
+            setDeadlineCalendarOpen(false);
             shouldAutoScrollRef.current = true;
             hasInitializedScrollRef.current = false;
         }
@@ -1040,15 +1138,22 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
         } : null;
         const nextConversation = provisionalUserMessage ? [...messages, provisionalUserMessage] : messages;
         const wizardState = buildWizardState(nextConversation, Boolean(hasAttachments));
+        const parsedDeadlineIso = parseDeadlineToIso(wizardState.deadline);
+        const parsedDeadlineDate = parsedDeadlineIso ? parseIsoToLocalDate(parsedDeadlineIso) : null;
+        const hasUnavailableDeadline =
+            Boolean(parsedDeadlineDate) &&
+            Boolean(isDeadlineAvailable) &&
+            !isDeadlineAvailable(parsedDeadlineDate as Date);
         const freeDateContext =
             formattedFreeDateSuggestions.length > 0
                 ? `\nAVAILABLE FREE DATES:\n- ${formattedFreeDateSuggestions.map((entry) => entry.value).join('\n- ')}`
                 : '';
         const liveTaskContext = `${buildLiveTaskContext(wizardState, Boolean(hasAttachments))}${freeDateContext}`;
         const payloadText = trimmedInput || 'Continue with the next missing step.';
+        const requesterLoginContext = requesterContext ? `\n\n${requesterContext}` : '';
         const userTextBase = systemEvent
-            ? `${systemEvent}\n\n${liveTaskContext}\n\n${payloadText}`
-            : `${liveTaskContext}\n\n${payloadText}`;
+            ? `${systemEvent}\n\n${liveTaskContext}${requesterLoginContext}\n\n${payloadText}`
+            : `${liveTaskContext}${requesterLoginContext}\n\n${payloadText}`;
         const userText = `${userTextBase}${fileContext}`;
 
         if (!isHiddenMessage) {
@@ -1057,6 +1162,21 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
 
         if (provisionalUserMessage) {
             setMessages(prev => [...prev, provisionalUserMessage]);
+        }
+
+        if (hasUnavailableDeadline) {
+            if (!isHiddenMessage) {
+                setInput('');
+            }
+            setShowWelcome(false);
+            const assistantMessage: Message = {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: personalizeAssistantMessage('That date is unavailable. When do you need it?'),
+                timestamp: new Date(),
+            };
+            setMessages(prev => [...prev, assistantMessage]);
+            return;
         }
 
         setTaskDraft(null);
@@ -1074,7 +1194,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             const assistantMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: localOutcome.message,
+                content: personalizeAssistantMessage(localOutcome.message),
                 timestamp: new Date()
             };
             setMessages(prev => [...prev, assistantMessage]);
@@ -1099,7 +1219,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                     const assistantMessage: Message = {
                         id: (Date.now() + 1).toString(),
                         role: 'assistant',
-                        content: nextMissingQuestion,
+                        content: personalizeAssistantMessage(nextMissingQuestion),
                         timestamp: new Date()
                     };
                     setMessages(prev => [...prev, assistantMessage]);
@@ -1109,9 +1229,9 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 const assistantMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
-                    content: response.ready
+                    content: personalizeAssistantMessage(response.ready
                         ? "I have everything needed. Click Submit to Draft to fill the New Request form."
-                        : "I've prepared a draft based on your request. Review it and submit it to the form when you're ready.",
+                        : "I've prepared a draft based on your request. Review it and submit it to the form when you're ready."),
                     timestamp: new Date()
                 };
                 setMessages(prev => [...prev, assistantMessage]);
@@ -1128,7 +1248,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                     const assistantMessage: Message = {
                         id: (Date.now() + 1).toString(),
                         role: 'assistant',
-                        content: nextMissingQuestion,
+                        content: personalizeAssistantMessage(nextMissingQuestion),
                         timestamp: new Date()
                     };
                     setMessages(prev => [...prev, assistantMessage]);
@@ -1138,9 +1258,9 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 const assistantMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
-                    content: response.action === 'SUBMIT_REQUEST'
+                    content: personalizeAssistantMessage(response.action === 'SUBMIT_REQUEST'
                         ? "I have everything needed. Click Submit to Draft to move it into the New Request form."
-                        : "The draft is ready. Review it and click Submit to Draft when you want to continue.",
+                        : "The draft is ready. Review it and click Submit to Draft when you want to continue."),
                     timestamp: new Date()
                 };
                 setMessages(prev => [...prev, assistantMessage]);
@@ -1166,7 +1286,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 const assistantMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
-                    content: normalizedReply || response.content,
+                    content: personalizeAssistantMessage(normalizedReply || response.content),
                     timestamp: new Date()
                 };
                 setMessages(prev => [...prev, assistantMessage]);
@@ -1208,7 +1328,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 const fallbackMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
-                    content: localOutcome.message,
+                    content: personalizeAssistantMessage(localOutcome.message),
                     timestamp: new Date()
                 };
                 if (localOutcome.draft) {
@@ -1224,7 +1344,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 const quotaMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
-                    content: localOutcome.message,
+                    content: personalizeAssistantMessage(localOutcome.message),
                     timestamp: new Date()
                 };
                 if (localOutcome.draft) {
@@ -1251,7 +1371,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 const unavailableMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
-                    content: localOutcome.message,
+                    content: personalizeAssistantMessage(localOutcome.message),
                     timestamp: new Date()
                 };
                 if (localOutcome.draft) {
@@ -1455,6 +1575,17 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             .reverse()
             .find((message) => message.role === 'assistant' && inferQuestionSlot(message.content) === 'deadline')
             ?.id || '';
+    const latestCategoryQuestionId =
+        [...messages]
+            .reverse()
+            .find((message) => message.role === 'assistant' && inferQuestionSlot(message.content) === 'category')
+            ?.id || '';
+    const shouldShowAttachmentFilesForMessage = (message: Message) => {
+        if (!hasAttachments || attachmentFiles.length === 0) return false;
+        if (message.role === 'assistant' && shouldOfferAttachmentUpload(message.content)) return true;
+        if (message.role === 'user' && /uploaded the attachments/i.test(message.content)) return true;
+        return false;
+    };
     const userProvidedDraftPreview = useMemo(
         () => buildUserProvidedDraftPreview(messages),
         [messages]
@@ -1538,11 +1669,66 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                                                         </Button>
                                                     </div>
                                                 )}
+                                                {shouldShowAttachmentFilesForMessage(message) && (
+                                                    <div className="mt-3 rounded-xl border border-slate-200/70 bg-white/70 p-3 backdrop-blur-sm dark:border-slate-700/60 dark:bg-slate-900/60">
+                                                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                                                            Attached Files
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {attachmentFiles.map((file) => {
+                                                                const previewable = isAttachmentPreviewable(file);
+                                                                return (
+                                                                    <div
+                                                                        key={file.id || file.name}
+                                                                        className="flex items-center justify-between gap-3 rounded-lg border border-slate-200/70 bg-white/80 px-3 py-2 dark:border-slate-700/60 dark:bg-slate-950/50"
+                                                                    >
+                                                                        <div className="min-w-0">
+                                                                            <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                                                                                {file.name}
+                                                                            </p>
+                                                                        </div>
+                                                                        {previewable ? (
+                                                                            <Button
+                                                                                type="button"
+                                                                                size="sm"
+                                                                                variant="outline"
+                                                                                onClick={() => setAttachmentPreviewFile(file)}
+                                                                                className="border-primary/20 text-primary hover:bg-primary/5"
+                                                                            >
+                                                                                <Eye className="mr-2 h-4 w-4" />
+                                                                                Preview
+                                                                            </Button>
+                                                                        ) : null}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {message.role === 'assistant' &&
+                                                    message.id === latestCategoryQuestionId &&
+                                                    inferQuestionSlot(message.content) === 'category' && (
+                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                            {CATEGORY_QUICK_OPTIONS.map((suggestion) => (
+                                                                <Button
+                                                                    key={suggestion.value}
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    onClick={() => {
+                                                                        void handleSend(suggestion.label);
+                                                                    }}
+                                                                    className="border-primary/20 text-primary hover:bg-primary/5"
+                                                                >
+                                                                    {suggestion.label}
+                                                                </Button>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 {message.role === 'assistant' &&
                                                     message.id === latestDeadlineQuestionId &&
-                                                    inferQuestionSlot(message.content) === 'deadline' &&
-                                                    formattedFreeDateSuggestions.length > 0 && (
-                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                    inferQuestionSlot(message.content) === 'deadline' && (
+                                                        <div className="mt-3 flex flex-wrap items-center gap-2">
                                                             {formattedFreeDateSuggestions.map((suggestion) => (
                                                                 <Button
                                                                     key={suggestion.value}
@@ -1550,6 +1736,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                                                                     size="sm"
                                                                     variant="outline"
                                                                     onClick={() => {
+                                                                        setDeadlineCalendarOpen(false);
                                                                         void handleSend(suggestion.value);
                                                                     }}
                                                                     className="border-primary/20 text-primary hover:bg-primary/5"
@@ -1557,6 +1744,31 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                                                                     {suggestion.label}
                                                                 </Button>
                                                             ))}
+                                                            <Popover open={deadlineCalendarOpen} onOpenChange={setDeadlineCalendarOpen}>
+                                                                <PopoverTrigger asChild>
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        className="border-primary/20 text-primary hover:bg-primary/5"
+                                                                    >
+                                                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                                                        Pick Date
+                                                                    </Button>
+                                                                </PopoverTrigger>
+                                                                <PopoverContent
+                                                                    align="start"
+                                                                    className="w-auto border-[#C9D7FF] bg-[#F2F6FF]/95 p-2 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:supports-[backdrop-filter]:bg-slate-900/70"
+                                                                >
+                                                                    <DateCalendar
+                                                                        mode="single"
+                                                                        selected={selectedDeadlineDate ?? undefined}
+                                                                        onSelect={handleDeadlineCalendarSelect}
+                                                                        disabled={isCalendarDateDisabled}
+                                                                        initialFocus
+                                                                    />
+                                                                </PopoverContent>
+                                                            </Popover>
                                                         </div>
                                                     )}
                                             </div>
@@ -1590,7 +1802,6 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                                         </p>
                                         <div className="flex gap-2">
                                             <Button type="button" size="sm" onClick={handleSubmitToDraft} className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20">Submit to Draft</Button>
-                                            <Button type="button" size="sm" variant="outline" onClick={handleRegenerateDraft} className="border-primary/20 text-primary hover:bg-primary/5">Refine Draft</Button>
                                         </div>
                                     </div>
                                 )}
@@ -1655,6 +1866,16 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                         </div>
                     </div>
                 </div>
+                <AttachmentPreviewDialog
+                    file={attachmentPreviewFile}
+                    open={Boolean(attachmentPreviewFile)}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setAttachmentPreviewFile(null);
+                        }
+                    }}
+                    description="Previewing attached file"
+                />
             </DialogContent>
         </Dialog>
     );
