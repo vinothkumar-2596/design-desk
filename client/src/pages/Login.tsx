@@ -7,7 +7,7 @@ import {
   GOOGLE_AUTH_ERROR_STORAGE_KEY,
   authFetch,
 } from '@/lib/api';
-import { TREASURER_CREDENTIALS } from '@/constants/auth';
+import { TREASURER_LOGIN_EMAIL } from '@/constants/auth';
 import { UserRole } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,7 +42,7 @@ const STAFF_EMAIL_DOMAIN = 'smvec.ac.in';
 const GOOGLE_ERROR_AUTO_DISMISS_MS = 10000;
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const hasStaffEmailDomain = (value: string) => normalizeEmail(value).endsWith(`@${STAFF_EMAIL_DOMAIN}`);
-const TREASURER_LOGIN_EMAIL = normalizeEmail(TREASURER_CREDENTIALS.email);
+const NORMALIZED_TREASURER_LOGIN_EMAIL = normalizeEmail(TREASURER_LOGIN_EMAIL);
 const parseEmailList = (value?: string) =>
   Array.from(
     new Set(
@@ -54,11 +54,10 @@ const parseEmailList = (value?: string) =>
   );
 const FORCED_DESIGNER_EMAILS = [
   'chandruvino003@gmail.com',
-  'zaya1432004@gmail.com',
+  'zayaaa1432004@gmail.com',
   'graphics@indbazaar.com',
 ];
 const DESIGNER_ROLE_HINT_EMAILS = new Set([
-  'demo@designhub',
   ...FORCED_DESIGNER_EMAILS,
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAIL),
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAILS),
@@ -68,7 +67,7 @@ const resolveLoginRole = (email: string): UserRole => {
   const normalized = normalizeEmail(email);
   if (!normalized) return 'staff';
   if (DESIGNER_ROLE_HINT_EMAILS.has(normalized)) return 'designer';
-  if (normalized === TREASURER_LOGIN_EMAIL) return 'treasurer';
+  if (normalized === NORMALIZED_TREASURER_LOGIN_EMAIL) return 'treasurer';
   return 'staff';
 };
 

@@ -378,7 +378,7 @@ const buildStaffDomainError = () =>
     : "Use your institutional email address.";
 const FORCED_DESIGNER_EMAILS = new Set([
   "chandruvino003@gmail.com",
-  "zaya1432004@gmail.com",
+  "zayaaa1432004@gmail.com",
   "graphics@indbazaar.com",
 ].map((entry) => normalizeEmail(entry)));
 

@@ -1,4 +1,1 @@
-export const TREASURER_CREDENTIALS = {
-  email: 'treasurer.portal@designhub.com',
-  password: 'Treasurer#R7m2!',
-};
+export const TREASURER_LOGIN_EMAIL = 'treasurer@smvec.ac.in';

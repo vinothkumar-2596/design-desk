@@ -67,7 +67,7 @@ const mockTask: Task = {
   assignedToId: 'designer-01',
   assignedToName: 'Vinoth Kumar',
   assignedDesignerEmail: 'designer@smvec.ac.in',
-  ccEmails: ['treasurer.portal@designhub.com'],
+  ccEmails: ['treasurer@smvec.ac.in'],
   accessMode: 'full',
   viewOnly: false,
   deadline: new Date('2026-03-21T10:00:00'),

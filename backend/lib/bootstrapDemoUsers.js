@@ -30,14 +30,10 @@ const buildDemoUsers = () => {
     });
   }
 
-  const treasurerEmail = String(
-    process.env.TREASURER_DEMO_EMAIL || "treasurer.portal@designhub.com"
-  )
+  const treasurerEmail = String(process.env.TREASURER_DEMO_EMAIL || "")
     .trim()
     .toLowerCase();
-  const treasurerPassword = String(
-    process.env.TREASURER_DEMO_PASSWORD || "Treasurer#R7m2!"
-  ).trim();
+  const treasurerPassword = String(process.env.TREASURER_DEMO_PASSWORD || "").trim();
   const treasurerName = String(process.env.TREASURER_DEMO_NAME || "Treasurer").trim();
 
   if (

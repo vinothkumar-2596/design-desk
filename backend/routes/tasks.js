@@ -51,7 +51,7 @@ const normalizeId = (value) => {
   return normalized;
 };
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-const EXCLUDED_ASSIGNABLE_DESIGNER_EMAILS = new Set(["designer.portal@designhub.com"]);
+const EXCLUDED_ASSIGNABLE_DESIGNER_EMAILS = new Set();
 const EXCLUDED_ASSIGNABLE_DESIGNER_KEYWORDS = ["demo", "debug"];
 const hasExcludedAssignableDesignerKeyword = (value) => {
   const normalized = normalizeValue(value);
