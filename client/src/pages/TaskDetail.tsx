@@ -45,6 +45,7 @@ import {
   Check,
   ChevronDown,
   Copy,
+  Eye,
   PenTool,
   X,
   XCircle,
@@ -72,6 +73,11 @@ import { createSocket } from '@/lib/socket';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { pushScheduleNotification } from '@/lib/designerSchedule';
 import { GridBackground } from '@/components/ui/background';
+import {
+  AttachmentPreviewDialog,
+  isAttachmentPreviewable,
+  type AttachmentPreviewFile,
+} from '@/components/tasks/AttachmentPreviewDialog';
 import { ImageAnnotationDialog } from '@/components/tasks/ImageAnnotationDialog';
 import { isMainDesigner } from '@/lib/designerAccess';
 
@@ -409,6 +415,9 @@ export default function TaskDetail() {
   const [annotationDialogOpen, setAnnotationDialogOpen] = useState(false);
   const [annotationDialogReadOnly, setAnnotationDialogReadOnly] = useState(false);
   const [annotationTargetFile, setAnnotationTargetFile] = useState<FileActionTarget | null>(null);
+  const [attachmentPreviewFile, setAttachmentPreviewFile] = useState<AttachmentPreviewFile | null>(
+    null
+  );
   const [draftReviewAnnotationsByFile, setDraftReviewAnnotationsByFile] = useState<
     Record<string, FinalDeliverableReviewAnnotation>
   >({});
@@ -2030,16 +2039,21 @@ export default function TaskDetail() {
     const mime = String(file.mime || '').trim().toLowerCase();
     return Boolean(file.url) && (mime.startsWith('image/') || isImageFile(file.name));
   };
+  const toAttachmentPreviewFile = (file: FileActionTarget): AttachmentPreviewFile => ({
+    id: String(file.id || '').trim() || undefined,
+    name: file.name,
+    url: resolveStoredFileUrl(file),
+    driveId: getResolvedDriveId(file),
+    webViewLink: file.webViewLink,
+    webContentLink: file.webContentLink,
+    thumbnailUrl: file.thumbnailUrl,
+  });
   const canPreviewFile = (file: FileActionTarget) => {
-    const mime = String(file.mime || '').trim().toLowerCase();
-    const hasPreviewSource = Boolean(getPreviewUrl(file) || resolveStoredFileUrl(file));
-    return hasPreviewSource && (mime.startsWith('image/') || isImageFile(file.name));
+    return isAttachmentPreviewable(toAttachmentPreviewFile(file));
   };
   const openFilePreviewDialog = (file: FileActionTarget) => {
     if (!canPreviewFile(file)) return;
-    setAnnotationTargetFile(file);
-    setAnnotationDialogReadOnly(true);
-    setAnnotationDialogOpen(true);
+    setAttachmentPreviewFile(toAttachmentPreviewFile(file));
   };
   const handleFileRowPreviewClick = (event: MouseEvent<HTMLElement>, file: FileActionTarget) => {
     const target = event.target as HTMLElement | null;
@@ -5030,6 +5044,18 @@ export default function TaskDetail() {
                                 <Trash2 className="h-4 w-4 text-status-urgent" />
                               </Button>
                             )}
+                            {isPreviewable && (
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className={fileActionButtonClass}
+                                onClick={() => openFilePreviewDialog(file)}
+                                title="View"
+                                aria-label="View file"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon-sm"
@@ -5139,6 +5165,18 @@ export default function TaskDetail() {
                                     onClick={() => handleRemoveFile(file.id, file.name, file.type)}
                                   >
                                     <Trash2 className="h-4 w-4 text-status-urgent" />
+                                  </Button>
+                                )}
+                                {isPreviewable && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    className={fileActionButtonClass}
+                                    onClick={() => openFilePreviewDialog(file)}
+                                    title="View"
+                                    aria-label="View file"
+                                  >
+                                    <Eye className="h-4 w-4" />
                                   </Button>
                                 )}
                                 <Button
@@ -5498,6 +5536,18 @@ export default function TaskDetail() {
                                     }
                                   >
                                     <Trash2 className="h-4 w-4 text-status-urgent" />
+                                  </Button>
+                                )}
+                                {isPreviewable && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    className={fileActionButtonClass}
+                                    onClick={() => openFilePreviewDialog(displayFile)}
+                                    title="View"
+                                    aria-label="View file"
+                                  >
+                                    <Eye className="h-4 w-4" />
                                   </Button>
                                 )}
                                 <Button
@@ -6465,6 +6515,16 @@ export default function TaskDetail() {
         }
         initialAnnotation={annotationForDialog}
         onSave={handleSaveReviewAnnotation}
+      />
+      <AttachmentPreviewDialog
+        file={attachmentPreviewFile}
+        open={Boolean(attachmentPreviewFile)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAttachmentPreviewFile(null);
+          }
+        }}
+        description="Previewing task attachment"
       />
       <Dialog
         open={showHandoverModal}

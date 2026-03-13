@@ -47,6 +47,7 @@ import {
   CheckCircle2,
   Move,
   Plus,
+  RotateCw,
   RotateCcw,
   ChevronDown,
   ChevronUp,
@@ -95,6 +96,7 @@ import {
 } from '@/lib/requestDrafts';
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
+import { AttachmentPreviewDialog } from '@/components/tasks/AttachmentPreviewDialog';
 import type { TaskDraft } from '@/lib/ai';
 import { cn } from '@/lib/utils';
 
@@ -102,6 +104,7 @@ interface UploadedFile {
   id: string;
   name: string;
   size: number;
+  localPreviewUrl?: string;
   driveId?: string;
   url?: string;
   webViewLink?: string;
@@ -112,6 +115,11 @@ interface UploadedFile {
   progress?: number;
   error?: string;
 }
+
+type NewRequestLocationState = {
+  aiDraft?: TaskDraft;
+  restoreDraft?: boolean;
+} | null;
 
 
 const colorKeywords = [
@@ -471,6 +479,7 @@ import { API_URL, authFetch, getAuthToken, openDriveReconnectWindow } from '@/li
 export default function NewRequest() {
   const navigate = useNavigate();
   const location = useLocation();
+  const locationState = location.state as NewRequestLocationState;
   const { user } = useAuth();
   const apiUrl = API_URL;
   const defaultRequesterPhone = formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || '');
@@ -505,6 +514,7 @@ export default function NewRequest() {
   const cancelledUploadIdsRef = useRef(new Set<string>());
   const hasRestoredDraftRef = useRef(false);
   const lastDraftStorageKeyRef = useRef('');
+  const latestFilesRef = useRef<UploadedFile[]>([]);
   const attachmentPreviewViewportRef = useRef<HTMLDivElement | null>(null);
   const attachmentPreviewObjectUrlRef = useRef<string | null>(null);
   const attachmentPreviewDragRef = useRef<{
@@ -584,6 +594,7 @@ export default function NewRequest() {
     if (!file || getAttachmentPreviewKind(file.name) === 'none' || file.uploading || file.error) {
       return [] as string[];
     }
+    const localPreviewUrl = String(file.localPreviewUrl || '').trim();
     const driveId = String(file.driveId || '').trim();
     const apiDownloadUrl =
       driveId && apiUrl ? `${apiUrl}/api/files/download/${encodeURIComponent(driveId)}` : '';
@@ -596,7 +607,7 @@ export default function NewRequest() {
         : '';
     return Array.from(
       new Set(
-        [apiDownloadUrl, webContentLink, url, drivePreviewUrl, thumbnailUrl]
+        [localPreviewUrl, apiDownloadUrl, webContentLink, url, drivePreviewUrl, thumbnailUrl]
           .map((value) => String(value || '').trim())
           .filter(Boolean)
       )
@@ -697,6 +708,10 @@ export default function NewRequest() {
   const attachmentPreviewUrl = attachmentPreviewResolvedUrl;
 
   useEffect(() => {
+    latestFilesRef.current = files;
+  }, [files]);
+
+  useEffect(() => {
     resetAttachmentPreviewTransform();
   }, [attachmentPreviewFile?.id, attachmentPreviewResolvedUrl]);
 
@@ -724,11 +739,28 @@ export default function NewRequest() {
     const previewKind = getAttachmentPreviewKind(activeFile.name);
     const expectedMime = inferPreviewMimeType(activeFile.name);
 
-    const loadImageElement = (src: string) =>
+    const loadImageElement = (src: string, timeoutMs = 8000) =>
       new Promise<string>((resolve, reject) => {
+        let settled = false;
         const image = new window.Image();
-        image.onload = () => resolve(src);
-        image.onerror = () => reject(new Error(`Image load failed for ${src}`));
+
+        const cleanup = () => {
+          image.onload = null;
+          image.onerror = null;
+          window.clearTimeout(timeoutId);
+        };
+        const settle = (callback: () => void) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          callback();
+        };
+        const timeoutId = window.setTimeout(() => {
+          settle(() => reject(new Error(`Image load timed out for ${src}`)));
+        }, timeoutMs);
+
+        image.onload = () => settle(() => resolve(src));
+        image.onerror = () => settle(() => reject(new Error(`Image load failed for ${src}`)));
         image.src = src;
       });
 
@@ -747,18 +779,6 @@ export default function NewRequest() {
     const resolvePreview = async () => {
       revokePreviewObjectUrl();
       for (const candidate of candidates) {
-        if (previewKind === 'image') {
-          try {
-            await loadImageElement(candidate);
-            if (cancelled) return;
-            setAttachmentPreviewResolvedUrl(candidate);
-            setAttachmentPreviewState('ready');
-            return;
-          } catch {
-            // Try authenticated fetch fallback below.
-          }
-        }
-
         if (shouldAttemptAuthenticatedFetch(candidate)) {
           try {
             const response = await authFetch(candidate);
@@ -789,6 +809,18 @@ export default function NewRequest() {
             }
           } catch {
             // Fall through to direct candidate loading.
+          }
+        }
+
+        if (previewKind === 'image') {
+          try {
+            await loadImageElement(candidate);
+            if (cancelled) return;
+            setAttachmentPreviewResolvedUrl(candidate);
+            setAttachmentPreviewState('ready');
+            return;
+          } catch {
+            // Try the next candidate.
           }
         }
 
@@ -951,15 +983,15 @@ export default function NewRequest() {
   };
   // Initialize from AI Buddy state if provided
   useEffect(() => {
-    if (location.state?.aiDraft) {
-      const draft = location.state.aiDraft as TaskDraft;
+    if (locationState?.aiDraft) {
+      const draft = locationState.aiDraft as TaskDraft;
       if (draft) {
         applyAiDraft(draft);
         toast.success("AI Buddy: Draft applied to form!");
         return;
       }
     }
-  }, [location.state]);
+  }, [locationState?.aiDraft]);
   const glassPanelClass =
     'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border-0 ring-1 ring-black/5 rounded-2xl shadow-none dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:ring-white/5';
   const glassInputClass =
@@ -1096,7 +1128,11 @@ export default function NewRequest() {
 
   useEffect(() => {
     if (hasRestoredDraftRef.current) return;
-    if (location.state?.aiDraft) return;
+    if (locationState?.aiDraft) return;
+    if (!locationState?.restoreDraft) {
+      hasRestoredDraftRef.current = true;
+      return;
+    }
     if (typeof window === 'undefined') return;
     const parsed = loadRequestDraft(user);
     if (!parsed) {
@@ -1110,7 +1146,7 @@ export default function NewRequest() {
         ? `Draft restored from ${format(new Date(parsed.savedAt), 'd MMM, h:mm a')}.`
         : 'Draft restored.'
     );
-  }, [draftStorageKey, location.state, user]);
+  }, [draftStorageKey, locationState?.aiDraft, locationState?.restoreDraft, user]);
 
   useEffect(() => {
     if (defaultsApplied) return;
@@ -1153,11 +1189,18 @@ export default function NewRequest() {
     );
   };
 
+  const revokeLocalPreviewUrl = (url?: string) => {
+    const previewUrl = String(url || '').trim();
+    if (!previewUrl || !previewUrl.startsWith('blob:')) return;
+    URL.revokeObjectURL(previewUrl);
+  };
+
   useEffect(
     () => () => {
       activeUploadRequestsRef.current.forEach((xhr) => xhr.abort());
       activeUploadRequestsRef.current.clear();
       cancelledUploadIdsRef.current.clear();
+      latestFilesRef.current.forEach((file) => revokeLocalPreviewUrl(file.localPreviewUrl));
     },
     []
   );
@@ -1314,6 +1357,8 @@ export default function NewRequest() {
         id: Math.random().toString(36).substr(2, 9),
         name: file.name,
         size: file.size,
+        localPreviewUrl:
+          getAttachmentPreviewKind(file.name) !== 'none' ? URL.createObjectURL(file) : undefined,
         progress: 100,
       }));
       setFiles((prev) => [...prev, ...newFiles]);
@@ -1324,6 +1369,8 @@ export default function NewRequest() {
       id: Math.random().toString(36).substr(2, 9),
       name: file.name,
       size: file.size,
+      localPreviewUrl:
+        getAttachmentPreviewKind(file.name) !== 'none' ? URL.createObjectURL(file) : undefined,
       uploading: true,
       progress: 0,
     }));
@@ -1362,7 +1409,15 @@ export default function NewRequest() {
 
   const removeFile = (id: string) => {
     cancelTrackedUpload(id);
-    setFiles((prev) => prev.filter((f) => f.id !== id));
+    if (attachmentPreviewFile?.id === id) {
+      resetAttachmentPreviewTransform();
+      setAttachmentPreviewFile(null);
+    }
+    setFiles((prev) => {
+      const removedFile = prev.find((file) => file.id === id);
+      revokeLocalPreviewUrl(removedFile?.localPreviewUrl);
+      return prev.filter((file) => file.id !== id);
+    });
   };
 
   const handleCancelActiveUploads = () => {
@@ -1371,7 +1426,16 @@ export default function NewRequest() {
       return;
     }
     activeUploads.forEach((file) => cancelTrackedUpload(file.id));
-    setFiles((prev) => prev.filter((file) => !file.uploading));
+    setFiles((prev) => {
+      prev
+        .filter((file) => file.uploading)
+        .forEach((file) => revokeLocalPreviewUrl(file.localPreviewUrl));
+      return prev.filter((file) => !file.uploading);
+    });
+    if (attachmentPreviewFile?.uploading) {
+      resetAttachmentPreviewTransform();
+      setAttachmentPreviewFile(null);
+    }
     toast.message(
       activeUploads.length === 1 ? 'Upload cancelled.' : `${activeUploads.length} uploads cancelled.`
     );
@@ -1384,6 +1448,9 @@ export default function NewRequest() {
     });
     activeUploadRequestsRef.current.clear();
     cancelledUploadIdsRef.current.clear();
+    files.forEach((file) => revokeLocalPreviewUrl(file.localPreviewUrl));
+    resetAttachmentPreviewTransform();
+    setAttachmentPreviewFile(null);
     setFiles([]);
   };
 
@@ -1996,8 +2063,8 @@ export default function NewRequest() {
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 {isEmergency
-                  ? `Emergency requests can bypass designer workload and the 3-day minimum, but weekends and ${OFFICE_REGION_LABEL} government holidays remain unavailable.`
-                  : `Minimum 3 working days from today. Saturdays, Sundays, and ${OFFICE_REGION_LABEL} government holidays are unavailable.`}
+                  ? 'Emergency requests can bypass designer workload and the 3-day minimum.'
+                  : 'Minimum 3 working days from today.'}
               </p>
               {freeDateSuggestions.length > 0 && (
                 <div className="space-y-2 pt-1">
@@ -2027,7 +2094,7 @@ export default function NewRequest() {
                     })}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {`These dates are currently open based on designer availability and the ${OFFICE_REGION_LABEL} office calendar.`}
+                    These dates are currently open based on designer availability.
                   </p>
                 </div>
               )}
@@ -2190,6 +2257,9 @@ export default function NewRequest() {
                         {files.map((file) => {
                           const extension = getFileExtension(file.name);
                           const isPreviewable = isAttachmentPreviewable(file);
+                          const isUploading = Boolean(file.uploading);
+                          const hasUploadError = Boolean(file.error);
+                          const uploadProgress = Math.max(0, Math.min(100, Number(file.progress ?? 0)));
 
                           return (
                             <div
@@ -2223,23 +2293,39 @@ export default function NewRequest() {
                                     <span className="block truncate text-xs font-medium text-foreground">
                                       {file.name}
                                     </span>
-                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                                      {formatFileSize(file.size)}
-                                    </span>
+                                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                                      <span className={hasUploadError ? 'text-destructive' : 'text-muted-foreground'}>
+                                        {isUploading ? 'Uploading' : hasUploadError ? 'Needs attention' : 'Completed'}
+                                      </span>
+                                      <span className="text-muted-foreground">{formatFileSize(file.size)}</span>
+                                      {isUploading && (
+                                        <span className="font-medium tabular-nums text-muted-foreground">
+                                          {uploadProgress}%
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
                                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                    {file.error && (
+                                    {hasUploadError && (
                                       <>
                                         <AlertTriangle className="h-4 w-4 text-red-500" />
                                         <span className="font-semibold text-red-500">Failed</span>
                                       </>
                                     )}
-                                    {!file.uploading && !file.error && (
+                                    {isUploading && (
+                                      <>
+                                        <RotateCw className="h-4 w-4 animate-spin text-[#7D8FB8] dark:text-slate-300" />
+                                        <span className="font-semibold uppercase tracking-[0.08em] text-[#7D8FB8] dark:text-slate-300">
+                                          Uploading
+                                        </span>
+                                      </>
+                                    )}
+                                    {!isUploading && !hasUploadError && (
                                       <>
                                         <Check className="h-4 w-4 text-primary" />
-                                        <span className="font-semibold text-primary">Completed</span>
+                                        <span className="font-semibold tabular-nums text-primary">100%</span>
                                       </>
                                     )}
                                   </div>
@@ -2256,7 +2342,7 @@ export default function NewRequest() {
                                   </button>
                                 </div>
                               </div>
-                              {file.error ? (
+                              {hasUploadError ? (
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                   <p className="text-xs text-destructive">{file.error}</p>
                                   {shouldPromptDriveReconnect(file.error) && (
@@ -2281,6 +2367,19 @@ export default function NewRequest() {
                                   )}
                                 </div>
                               ) : null}
+                              {isUploading && (
+                                <div className="mt-2 flex items-center gap-2">
+                                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#D7E3FF]/90 dark:bg-slate-800/90">
+                                    <div
+                                      className="h-full rounded-full bg-primary transition-all duration-300"
+                                      style={{ width: `${uploadProgress}%` }}
+                                    />
+                                  </div>
+                                  <span className="w-9 text-right text-[11px] font-medium tabular-nums text-muted-foreground">
+                                    {uploadProgress}%
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -2307,7 +2406,7 @@ export default function NewRequest() {
                   Save Draft
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
+                  className="text-destructive focus:bg-destructive/10 focus:text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive"
                   onSelect={handleCancelRequest}
                 >
                   Cancel Request
@@ -2320,7 +2419,8 @@ export default function NewRequest() {
           </div>
         </form>
       </div>
-      <Dialog
+      <AttachmentPreviewDialog
+        file={attachmentPreviewFile}
         open={Boolean(attachmentPreviewFile)}
         onOpenChange={(open) => {
           if (!open) {
@@ -2328,118 +2428,8 @@ export default function NewRequest() {
             setAttachmentPreviewFile(null);
           }
         }}
-      >
-        <DialogContent className="w-[92vw] max-w-[78rem] overflow-hidden border-[#D9E6FF] bg-white/95 p-0 shadow-none dark:border-border dark:bg-card">
-          <div className="border-b border-[#E7EEFF] px-5 py-4 dark:border-border">
-            <DialogHeader>
-              <DialogTitle className="truncate text-left text-base font-semibold text-foreground">
-                {attachmentPreviewFile?.name || 'Attachment preview'}
-              </DialogTitle>
-              <DialogDescription className="text-left text-xs text-muted-foreground">
-                Previewing uploaded attachment
-              </DialogDescription>
-            </DialogHeader>
-          </div>
-          <div className="h-[76vh] overflow-hidden bg-[#F8FBFF] p-4 sm:p-5 dark:bg-slate-950/40">
-            {attachmentPreviewState === 'loading' ? (
-              <div className="flex min-h-full items-center justify-center rounded-[1.5rem] border border-[#D9E6FF] bg-white/85 px-4 py-10 text-center text-sm text-muted-foreground dark:border-border dark:bg-card/80">
-                Loading preview...
-              </div>
-            ) : attachmentPreviewUrl ? (
-              <div className="relative flex h-full min-h-0 flex-col rounded-[1.5rem] border border-[#D9E6FF] bg-white/80 p-3 dark:border-border dark:bg-card/80">
-                {attachmentPreviewKind === 'image' ? (
-                  <>
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[1rem] border border-[#E1E9FF] bg-white/80 px-3 py-2 dark:border-border dark:bg-card/85">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Move className="h-3.5 w-3.5" />
-                        <span>Scroll to zoom. Drag to pan.</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => updateAttachmentPreviewZoom(attachmentPreviewZoom - 0.2)}
-                          className={queueIconButtonClass}
-                          aria-label="Zoom out"
-                        >
-                          <Minus className="h-4 w-4" />
-                        </button>
-                        <div className="min-w-[4.5rem] rounded-full border border-[#E1E9FF] bg-[#F8FBFF] px-3 py-1 text-center text-[11px] font-semibold tabular-nums text-[#223467] dark:border-border dark:bg-muted dark:text-foreground">
-                          {Math.round(attachmentPreviewZoom * 100)}%
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => updateAttachmentPreviewZoom(attachmentPreviewZoom + 0.2)}
-                          className={queueIconButtonClass}
-                          aria-label="Zoom in"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={resetAttachmentPreviewTransform}
-                          className={queueIconButtonClass}
-                          aria-label="Reset zoom"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                    <div
-                      ref={attachmentPreviewViewportRef}
-                      className={cn(
-                        'relative min-h-0 flex-1 overflow-hidden rounded-[1.2rem] border border-[#E1E9FF] bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.98),_rgba(244,248,255,0.92)_45%,_rgba(232,239,251,0.88)_100%)] dark:border-border dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.96),rgba(12,23,52,0.92))]',
-                        attachmentPreviewZoom > 1
-                          ? isAttachmentPreviewDragging
-                            ? 'cursor-grabbing'
-                            : 'cursor-grab'
-                          : 'cursor-zoom-in'
-                      )}
-                      onWheel={handleAttachmentPreviewWheel}
-                      onDoubleClick={() =>
-                        updateAttachmentPreviewZoom(attachmentPreviewZoom > 1 ? 1 : 2)
-                      }
-                      onPointerDown={handleAttachmentPreviewPointerDown}
-                      onPointerMove={handleAttachmentPreviewPointerMove}
-                      onPointerUp={handleAttachmentPreviewPointerEnd}
-                      onPointerCancel={handleAttachmentPreviewPointerEnd}
-                    >
-                      <div
-                        className="h-full w-full touch-none select-none"
-                        style={{
-                          transform: `translate(${attachmentPreviewPan.x}px, ${attachmentPreviewPan.y}px) scale(${attachmentPreviewZoom})`,
-                          transformOrigin: 'center center',
-                          transition: isAttachmentPreviewDragging ? 'none' : 'transform 160ms ease-out',
-                        }}
-                      >
-                        <img
-                          src={attachmentPreviewUrl}
-                          alt={attachmentPreviewFile?.name || 'Attachment preview'}
-                          className="block h-full w-full select-none object-contain"
-                          draggable={false}
-                        />
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="min-h-0 flex-1 overflow-hidden rounded-[1.2rem] border border-[#E1E9FF] bg-white dark:border-border dark:bg-card">
-                    <iframe
-                      src={attachmentPreviewUrl}
-                      title={attachmentPreviewFile?.name || 'PDF preview'}
-                      className="h-full w-full border-0"
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex min-h-full items-center justify-center rounded-[1.5rem] border border-dashed border-[#D9E6FF] bg-white/85 px-4 py-10 text-center text-sm text-muted-foreground dark:border-border dark:bg-card/80">
-                {attachmentPreviewState === 'error'
-                  ? 'Unable to load preview for this file.'
-                  : 'Preview is not available for this file.'}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+        description="Previewing uploaded attachment"
+      />
       <Dialog open={showCancelDraftDialog} onOpenChange={setShowCancelDraftDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>

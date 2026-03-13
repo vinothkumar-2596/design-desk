@@ -1011,7 +1011,7 @@ router.get("/email-task/resolve", async (req, res) => {
 
     const task = await Task.findById(String(tokenPayload.taskId).trim())
       .select(
-        "_id title description status category deadline requesterName requesterDepartment requesterEmail assignedToId assignedTo assignedToName createdAt updatedAt"
+        "_id title description status category urgency approvalStatus isEmergency deadline requesterName requesterDepartment requesterEmail assignedToId assignedTo assignedToName createdAt updatedAt"
       )
       .lean();
 
@@ -1042,11 +1042,15 @@ router.get("/email-task/resolve", async (req, res) => {
       description: task.description || "",
       status: task.status || "pending",
       category: task.category || "",
+      urgency: task.urgency || "normal",
+      approvalStatus: task.approvalStatus || "",
+      isEmergency: Boolean(task.isEmergency),
       deadline: task.deadline || null,
       requesterName: task.requesterName || "",
       requesterDepartment: task.requesterDepartment || "",
       requesterEmail: task.requesterEmail || "",
       assignedToName: task.assignedToName || "",
+      createdAt: task.createdAt || null,
       updatedAt: task.updatedAt || task.createdAt || null
     };
 

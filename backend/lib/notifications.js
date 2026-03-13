@@ -575,6 +575,7 @@ export const sendFinalFilesEmail = async ({
 
   const brandName = resolveBrandName();
   const from = resolveEmailFromHeader(brandName);
+  const compactText = (value) => String(value || "").replace(/\s+/g, " ").trim();
   const normalizedEmailType = String(emailType || "").toUpperCase();
   const email_type =
     normalizedEmailType === "TASK_ASSIGNED"
@@ -620,25 +621,95 @@ export const sendFinalFilesEmail = async ({
   const localLogoPath = getLocalLogoPath();
   const hasLocalLogo = Boolean(localLogoPath);
   const logoCid = "design-desk-logo";
+  const safeTaskDescription = compactText(taskDetails?.description || taskDetails?.summary || "");
   const requesterLabel = taskDetails?.requesterName
     ? `${taskDetails.requesterName}${taskDetails.requesterEmail ? ` (${taskDetails.requesterEmail})` : ""}${taskDetails.requesterDepartment ? ` - ${taskDetails.requesterDepartment}` : ""
     }`
     : taskDetails?.requesterEmail || "";
+  const deadlineLabel = isAssignmentLifecycleEmail
+    ? formatDeadlineDateTime(taskDetails?.deadline)
+    : formatDate(taskDetails?.deadline);
+  const workflowStageLabel = [humanize(taskDetails?.status), humanize(taskDetails?.category)]
+    .filter(Boolean)
+    .join(" | ");
+  const lifecycleActorLabel = isTaskAssignedEmail ? displayAssigner : displayDesigner;
+  const lifecycleActorHeading = isTaskAssignedEmail
+    ? "Assigned by"
+    : isTaskAcceptedEmail
+      ? "Accepted by"
+      : "Delivered by";
+  const timelineHeading = isTaskAssignedEmail
+    ? "Assigned on"
+    : isTaskAcceptedEmail
+      ? "Accepted on"
+      : "Delivered on";
+  const timelineValue = formatDateTime(submittedAt);
+  const fileCountLabel =
+    fileItems.length > 0 ? `${fileItems.length} file${fileItems.length === 1 ? "" : "s"}` : "";
+  const fileNamePreview = fileItems
+    .slice(0, 3)
+    .map((file) => compactText(file?.name || "File"))
+    .filter(Boolean)
+    .join(", ");
+  const remainingFileCount = Math.max(0, fileItems.length - 3);
+  const fileNameSummary =
+    fileNamePreview && remainingFileCount > 0
+      ? `${fileNamePreview}, +${remainingFileCount} more`
+      : fileNamePreview;
   const detailItems = [
-    { label: "Task", value: safeTitle },
-    ...(!isTaskAssignedEmail ? [{ label: "Task ID", value: taskDetails?.id }] : []),
-    { label: "Status", value: humanize(taskDetails?.status) },
-    { label: "Category", value: humanize(taskDetails?.category) },
-    { label: "Designer", value: displayDesigner },
-    ...(!isTaskAssignedEmail ? [{ label: "Submitted", value: formatDateTime(submittedAt) }] : []),
-    {
-      label: "Deadline",
-      value: isAssignmentLifecycleEmail
-        ? formatDeadlineDateTime(taskDetails?.deadline)
-        : formatDate(taskDetails?.deadline)
-    },
+    { label: "Task ID", value: taskDetails?.id },
+    { label: "Title", value: safeTitle },
+    { label: "Workflow", value: workflowStageLabel },
+    { label: lifecycleActorHeading, value: lifecycleActorLabel },
+    { label: timelineHeading, value: timelineValue },
+    { label: "Deadline", value: deadlineLabel },
     { label: "Requester", value: requesterLabel },
+    ...(!isTaskAssignedEmail && fileCountLabel ? [{ label: "Files", value: fileCountLabel }] : []),
   ].filter((item) => item.value);
+  const emailEyebrow = isTaskAssignedEmail
+    ? "Task Assignment"
+    : isTaskAcceptedEmail
+      ? "Acceptance Update"
+      : "Final Deliverables";
+  const emailHeadline = isTaskAssignedEmail
+    ? "A new task has been assigned"
+    : isTaskAcceptedEmail
+      ? `${displayDesigner} accepted this task`
+      : `Final files are ready for ${safeTitle}`;
+  const emailDescription = isTaskAssignedEmail
+    ? `${displayAssigner} assigned <strong>${safeTitle}</strong> to <strong>${displayDesigner}</strong>. Review the task details, deadline, and reference files below before work starts.${safeAssignmentMessage ? `<br /><br /><strong>Assignment note:</strong> ${safeAssignmentMessage}` : ""}`
+    : isTaskAcceptedEmail
+      ? `<strong>${displayDesigner}</strong> has accepted <strong>${safeTitle}</strong>. Open the task to follow comments, files, and next updates in the workspace.`
+      : `${displayDesigner} uploaded ${fileCountLabel || "the final files"} for <strong>${safeTitle}</strong>. Review the delivery summary below and open the task if another revision is needed.`;
+  const summaryHeading = isTaskAssignedEmail
+    ? "Assignment summary"
+    : isTaskAcceptedEmail
+      ? "Acceptance summary"
+      : "Delivery summary";
+  const summaryContent = safeTaskDescription ||
+    (isTaskAssignedEmail
+      ? safeAssignmentMessage ||
+        `${displayAssigner} assigned this request to ${displayDesigner}. Check the deadline and attached reference files before starting.`
+      : isTaskAcceptedEmail
+        ? `${displayDesigner} confirmed the assignment and the task can now continue in the workspace.`
+        : fileNameSummary
+          ? `${displayDesigner} shared ${fileCountLabel}. Delivered files: ${fileNameSummary}.`
+          : `${displayDesigner} marked the final delivery ready for review.`);
+  const taskCtaLabel = isTaskAssignedEmail
+    ? "Open Assignment"
+    : isTaskAcceptedEmail
+      ? "Open Task"
+      : "Review Deliverables";
+  const supportTitle = isTaskAssignedEmail
+    ? "Need clarification?"
+    : isTaskAcceptedEmail
+      ? "Track the next update"
+      : "Need another revision?";
+  const supportMessage = isTaskAssignedEmail
+    ? "Reply to this email if the assignee needs more context, a revised deadline, or missing reference material."
+    : isTaskAcceptedEmail
+      ? "Open the task workspace to monitor files, comments, and review progress from here."
+      : "Reply to this email or open the task workspace if you want edits, comments, or an additional delivery round.";
   const lines = isTaskAssignedEmail
     ? [
       `New task assigned: "${safeTitle}".`,
@@ -679,7 +750,7 @@ export const sendFinalFilesEmail = async ({
       ? fileItems
         .map((file) => {
           const link = file.url
-            ? `<a href="${file.url}" style="color:${brandColor};text-decoration:none;">Download</a>`
+            ? `<a href="${file.url}" style="color:${brandColor};text-decoration:none;">Open file</a>`
             : `<span style="color:#6b7280;">Link pending</span>`;
           return `
               <tr>
@@ -704,7 +775,7 @@ export const sendFinalFilesEmail = async ({
   const taskCta = resolvedTaskUrl
     ? `
         <a href="${resolvedTaskUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 20px;background:${brandColor};color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:14px;font-family:${PROJECT_SANS_FONT_FAMILY};">
-          ${isTaskAssignedEmail ? "Open Task" : "View Task"}
+          ${taskCtaLabel}
         </a>
       `
     : "";
@@ -716,7 +787,7 @@ export const sendFinalFilesEmail = async ({
       : "";
 
   const viewInBrowser = resolvedTaskUrl && !isTaskAssignedEmail
-    ? `<a href="${resolvedTaskUrl}" target="_blank" rel="noopener noreferrer" style="color:${brandColor};text-decoration:none;">View this email in your browser</a>`
+    ? `<a href="${resolvedTaskUrl}" target="_blank" rel="noopener noreferrer" style="color:${brandColor};text-decoration:none;">Open secure task preview</a>`
     : "";
 
   const assignmentAttachmentRows = hasAssignmentAttachments
@@ -741,7 +812,7 @@ export const sendFinalFilesEmail = async ({
             <td style="padding:0 32px 24px;">
               <div style="background:${brandSoft};border-radius:16px;padding:20px;text-align:left;border:1px solid #e6e9f2;">
                 <div style="font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
-                  Attached Documents
+                  Reference Files
                 </div>
                 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:12px;">
                   ${assignmentAttachmentRows}
@@ -777,14 +848,6 @@ export const sendFinalFilesEmail = async ({
           </tr>
         `;
 
-  const emailDescription = isTaskAssignedEmail
-    ? `You have been assigned <strong>${safeTitle}</strong>. Review the task details below and start work.
-                    ${safeAssignmentMessage ? `<br /><br /><strong>Message:</strong> ${safeAssignmentMessage}` : ""}`
-    : isTaskAcceptedEmail
-      ? `<strong>${displayDesigner}</strong> has accepted <strong>${safeTitle}</strong>.
-                    You can monitor progress from the task page.`
-    : `${displayDesigner} uploaded final files for <strong>${safeTitle}</strong>.
-                    Download them below or open the task to review details.`;
   const assignedHeaderHtml = `
       <div style="background:${brandSoft};border-radius:18px;padding:18px 20px;text-align:left;border:1px solid #e6e9f2;">
         <div style="display:flex;align-items:center;justify-content:flex-start;gap:16px;">
@@ -792,15 +855,17 @@ export const sendFinalFilesEmail = async ({
             <div style="font-size:13px;color:#475467;font-weight:600;">
               ${formatDateTime(submittedAt) || formatDateTime(new Date())}
             </div>
+            <div style="margin-top:10px;font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
+              ${emailEyebrow}
+            </div>
             <div style="margin-top:6px;font-size:24px;font-weight:700;color:#111827;line-height:1.2;">
-              New task assigned.
+              ${emailHeadline}
             </div>
             <div style="margin-top:6px;font-size:16px;font-weight:600;color:${brandColor};">
               ${safeTitle}
             </div>
             <p style="margin:10px 0 0;font-size:14px;color:#475467;line-height:1.6;">
-              You have been assigned <strong>${safeTitle}</strong>. Review the task details below and start work.
-              ${safeAssignmentMessage ? `<br /><br /><strong>Message:</strong> ${safeAssignmentMessage}` : ""}
+              ${emailDescription}
             </p>
             ${taskCta
       ? `
@@ -855,8 +920,11 @@ export const sendFinalFilesEmail = async ({
               <tr>
                 <td style="padding:12px 32px 16px;${isTaskAssignedEmail ? "text-align:left;" : "text-align:center;"}">
                   ${isTaskAssignedEmail ? assignedHeaderHtml : `
+                  <div style="font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
+                    ${emailEyebrow}
+                  </div>
                   <div style="font-size:26px;font-weight:700;color:#111827;line-height:1.2;">
-                    ${isTaskAcceptedEmail ? "Task accepted." : "Final files uploaded."}
+                    ${emailHeadline}
                   </div>
                   <div style="margin-top:6px;font-size:16px;font-weight:600;color:${brandColor};">
                     ${safeTitle}
@@ -871,10 +939,22 @@ export const sendFinalFilesEmail = async ({
                 </td>
               </tr>
               <tr>
+                <td style="padding:0 32px 24px;">
+                  <div style="background:${brandSoft};border-radius:16px;padding:20px;text-align:left;border:1px solid #e6e9f2;">
+                    <div style="font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
+                      ${summaryHeading}
+                    </div>
+                    <div style="margin-top:10px;font-size:14px;color:#475467;line-height:1.7;">
+                      ${summaryContent}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
                 <td style="padding:0 32px 28px;">
                   <div style="background:#ffffff;border:1px solid #e6e9f2;border-radius:16px;padding:18px;text-align:left;">
                     <div style="font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
-                      Task details
+                      Request details
                     </div>
                     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:10px;">
                        ${detailRows}
@@ -903,9 +983,9 @@ export const sendFinalFilesEmail = async ({
               <tr>
                 <td style="padding:0 32px 28px;">
                   <div style="background:#ffffff;border:1px solid #e6e9f2;border-radius:16px;padding:18px;text-align:left;">
-                    <div style="font-size:14px;font-weight:600;color:#111827;">Need anything else?</div>
+                    <div style="font-size:14px;font-weight:600;color:#111827;">${supportTitle}</div>
                     <div style="font-size:13px;color:#667085;margin-top:6px;">
-                      Reply to this email and the design team will help.
+                      ${supportMessage}
                     </div>
                   </div>
                 </td>

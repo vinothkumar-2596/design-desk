@@ -189,7 +189,7 @@ export default function Drafts() {
                   <Button
                     type="button"
                     className="rounded-full"
-                    onClick={() => navigate('/new-request')}
+                    onClick={() => navigate('/new-request', { state: { restoreDraft: true } })}
                   >
                     Continue Draft
                   </Button>

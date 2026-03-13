@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
-  BriefcaseBusiness,
   Building2,
+  CalendarClock,
   Clock3,
   LockKeyhole,
   ShieldCheck,
@@ -21,11 +21,15 @@ type EmailTaskPreview = {
   description: string;
   status: string;
   category: string;
+  urgency: string;
+  approvalStatus: string;
+  isEmergency: boolean;
   deadline: string | null;
   requesterName: string;
   requesterDepartment: string;
   requesterEmail: string;
   assignedToName: string;
+  createdAt: string | null;
   updatedAt: string | null;
 };
 
@@ -188,12 +192,74 @@ export default function EmailTask() {
         .join(" | ")
     : "N/A";
 
+  const priorityLabel = preview
+    ? preview.isEmergency
+      ? "Emergency override"
+      : humanize(preview.urgency || "normal")
+    : "N/A";
+
+  const stageLabel = preview
+    ? [
+        humanize(preview.status),
+        preview.approvalStatus ? `Approval ${humanize(preview.approvalStatus)}` : "",
+      ]
+        .filter(Boolean)
+        .join(" | ")
+    : "N/A";
+
+  const requestContextLine = preview
+    ? [
+        requesterLabel !== "N/A" ? `Requested by ${requesterLabel}` : "",
+        preview.assignedToName ? `Assigned to ${preview.assignedToName}` : "Assignment pending",
+        preview.deadline ? `Due ${formatDateTime(preview.deadline)}` : "",
+      ]
+        .filter(Boolean)
+        .join(" | ")
+    : "";
+
+  const accessHeading = useMemo(() => {
+    if (viewerIsAuthenticated && data?.canOpenTask) {
+      return "Full task access confirmed";
+    }
+    if (viewerIsAuthenticated) {
+      return `Signed in as ${humanize(viewerRole || "member")}`;
+    }
+    return "Preview only until sign-in";
+  }, [data?.canOpenTask, viewerIsAuthenticated, viewerRole]);
+
+  const accessDescription = useMemo(() => {
+    if (viewerIsAuthenticated && data?.canOpenTask) {
+      return "Your account can open the full workspace directly from this secure link.";
+    }
+    if (viewerIsAuthenticated) {
+      return "This account can review the request snapshot here, but full workspace entry is limited by role and assignment.";
+    }
+    return "Sign in with the assigned designer, Design Lead, or treasurer account to continue into the full task workspace.";
+  }, [data?.canOpenTask, viewerIsAuthenticated]);
+
+  const previewNoteTitle = viewerIsAuthenticated
+    ? "What this secure link shows"
+    : "Sign in to continue";
+  const previewNotePrimary = preview
+    ? `${preview.title} is shown here as a quick snapshot so you can verify the request owner, current stage, assignment, and delivery timeline before entering the main workspace.`
+    : "";
+  const previewNoteSecondary = viewerIsAuthenticated
+    ? data?.canOpenTask
+      ? "If the workspace does not open automatically, use the Open Task action below."
+      : "Files, comments, approvals, and editing actions still stay inside the full task page."
+    : "This preview stays readable, but comments, approvals, uploads, and deeper task actions require an authorized DesignDesk sign-in.";
+
   const previewMeta = preview
     ? [
         {
+          icon: Building2,
+          label: "Requester",
+          value: requesterLabel,
+        },
+        {
           icon: UserRound,
           label: "Assigned To",
-          value: preview.assignedToName || "Not assigned",
+          value: preview.assignedToName || "Pending assignment",
         },
         {
           icon: Clock3,
@@ -201,14 +267,9 @@ export default function EmailTask() {
           value: formatDateTime(preview.deadline),
         },
         {
-          icon: Building2,
-          label: "Requester",
-          value: requesterLabel,
-        },
-        {
-          icon: BriefcaseBusiness,
-          label: "Last Updated",
-          value: formatDateTime(preview.updatedAt),
+          icon: CalendarClock,
+          label: "Submitted",
+          value: formatDateTime(preview.createdAt),
         },
       ]
     : [];
@@ -354,11 +415,11 @@ export default function EmailTask() {
                       Task Overview
                     </p>
                     <h2 className="mt-4 max-w-3xl text-[2.15rem] font-semibold leading-tight tracking-[-0.04em] text-[#12254C] premium-headline dark:text-slate-50 sm:text-[2.85rem]">
-                      Your protected task preview is ready
+                      Review this task snapshot
                     </h2>
                     <p className="mt-4 max-w-2xl text-[15px] leading-8 text-[#5B6B8A] premium-body dark:text-slate-300">
-                      Review the request details below. Sign in with an authorized DesignDesk
-                      account to continue into the full workspace when your role allows it.
+                      Use this secure preview to confirm the request brief, owner, assignment, and
+                      timeline before opening the full workspace.
                     </p>
 
                     <div className="mt-6 flex flex-wrap gap-2">
@@ -370,18 +431,28 @@ export default function EmailTask() {
                           {humanize(preview.category)}
                         </Badge>
                       ) : null}
+                      {(preview.isEmergency || (preview.urgency && preview.urgency !== "normal")) ? (
+                        <Badge variant="outline" className={glassBadgeClass}>
+                          {priorityLabel}
+                        </Badge>
+                      ) : null}
+                      {preview.approvalStatus ? (
+                        <Badge variant="outline" className={glassBadgeClass}>
+                          Approval {humanize(preview.approvalStatus)}
+                        </Badge>
+                      ) : null}
                     </div>
 
                     <div className="mt-8 max-w-2xl rounded-[26px] border border-[#D9E6FF]/80 bg-gradient-to-br from-white/86 via-[#F7FAFF]/75 to-[#EDF4FF]/74 p-5 supports-[backdrop-filter]:bg-white/58 backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/62">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
-                        Request Title
+                        Request
                       </p>
                       <h3 className="mt-3 text-[1.6rem] font-semibold leading-tight tracking-[-0.03em] text-[#12254C] premium-headline dark:text-slate-100">
                         {preview.title}
                       </h3>
                       <p className="mt-4 text-sm leading-7 text-[#516483] dark:text-slate-300">
-                        {previewDescription ||
-                          "No summary was added for this task. Sign in with an approved account to continue into the full workspace."}
+                        {requestContextLine ||
+                          "Open the full workspace to review the complete owner, assignment, and delivery details for this request."}
                       </p>
                     </div>
                   </div>
@@ -402,18 +473,10 @@ export default function EmailTask() {
                           Access
                         </p>
                         <p className="mt-3 text-lg font-semibold leading-7 text-[#12254C] dark:text-slate-100">
-                          {viewerIsAuthenticated
-                            ? data?.canOpenTask
-                              ? "Verified for full workspace access"
-                              : "Signed in with restricted preview access"
-                            : "Preview available until sign-in"}
+                          {accessHeading}
                         </p>
                         <p className="mt-3 text-sm leading-7 text-[#5B6B8A] dark:text-slate-300">
-                          {viewerIsAuthenticated
-                            ? data?.canOpenTask
-                              ? "Your account is recognized. Use the action below if the workspace does not open automatically."
-                              : "You can review the task from here, but workspace entry still depends on your role permissions."
-                            : "This link keeps the task visible in preview mode, but only authorized accounts can open the full task."}
+                          {accessDescription}
                         </p>
                       </div>
 
@@ -421,7 +484,7 @@ export default function EmailTask() {
                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
                           Task ID
                         </p>
-                        <p className="mt-3 break-all text-lg font-semibold leading-7 text-[#12254C] dark:text-slate-100">
+                        <p className="mt-3 break-all font-mono text-sm font-semibold leading-7 text-[#12254C] dark:text-slate-100">
                           {preview.id}
                         </p>
                       </div>
@@ -429,18 +492,18 @@ export default function EmailTask() {
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
                         <div className={glassMetaClass}>
                           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
-                            Assigned To
+                            Current Stage
                           </p>
                           <p className="mt-3 text-sm font-semibold leading-6 text-[#12254C] dark:text-slate-100">
-                            {preview.assignedToName || "Not assigned"}
+                            {stageLabel}
                           </p>
                         </div>
                         <div className={glassMetaClass}>
                           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
-                            Deadline
+                            Priority
                           </p>
                           <p className="mt-3 text-sm font-semibold leading-6 text-[#12254C] dark:text-slate-100">
-                            {formatDateTime(preview.deadline)}
+                            {priorityLabel}
                           </p>
                         </div>
                       </div>
@@ -452,20 +515,17 @@ export default function EmailTask() {
                   <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
                     <div className="space-y-4">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
-                        Message
+                        Preview Note
                       </p>
                       <div className={cn(glassCardClass, "p-6")}>
                         <h3 className="text-[1.7rem] font-semibold tracking-[-0.03em] text-[#12254C] premium-headline dark:text-slate-100">
-                          Hi there,
+                          {previewNoteTitle}
                         </h3>
                         <p className="mt-4 text-[15px] leading-8 text-[#3C5181] premium-body dark:text-slate-300">
-                          Thanks for opening this secure task link. Below is a limited snapshot of
-                          the request so you can confirm the assignment, timing, and summary before
-                          entering the full workspace.
+                          {previewNotePrimary}
                         </p>
                         <p className="mt-4 text-[15px] leading-8 text-[#3C5181] premium-body dark:text-slate-300">
-                          Sign in with an approved account to continue when deeper task access is
-                          required.
+                          {previewNoteSecondary}
                         </p>
                       </div>
                     </div>
@@ -506,12 +566,12 @@ export default function EmailTask() {
 
                   <div className="space-y-4">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
-                      Summary
+                      Request Brief
                     </p>
                     <div className={cn(glassCardClass, "p-6")}>
                       <p className="whitespace-pre-wrap rounded-2xl border border-[#D9E6FF]/80 bg-white/78 p-5 text-sm leading-8 text-[#243B6A] supports-[backdrop-filter]:bg-white/56 backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/68 dark:text-slate-200">
                         {previewDescription ||
-                          "No summary was added for this task. Sign in with an approved account to continue into the full workspace."}
+                          "No detailed brief was added to this request. Open the full workspace for files, comments, and the complete task record."}
                       </p>
                     </div>
                   </div>

@@ -721,9 +721,7 @@ export default function Dashboard() {
     return hydratedTasks
       .flatMap((task) => {
         const history = task.changeHistory || [];
-        const createdEntries = history.filter(
-          (entry) => entry.userRole === 'staff' && entry.field === 'created'
-        );
+        const createdEntries = history.filter((entry) => entry.field === 'created');
         if (createdEntries.length === 0) {
           return [];
         }
