@@ -116,8 +116,20 @@ interface UploadedFile {
   error?: string;
 }
 
+type IncomingAiDraft = Partial<TaskDraft> & {
+  requestTitle?: string;
+  description?: string;
+  category?: string;
+  urgency?: string;
+  deadline?: string;
+  phone?: string;
+  files?: UploadedFile[];
+  whatsappNumbers?: string[];
+};
+
 type NewRequestLocationState = {
-  aiDraft?: TaskDraft;
+  aiDraft?: IncomingAiDraft;
+  aiDraftFiles?: UploadedFile[];
   restoreDraft?: boolean;
 } | null;
 
@@ -226,6 +238,38 @@ const extractDateFromText = (text: string) => {
 
   return null;
 };
+
+const normalizeIncomingAiCategory = (value?: string): TaskCategory | '' => {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s/-]+/g, '_');
+  if (!normalized) return '';
+  if (normalized === 'banner' || normalized.includes('standee')) return 'banner';
+  if (normalized === 'social_media_creative' || normalized.includes('social')) return 'social_media_creative';
+  if (normalized === 'website_assets' || normalized.includes('website') || normalized.includes('web')) return 'website_assets';
+  if (normalized === 'ui_ux' || normalized.includes('ui') || normalized.includes('ux')) return 'ui_ux';
+  if (normalized === 'led_backdrop' || normalized.includes('led') || normalized.includes('backdrop')) return 'led_backdrop';
+  if (normalized === 'brochure') return 'brochure';
+  if (normalized === 'flyer') return 'flyer';
+  return 'campaign_or_others';
+};
+
+const normalizeIncomingAiUrgency = (value?: string): TaskUrgency => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized.includes('urgent') || normalized.includes('asap') || normalized.includes('high')) return 'urgent';
+  if (normalized.includes('intermediate') || normalized.includes('medium')) return 'intermediate';
+  if (normalized.includes('low')) return 'low';
+  return 'normal';
+};
+
+const MIN_DESCRIPTION_WORDS = 30;
+
+const countWords = (value: string) =>
+  String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
 
 const extractTimeRange = (text: string) => {
   const timeMatch = text.match(
@@ -966,32 +1010,58 @@ export default function NewRequest() {
   };
 
   const applyAiDraft = (draft: TaskDraft) => {
-    setTitle(draft.title);
-    setDescription(draft.description);
-    setCategory(draft.category);
-    setUrgency(draft.urgency ?? 'normal');
-    if (draft.deadline) {
-      const parsedDate = new Date(draft.deadline);
+    const normalizedTitle = String((draft as IncomingAiDraft).title || (draft as IncomingAiDraft).requestTitle || '');
+    const normalizedDescription = String((draft as IncomingAiDraft).description || '');
+    const normalizedCategory = normalizeIncomingAiCategory((draft as IncomingAiDraft).category);
+    const normalizedUrgency = normalizeIncomingAiUrgency((draft as IncomingAiDraft).urgency);
+    const normalizedDeadline = String((draft as IncomingAiDraft).deadline || '');
+    const normalizedPhone =
+      Array.isArray((draft as IncomingAiDraft).whatsappNumbers) && (draft as IncomingAiDraft).whatsappNumbers?.length
+        ? String((draft as IncomingAiDraft).whatsappNumbers?.[0] || '')
+        : String((draft as IncomingAiDraft).phone || '');
+
+    setTitle(normalizedTitle);
+    setDescription(normalizedDescription);
+    setCategory(normalizedCategory);
+    setUrgency(normalizedUrgency);
+    if (normalizedDeadline) {
+      const parsedDate = new Date(normalizedDeadline);
       if (!isNaN(parsedDate.getTime())) {
         setDeadline(parsedDate);
         setHasDeadlineInteracted(true);
       }
     }
-    if (draft.whatsappNumbers && draft.whatsappNumbers.length > 0) {
-      setRequesterPhone(formatIndianPhoneInput(draft.whatsappNumbers[0]));
+    if (normalizedPhone) {
+      setRequesterPhone(formatIndianPhoneInput(normalizedPhone));
+    }
+    const incomingFiles = Array.isArray((draft as IncomingAiDraft).files)
+      ? (draft as IncomingAiDraft).files
+      : Array.isArray(locationState?.aiDraftFiles)
+        ? locationState.aiDraftFiles
+        : [];
+    if (incomingFiles.length > 0) {
+      setFiles(
+        incomingFiles.map((file) => ({
+          ...file,
+          uploading: false,
+          progress: 100,
+          error: undefined,
+        }))
+      );
+      setIsAttachmentQueueExpanded(true);
     }
   };
   // Initialize from AI Buddy state if provided
   useEffect(() => {
     if (locationState?.aiDraft) {
-      const draft = locationState.aiDraft as TaskDraft;
+      const draft = locationState.aiDraft as IncomingAiDraft;
       if (draft) {
-        applyAiDraft(draft);
+        applyAiDraft(draft as TaskDraft);
         toast.success("AI Buddy: Draft applied to form!");
         return;
       }
     }
-  }, [locationState?.aiDraft]);
+  }, [locationState?.aiDraft, locationState?.aiDraftFiles]);
   const glassPanelClass =
     'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border-0 ring-1 ring-black/5 rounded-2xl shadow-none dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:ring-white/5';
   const glassInputClass =
@@ -1470,6 +1540,9 @@ export default function NewRequest() {
     }
   };
 
+  const descriptionWordCount = countWords(description);
+  const hasMinimumDescriptionWords = descriptionWordCount >= MIN_DESCRIPTION_WORDS;
+
   const isFormValid = () => {
     const hasUploadsInProgress = files.some((file) => file.uploading);
     const hasUploadErrors = files.some((file) => file.error);
@@ -1483,6 +1556,7 @@ export default function NewRequest() {
     return (
       title.trim() &&
       description.trim() &&
+      hasMinimumDescriptionWords &&
       category &&
       deadlineValid &&
       !hasUploadsInProgress &&
@@ -1492,6 +1566,13 @@ export default function NewRequest() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!hasMinimumDescriptionWords) {
+      toast.error('Description is too short', {
+        description: `Please provide at least ${MIN_DESCRIPTION_WORDS} words for the designer brief.`,
+      });
+      return;
+    }
 
     if (!isFormValid()) {
       toast.error('Please complete all required fields', {
@@ -1935,6 +2016,14 @@ export default function NewRequest() {
                 onChange={(e) => setDescription(e.target.value)}
                 className={`${glassInputClass} min-h-[120px]`}
               />
+              <p
+                className={cn(
+                  'text-xs',
+                  description.trim() && !hasMinimumDescriptionWords ? 'text-destructive' : 'text-muted-foreground'
+                )}
+              >
+                {descriptionWordCount}/{MIN_DESCRIPTION_WORDS} words minimum for a proper designer brief.
+              </p>
             </div>
 
             {/* Category & Urgency */}

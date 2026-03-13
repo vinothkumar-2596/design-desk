@@ -28,6 +28,8 @@ interface WizardState {
     askedCounts: Record<WizardSlot, number>;
 }
 
+const MIN_BRIEF_WORDS = 30;
+
 const ATTACHMENT_SKIP_PATTERNS = [
     /\bno attachments?\b/i,
     /\bno references?\b/i,
@@ -343,7 +345,9 @@ const getCanonicalQuestion = (slot: WizardSlot, state: WizardState) => {
         case 'context':
             return getContextQuestion(state);
         case 'details':
-            return 'Any key details?';
+            return getUserBriefWordCount(state) >= MIN_BRIEF_WORDS
+                ? 'Any missing requirements?'
+                : 'Please share a fuller 30-word brief.';
         case 'category':
             return 'Which category fits best?';
         case 'urgency':
@@ -364,7 +368,7 @@ const isSlotSatisfied = (slot: WizardSlot, state: WizardState, attachmentsUpload
         case 'context':
             return Boolean(state.context);
         case 'details':
-            return Boolean(state.details);
+            return Boolean(state.details) && getUserBriefWordCount(state) >= MIN_BRIEF_WORDS;
         case 'category':
             return Boolean(state.category);
         case 'urgency':
@@ -381,7 +385,7 @@ const isSlotSatisfied = (slot: WizardSlot, state: WizardState, attachmentsUpload
 const getNextMissingQuestion = (state: WizardState, attachmentsUploaded: boolean) => {
     if (!state.deliverable) return getCanonicalQuestion('deliverable', state);
     if (!state.context) return getCanonicalQuestion('context', state);
-    if (!state.details) return getCanonicalQuestion('details', state);
+    if (!isSlotSatisfied('details', state, attachmentsUploaded)) return getCanonicalQuestion('details', state);
     if (!state.category) return getCanonicalQuestion('category', state);
     if (!state.urgency) return getCanonicalQuestion('urgency', state);
     if (!state.deadline) return getCanonicalQuestion('deadline', state);
@@ -416,6 +420,7 @@ const buildLiveTaskContext = (state: WizardState, attachmentsUploaded: boolean) 
         '- Ask one short question only.',
         '- Maximum 8 words.',
         '- Never repeat or rephrase the same slot.',
+        `- Require at least ${MIN_BRIEF_WORDS} user words before READY.`,
         '- Do not ask optional style or copy questions before READY.',
         nextMissing
             ? `- Ask only for this missing item next: ${nextMissing}`
@@ -655,13 +660,27 @@ const cleanDetailsForDraft = (details: string, deliverable: string, context: str
     return normalized;
 };
 
+const countWords = (value: string) =>
+    normalizeSpace(value)
+        .split(/\s+/)
+        .filter(Boolean).length;
+
+const getUserBriefWordCount = (state: WizardState) => {
+    const deliverable = cleanSlotValue(state.deliverable);
+    const context = cleanContextForDraft(state.context, deliverable);
+    const details = cleanDetailsForDraft(state.details, deliverable, context);
+
+    return countWords([deliverable, context, details].filter(Boolean).join(' '));
+};
+
 const buildLocalTaskDraft = (state: WizardState, attachmentsUploaded: boolean): TaskDraft | null => {
     const deliverable = cleanSlotValue(state.deliverable);
     const context = cleanContextForDraft(state.context, deliverable);
     const details = cleanDetailsForDraft(state.details, deliverable, context);
     const deadline = parseDeadlineToIso(state.deadline);
+    const userBriefWordCount = getUserBriefWordCount(state);
 
-    if (!deliverable || !details || !deadline) {
+    if (!deliverable || !details || !deadline || userBriefWordCount < MIN_BRIEF_WORDS) {
         return null;
     }
 
@@ -674,10 +693,10 @@ const buildLocalTaskDraft = (state: WizardState, attachmentsUploaded: boolean): 
         : `${deliverableTitle} Request`;
 
     const descriptionParts = [
-        context
-            ? `Create a ${deliverable} for ${context}.`
-            : `Create a ${deliverable}.`,
         details.endsWith('.') ? details : `${details}.`,
+        context
+            ? `Deliverable: ${deliverable} for ${context}.`
+            : `Deliverable: ${deliverable}.`,
         attachmentsUploaded
             ? 'Use the uploaded references or assets.'
             : state.attachmentState === 'skipped'
@@ -716,6 +735,60 @@ const buildMergedDraftNotes = (draft: TaskDraft) => {
     }
 
     return Array.from(new Set(noteParts)).join('\n\n');
+};
+
+const buildDraftRefinementPrompt = (draft: TaskDraft | null) => {
+    if (!draft) {
+        return 'Refine the current draft into a more professional, precise brief using only the confirmed details already collected.';
+    }
+
+    const detailLines = [
+        draft.title ? `Title: ${draft.title}` : '',
+        draft.description ? `Description: ${draft.description}` : '',
+        draft.category ? `Category: ${draft.category}` : '',
+        draft.urgency ? `Urgency: ${draft.urgency}` : '',
+        draft.deadline ? `Deadline: ${draft.deadline}` : '',
+    ].filter(Boolean);
+
+    return [
+        'Refine the current draft into a more professional, precise brief.',
+        'Keep only confirmed details and improve clarity.',
+        ...detailLines,
+    ].join('\n');
+};
+
+const GENERIC_USER_PREVIEW_PATTERNS = [
+    /^hi$/i,
+    /^hello$/i,
+    /^hey$/i,
+    /^task buddy$/i,
+    /^buddy$/i,
+    /^okay$/i,
+    /^ok$/i,
+    /^yes$/i,
+    /^no$/i,
+    /^thanks?$/i,
+];
+
+const buildUserProvidedDraftPreview = (messages: Message[]) => {
+    const normalizedMessages = messages
+        .filter((message) => message.role === 'user')
+        .map((message) => normalizeSpace(message.content))
+        .filter(Boolean)
+        .filter((content) => !GENERIC_USER_PREVIEW_PATTERNS.some((pattern) => pattern.test(content)))
+        .filter((content) => !ATTACHMENT_SKIP_PATTERNS.some((pattern) => pattern.test(content)))
+        .filter((content) => !ATTACHMENT_PROVIDED_PATTERNS.some((pattern) => pattern.test(content)));
+
+    if (normalizedMessages.length === 0) {
+        return '';
+    }
+
+    const substantialMessages = normalizedMessages.filter((content) => countWords(content) >= 12);
+    if (substantialMessages.length > 0) {
+        return substantialMessages[substantialMessages.length - 1];
+    }
+
+    return normalizedMessages.join('. ');
 };
 
 const mergeDraftWithWizardState = (
@@ -780,13 +853,14 @@ interface TaskBuddyModalProps {
     onClose: () => void;
     onTaskCreated?: (draft: TaskDraft) => void;
     initialMessage?: string;
+    autoSendInitialMessage?: boolean;
     onOpenUploader?: () => void;
     hasAttachments?: boolean;
     attachmentContext?: string;
     freeDateSuggestions?: Date[];
 }
 
-export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage, onOpenUploader, hasAttachments, attachmentContext, freeDateSuggestions = [] }: TaskBuddyModalProps) {
+export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage, autoSendInitialMessage = false, onOpenUploader, hasAttachments, attachmentContext, freeDateSuggestions = [] }: TaskBuddyModalProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -804,6 +878,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
     const readyNudgeTriggeredRef = useRef(false);
     const pendingAttachmentFollowUpRef = useRef(false);
     const lastAttachmentContextRef = useRef('');
+    const initialAutoSentRef = useRef(false);
     const [quotaBlocked, setQuotaBlocked] = useState(false);
     const [localFallbackMode, setLocalFallbackMode] = useState(false);
 
@@ -851,6 +926,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             readyNudgeTriggeredRef.current = false;
             pendingAttachmentFollowUpRef.current = false;
             lastAttachmentContextRef.current = '';
+            initialAutoSentRef.current = false;
             setQuotaBlocked(false);
             setLocalFallbackMode(false);
             shouldAutoScrollRef.current = true;
@@ -891,14 +967,29 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
 
     useEffect(() => {
         if (!isOpen) return;
+        if (!autoSendInitialMessage) return;
+        const normalizedInitialMessage = String(initialMessage || '').trim();
+        if (!normalizedInitialMessage) return;
+        if (initialAutoSentRef.current) return;
+        if (messages.length > 0 || isLoading) return;
+
+        initialAutoSentRef.current = true;
+        window.setTimeout(() => {
+            handleSend(normalizedInitialMessage);
+        }, 0);
+    }, [autoSendInitialMessage, initialMessage, isLoading, isOpen, messages.length]);
+
+    useEffect(() => {
+        if (!isOpen) return;
         if (!hasAttachments) return;
+        if (autoSendInitialMessage && String(initialMessage || '').trim()) return;
         if (isLoading) return;
         if (quotaBlocked) return;
         if (autoDraftTriggeredRef.current) return;
         if (messages.length > 0) return;
         autoDraftTriggeredRef.current = true;
         handleSend();
-    }, [hasAttachments, attachmentContext, isOpen, isLoading, messages.length, quotaBlocked]);
+    }, [autoSendInitialMessage, attachmentContext, hasAttachments, initialMessage, isOpen, isLoading, messages.length, quotaBlocked]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -999,18 +1090,16 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 }));
 
             const response: AIResponse = await sendMessageToAI(chatHistory, userText);
-            const shouldAskForAttachments =
-                !hasAttachments &&
-                !hasAttachmentOptOut(nextConversation);
+            const nextMissingQuestion = getNextMissingQuestion(wizardState, Boolean(hasAttachments));
 
             if (response.type === 'task_draft' && response.data) {
                 setQuotaBlocked(false);
                 readyNudgeTriggeredRef.current = false;
-                if (response.ready && shouldAskForAttachments) {
+                if (nextMissingQuestion) {
                     const assistantMessage: Message = {
                         id: (Date.now() + 1).toString(),
                         role: 'assistant',
-                        content: buildAttachmentRequestMessage(),
+                        content: nextMissingQuestion,
                         timestamp: new Date()
                     };
                     setMessages(prev => [...prev, assistantMessage]);
@@ -1035,11 +1124,11 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                     wizardState,
                     Boolean(hasAttachments)
                 );
-                if (shouldAskForAttachments) {
+                if (nextMissingQuestion) {
                     const assistantMessage: Message = {
                         id: (Date.now() + 1).toString(),
                         role: 'assistant',
-                        content: buildAttachmentRequestMessage(),
+                        content: nextMissingQuestion,
                         timestamp: new Date()
                     };
                     setMessages(prev => [...prev, assistantMessage]);
@@ -1058,7 +1147,6 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             } else if (response.content) {
                 setQuotaBlocked(false);
                 const normalizedReply = normalizeAssistantReply(response.content, wizardState, Boolean(hasAttachments));
-                const nextMissingQuestion = getNextMissingQuestion(wizardState, Boolean(hasAttachments));
 
                 if (!nextMissingQuestion && !readyNudgeTriggeredRef.current) {
                     readyNudgeTriggeredRef.current = true;
@@ -1201,9 +1289,12 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
     };
 
     const handleRegenerateDraft = () => {
+        if (isLoading) return;
+        const refinementPrompt = buildDraftRefinementPrompt(taskDraft);
         setTaskDraft(null);
-        setInput('Can you regenerate the task draft with more details?');
-        setTimeout(() => handleSend(), 100);
+        window.setTimeout(() => {
+            void handleSend(refinementPrompt, { hidden: true });
+        }, 0);
     };
 
     const shouldOfferAttachmentUpload = (content: string) => {
@@ -1364,6 +1455,10 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             .reverse()
             .find((message) => message.role === 'assistant' && inferQuestionSlot(message.content) === 'deadline')
             ?.id || '';
+    const userProvidedDraftPreview = useMemo(
+        () => buildUserProvidedDraftPreview(messages),
+        [messages]
+    );
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -1490,10 +1585,12 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                                             <CheckCircle2 className="h-4 w-4 text-primary" />
                                             <span className="font-semibold text-slate-900 dark:text-slate-100">Draft Ready: {taskDraft.title}</span>
                                         </div>
-                                        <p className="text-sm text-slate-600 dark:text-slate-300 mb-3">{taskDraft.description}</p>
+                                        <p className="mb-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                                            {userProvidedDraftPreview || taskDraft.description}
+                                        </p>
                                         <div className="flex gap-2">
-                                            <Button size="sm" onClick={handleSubmitToDraft} className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20">Submit to Draft</Button>
-                                            <Button size="sm" variant="outline" onClick={handleRegenerateDraft} className="border-primary/20 text-primary hover:bg-primary/5">Refine Draft</Button>
+                                            <Button type="button" size="sm" onClick={handleSubmitToDraft} className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20">Submit to Draft</Button>
+                                            <Button type="button" size="sm" variant="outline" onClick={handleRegenerateDraft} className="border-primary/20 text-primary hover:bg-primary/5">Refine Draft</Button>
                                         </div>
                                     </div>
                                 )}

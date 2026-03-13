@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_URL, authFetch, openDriveReconnectWindow } from '@/lib/api';
 import {
@@ -25,10 +25,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from "@/components/ui/use-toast";
+import type { TaskDraft } from '@/lib/ai';
 import { upsertLocalTask } from '@/lib/taskStorage';
 import { Task, TaskCategory, TaskUrgency } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { addDays } from 'date-fns';
+import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 
 interface DesignRequestDraft {
     requestTitle: string;
@@ -39,6 +41,50 @@ interface DesignRequestDraft {
     phone: string;
     files?: any[];
 }
+
+const mapDraftCategoryToFormCategory = (value: string): TaskCategory => {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s/-]+/g, '_');
+    if (normalized === 'banner' || normalized.includes('standee')) return 'banner';
+    if (normalized === 'social_media_creative' || normalized.includes('social')) return 'social_media_creative';
+    if (normalized === 'website_assets' || normalized.includes('website') || normalized.includes('web')) return 'website_assets';
+    if (normalized === 'ui_ux' || normalized.includes('ui') || normalized.includes('ux')) return 'ui_ux';
+    if (normalized === 'led_backdrop' || normalized.includes('led') || normalized.includes('backdrop')) return 'led_backdrop';
+    if (normalized === 'brochure') return 'brochure';
+    if (normalized === 'flyer') return 'flyer';
+    return 'campaign_or_others';
+};
+
+const mapDraftUrgencyToFormUrgency = (value: string): TaskUrgency => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized.includes('urgent') || normalized.includes('asap') || normalized.includes('high')) return 'urgent';
+    if (normalized.includes('intermediate') || normalized.includes('medium')) return 'intermediate';
+    if (normalized.includes('low')) return 'low';
+    return 'normal';
+};
+
+const normalizeDraftShape = (raw: any, fallbackFiles: any[] = []): DesignRequestDraft => ({
+    requestTitle: String(raw?.requestTitle || raw?.request_title || raw?.title || '').trim(),
+    category: String(raw?.category || '').trim(),
+    urgency: String(raw?.urgency || 'Normal').trim(),
+    description: String(raw?.description || raw?.notesForDesigner || raw?.notes_for_designer || '').trim(),
+    deadline: String(raw?.deadline || '').trim(),
+    phone: String(raw?.phone || '').trim(),
+    files: Array.isArray(raw?.files) ? raw.files : fallbackFiles,
+});
+
+const mapDesignRequestDraftToTaskDraft = (draft: DesignRequestDraft): TaskDraft & { files?: any[] } => {
+    const normalizedPhone = String(draft.phone || '').trim();
+    return {
+        title: draft.requestTitle || 'Design Request',
+        description: draft.description || 'Design request details',
+        category: mapDraftCategoryToFormCategory(draft.category),
+        urgency: mapDraftUrgencyToFormUrgency(draft.urgency),
+        deadline: draft.deadline || '',
+        phone: normalizedPhone || undefined,
+        whatsappNumbers: normalizedPhone ? [normalizedPhone] : undefined,
+        files: Array.isArray(draft.files) ? draft.files : [],
+    };
+};
 
 interface ImprovementData {
     original: string;
@@ -125,6 +171,40 @@ export default function AIMode() {
     const [lastUploadedFileId, setLastUploadedFileId] = useState<string | null>(null);
     const [allUploadedFiles, setAllUploadedFiles] = useState<any[]>([]);
     const [attachmentText, setAttachmentText] = useState<string>('');
+    const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
+    const [taskBuddyInitialMessage, setTaskBuddyInitialMessage] = useState('');
+
+    const attachmentContext = useMemo(() => {
+        const uploadedSections = allUploadedFiles
+            .map((file, index) => {
+                const fileName = String(file?.name || `Attachment ${index + 1}`).trim();
+                const extractedContent = String(file?.extractedContent || '').trim();
+                return extractedContent ? `${fileName}\n${extractedContent}` : fileName;
+            })
+            .filter(Boolean);
+        const normalizedAttachmentText = String(attachmentText || '').trim();
+        if (normalizedAttachmentText) {
+            uploadedSections.push(normalizedAttachmentText);
+        }
+        return uploadedSections.join('\n\n').trim();
+    }, [allUploadedFiles, attachmentText]);
+
+    const canSendToTaskBuddy = Boolean(prompt.trim() || allUploadedFiles.length > 0);
+
+    const openTaskBuddy = (initialPrompt = '') => {
+        setTaskBuddyInitialMessage(String(initialPrompt || '').trim());
+        setIsTaskBuddyOpen(true);
+        setView('initial');
+    };
+
+    const handleTaskBuddyDraftCreated = (draft: TaskDraft) => {
+        navigate('/new-request', {
+            state: {
+                aiDraft: draft,
+                aiDraftFiles: allUploadedFiles,
+            },
+        });
+    };
 
     const suggestions = [
         { icon: Briefcase, text: "Create a social media campaign for Diwali" },
@@ -194,48 +274,11 @@ export default function AIMode() {
         }
     };
 
-    const handleSendMessage = async () => {
-        if (!prompt.trim()) return;
-
-        const userMessage: Message = { role: 'user', content: prompt, type: 'text' };
-        setMessages(prev => [...prev, userMessage]);
+    const handleSendMessage = () => {
+        const nextPrompt = prompt.trim();
+        if (!nextPrompt && allUploadedFiles.length === 0) return;
         setPrompt('');
-        setView('chat');
-        setIsTyping(true);
-
-        // AI Logic Simulation
-        // AI Buddy Logic
-        try {
-            const apiUrl = API_URL;
-            const res = await authFetch(`${apiUrl}/api/ai/buddy`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: userMessage.content,
-                    fileId: lastUploadedFileId,
-                    attachmentText: attachmentText || undefined
-                })
-            });
-
-            if (!res.ok) throw new Error('AI Buddy failed');
-            const data = await res.json();
-
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                type: 'draft',
-                draftData: { ...data, files: [...allUploadedFiles] }
-            }]);
-        } catch (error) {
-            console.error("AI Buddy error:", error);
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                type: 'text',
-                content: "I'm having trouble connecting to my brain. Please try again or check your connection."
-            }]);
-            toast({ title: "AI Error", description: "Could not reach AI Buddy.", variant: "destructive" });
-        }
+        openTaskBuddy(nextPrompt);
     };
 
     const processAIResponse = (input: string) => {
@@ -252,7 +295,6 @@ export default function AIMode() {
         if (!file) return;
 
         setLastUploadedFile(file.name);
-        setView('chat');
         setUploadStatus('uploading');
         setAttachmentText('');
 
@@ -288,35 +330,14 @@ export default function AIMode() {
             setLastUploadedFileId(data.id);
             setAllUploadedFiles(prev => [...prev, data]);
             setUploadStatus('success');
-            toast({ title: "File uploaded successfully", description: `Saved to Drive → AI Mode Files (${file.name})` });
-            setIsTyping(true);
+            toast({ title: "File uploaded successfully", description: `Task Buddy can now use ${file.name}` });
 
-            setTimeout(() => {
-                setIsTyping(false);
-                const fileMsg: Message = {
-                    role: 'user',
-                    type: 'file_upload',
-                    content: `Uploaded file: ${file.name}`
-                };
-
-                const aiMsg: Message = {
-                    role: 'assistant',
-                    type: 'improvement_options',
-                    content: data.extractedContent
-                        ? `I've analyzed the content of "${file.name}". What would you like to do with this?`
-                        : "What would you like to do with this file?",
-                    options: [
-                        { label: "Improve content", action: "improve" },
-                        { label: "Rewrite professionally", action: "rewrite" },
-                        { label: "Generate a submission draft", action: "brief" },
-                        { label: "Download enhanced version", action: "download_enhanced" },
-                        { label: "Auto-submit with AI", action: "auto_submit" }
-                    ]
-                };
-
-                setMessages(prev => [...prev, fileMsg, aiMsg]);
+            window.setTimeout(() => {
                 setUploadStatus('idle');
-            }, 1000);
+                if (!isTaskBuddyOpen) {
+                    openTaskBuddy();
+                }
+            }, 0);
         } catch (error: any) {
             setUploadStatus('error');
             const errorMsg = error.message || "Upload failed";
@@ -365,8 +386,7 @@ export default function AIMode() {
         if (!file) return;
 
         setLastUploadedFile(file.name);
-        setView('chat');
-        setIsTyping(true);
+        setUploadStatus('uploading');
 
         try {
             const formData = new FormData();
@@ -393,25 +413,17 @@ export default function AIMode() {
             const data = await response.json();
             setLastUploadedFileId(data.id);
             setAllUploadedFiles(prev => [...prev, data]);
+            setUploadStatus('success');
+            toast({ title: "Image uploaded successfully", description: `Task Buddy can now use ${file.name}` });
 
-            setTimeout(() => {
-                setIsTyping(false);
-                const imgMsg: Message = {
-                    role: 'user',
-                    type: 'file_upload',
-                    content: `Uploaded image: ${file.name}`
-                };
-
-                const aiMsg: Message = {
-                    role: 'assistant',
-                    type: 'text',
-                    content: "I see you uploaded an image. I can use this as a reference style. Would you like to create a new design request based on this style?"
-                };
-
-                setMessages(prev => [...prev, imgMsg, aiMsg]);
-            }, 1500);
+            window.setTimeout(() => {
+                setUploadStatus('idle');
+                if (!isTaskBuddyOpen) {
+                    openTaskBuddy();
+                }
+            }, 0);
         } catch (error: any) {
-            setIsTyping(false);
+            setUploadStatus('error');
             const errorMsg = error?.message || "Upload failed";
             if (shouldPromptDriveReconnect(errorMsg)) {
                 toast({
@@ -674,10 +686,11 @@ export default function AIMode() {
     };
 
     const handleSubmit = () => {
-        // Find the last improved result or draft message to get its content
-        const lastImprovedMsg = [...messages].reverse().find(m => m.type === 'draft' || m.type === 'improved_result');
+        const lastDraftMessage = [...messages]
+            .reverse()
+            .find((message): message is Message & { draftData: DesignRequestDraft } => message.type === 'draft' && Boolean(message.draftData));
 
-        if (!lastImprovedMsg?.draftData) {
+        if (!lastDraftMessage?.draftData) {
             toast({
                 title: "No draft found",
                 description: "AI Buddy hasn't generated a draft yet.",
@@ -691,7 +704,13 @@ export default function AIMode() {
             description: "Opening the design request form with your AI draft..."
         });
 
-        navigate('/new-request', { state: { aiDraft: lastImprovedMsg.draftData } });
+        const taskDraft = mapDesignRequestDraftToTaskDraft(lastDraftMessage.draftData);
+        navigate('/new-request', {
+            state: {
+                aiDraft: taskDraft,
+                aiDraftFiles: Array.isArray(lastDraftMessage.draftData.files) ? lastDraftMessage.draftData.files : [],
+            },
+        });
     };
 
     const handleDownload = () => {
@@ -975,11 +994,11 @@ export default function AIMode() {
                                                     onClick={handleSendMessage}
                                                     className={cn(
                                                         "rounded-full h-10 w-10 p-0 transition-all duration-300",
-                                                        prompt.trim()
+                                                        canSendToTaskBuddy
                                                             ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
                                                             : "bg-[#E2E8F0] text-[#94A3B8] hover:bg-[#CBD5E1]"
                                                     )}
-                                                    disabled={!prompt.trim()}
+                                                    disabled={!canSendToTaskBuddy}
                                                 >
                                                     <ArrowUp className="h-5 w-5" />
                                                 </Button>
@@ -1001,7 +1020,7 @@ export default function AIMode() {
                                 {suggestions.map((item, index) => (
                                     <button
                                         key={index}
-                                        onClick={() => { setPrompt(item.text); }}
+                                        onClick={() => { openTaskBuddy(item.text); }}
                                         className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-white/60 hover:shadow-sm transition-all duration-200 text-left group"
                                     >
                                         <div className="h-10 w-10 rounded-full bg-white border border-[#E2E8F0] flex items-center justify-center text-[#64748B] group-hover:text-primary group-hover:border-primary/20 transition-colors">
@@ -1035,11 +1054,11 @@ export default function AIMode() {
                                 size="icon"
                                 className={cn(
                                     "rounded-xl transition-all",
-                                    prompt.trim()
+                                    canSendToTaskBuddy
                                         ? "bg-primary text-primary-foreground"
                                         : "bg-slate-100 text-slate-300"
                                 )}
-                                disabled={!prompt.trim()}
+                                disabled={!canSendToTaskBuddy}
                             >
                                 <ArrowUp className="h-5 w-5" />
                             </Button>
@@ -1048,6 +1067,16 @@ export default function AIMode() {
 
                 </div>
             </div>
+            <TaskBuddyModal
+                isOpen={isTaskBuddyOpen}
+                onClose={() => setIsTaskBuddyOpen(false)}
+                onTaskCreated={handleTaskBuddyDraftCreated}
+                initialMessage={taskBuddyInitialMessage}
+                autoSendInitialMessage
+                onOpenUploader={handleFileUpload}
+                hasAttachments={allUploadedFiles.length > 0}
+                attachmentContext={attachmentContext}
+            />
         </div>
     );
 }
