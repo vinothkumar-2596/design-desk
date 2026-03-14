@@ -28,7 +28,6 @@ import {
   SCHEDULE_NOTIFICATIONS_PREFIX,
 } from '@/lib/designerSchedule';
 import { useTasksContext } from '@/contexts/TasksContext';
-import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -107,7 +106,6 @@ export function DashboardLayout({
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const autoPreviewShownRef = useRef(false);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
   const lastFetchedAtRef = useRef<string | null>(null);
   const notificationsSocketRef = useRef<ReturnType<typeof createSocket> | null>(null);
@@ -1256,7 +1254,10 @@ export function DashboardLayout({
       headerActions={
         <>
           {location.pathname !== '/new-request' && (
-            <GeminiBlink onClick={() => setIsTaskBuddyOpen(true)} className="mr-2" />
+            <GeminiBlink
+              onClick={() => navigate('/new-request', { state: { openTaskBuddy: true } })}
+              className="mr-2"
+            />
           )}
           <ThemeToggle className="mr-2" />
           {headerPresenceAction}
@@ -1354,21 +1355,6 @@ export function DashboardLayout({
           </div>
         </div>
       )}
-      <TaskBuddyModal
-        isOpen={isTaskBuddyOpen}
-        onClose={() => setIsTaskBuddyOpen(false)}
-        onTaskCreated={(draft) => {
-          console.log('AI Draft created:', draft);
-          setIsTaskBuddyOpen(false);
-          toast.success('Draft created! Navigate to New Request to use it.');
-        }}
-        onOpenUploader={() => {
-          navigate('/new-request');
-          window.setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('designhub:open-uploader'));
-          }, 350);
-        }}
-      />
     </DashboardShell>
   );
 }

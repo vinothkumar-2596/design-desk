@@ -380,7 +380,12 @@ const getCanonicalQuestion = (slot: WizardSlot, state: WizardState) => {
     }
 };
 
-const isSlotSatisfied = (slot: WizardSlot, state: WizardState, attachmentsUploaded: boolean) => {
+const isSlotSatisfied = (
+    slot: WizardSlot,
+    state: WizardState,
+    attachmentsUploaded: boolean,
+    isDeadlineAvailable?: (date: Date) => boolean
+) => {
     switch (slot) {
         case 'deliverable':
             return Boolean(state.deliverable);
@@ -393,7 +398,7 @@ const isSlotSatisfied = (slot: WizardSlot, state: WizardState, attachmentsUpload
         case 'urgency':
             return Boolean(state.urgency);
         case 'deadline':
-            return Boolean(parseDeadlineToIso(state.deadline));
+            return isDeadlineValueValid(state.deadline, isDeadlineAvailable);
         case 'attachments':
             return attachmentsUploaded || state.attachmentState !== 'unknown';
         default:
@@ -401,27 +406,35 @@ const isSlotSatisfied = (slot: WizardSlot, state: WizardState, attachmentsUpload
     }
 };
 
-const getNextMissingQuestion = (state: WizardState, attachmentsUploaded: boolean) => {
+const getNextMissingQuestion = (
+    state: WizardState,
+    attachmentsUploaded: boolean,
+    isDeadlineAvailable?: (date: Date) => boolean
+) => {
     if (!state.deliverable) return getCanonicalQuestion('deliverable', state);
     if (!state.context) return getCanonicalQuestion('context', state);
-    if (!isSlotSatisfied('details', state, attachmentsUploaded)) return getCanonicalQuestion('details', state);
+    if (!isSlotSatisfied('details', state, attachmentsUploaded, isDeadlineAvailable)) return getCanonicalQuestion('details', state);
     if (!state.category) return getCanonicalQuestion('category', state);
     if (!state.urgency) return getCanonicalQuestion('urgency', state);
-    if (!state.deadline) return getCanonicalQuestion('deadline', state);
+    if (!isDeadlineValueValid(state.deadline, isDeadlineAvailable)) return getCanonicalQuestion('deadline', state);
     if (!attachmentsUploaded && state.attachmentState === 'unknown') {
         return buildAttachmentRequestMessage();
     }
     return '';
 };
 
-const buildLiveTaskContext = (state: WizardState, attachmentsUploaded: boolean) => {
+const buildLiveTaskContext = (
+    state: WizardState,
+    attachmentsUploaded: boolean,
+    isDeadlineAvailable?: (date: Date) => boolean
+) => {
     const knownDetails = [
         state.deliverable ? `- deliverable: ${state.deliverable}` : '',
         state.context ? `- context: ${state.context}` : '',
         state.details ? `- details: ${state.details}` : '',
         state.category ? `- category: ${state.category}` : '',
         state.urgency ? `- urgency: ${state.urgency}` : '',
-        parseDeadlineToIso(state.deadline) ? `- deadline: ${state.deadline}` : '',
+        isDeadlineValueValid(state.deadline, isDeadlineAvailable) ? `- deadline: ${state.deadline}` : '',
         attachmentsUploaded
             ? '- attachments: already uploaded'
             : state.attachmentState === 'skipped'
@@ -429,7 +442,7 @@ const buildLiveTaskContext = (state: WizardState, attachmentsUploaded: boolean) 
                 : '',
     ].filter(Boolean);
 
-    const nextMissing = getNextMissingQuestion(state, attachmentsUploaded);
+    const nextMissing = getNextMissingQuestion(state, attachmentsUploaded, isDeadlineAvailable);
 
     return [
         'LIVE TASK STATE:',
@@ -450,10 +463,11 @@ const buildLiveTaskContext = (state: WizardState, attachmentsUploaded: boolean) 
 const normalizeAssistantReply = (
     content: string,
     state: WizardState,
-    attachmentsUploaded: boolean
+    attachmentsUploaded: boolean,
+    isDeadlineAvailable?: (date: Date) => boolean
 ) => {
     const normalized = normalizeSpace(content);
-    const fallbackQuestion = getNextMissingQuestion(state, attachmentsUploaded);
+    const fallbackQuestion = getNextMissingQuestion(state, attachmentsUploaded, isDeadlineAvailable);
     const slot = inferQuestionSlot(normalized);
 
     if (!normalized) {
@@ -461,7 +475,7 @@ const normalizeAssistantReply = (
     }
 
     if (slot !== 'unknown') {
-        if (isSlotSatisfied(slot, state, attachmentsUploaded)) {
+        if (isSlotSatisfied(slot, state, attachmentsUploaded, isDeadlineAvailable)) {
             return fallbackQuestion || normalized;
         }
 
@@ -632,6 +646,17 @@ const parseIsoToLocalDate = (isoDate: string) => {
     if (!match) return null;
     const [, year, month, day] = match;
     return new Date(Number(year), Number(month) - 1, Number(day));
+};
+
+const isDeadlineValueValid = (
+    value: string,
+    isDeadlineAvailable?: (date: Date) => boolean
+) => {
+    const isoDeadline = parseDeadlineToIso(value);
+    if (!isoDeadline) return false;
+    const localDate = parseIsoToLocalDate(isoDeadline);
+    if (!localDate) return false;
+    return isDeadlineAvailable ? isDeadlineAvailable(localDate) : true;
 };
 
 const formatDeadlineChipValue = (date: Date) =>
@@ -859,8 +884,12 @@ const mergeDraftWithWizardState = (
     };
 };
 
-const buildLocalWizardOutcome = (state: WizardState, attachmentsUploaded: boolean) => {
-    const nextQuestion = getNextMissingQuestion(state, attachmentsUploaded);
+const buildLocalWizardOutcome = (
+    state: WizardState,
+    attachmentsUploaded: boolean,
+    isDeadlineAvailable?: (date: Date) => boolean
+) => {
+    const nextQuestion = getNextMissingQuestion(state, attachmentsUploaded, isDeadlineAvailable);
     if (nextQuestion) {
         return {
             message: nextQuestion,
@@ -1148,7 +1177,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             formattedFreeDateSuggestions.length > 0
                 ? `\nAVAILABLE FREE DATES:\n- ${formattedFreeDateSuggestions.map((entry) => entry.value).join('\n- ')}`
                 : '';
-        const liveTaskContext = `${buildLiveTaskContext(wizardState, Boolean(hasAttachments))}${freeDateContext}`;
+        const liveTaskContext = `${buildLiveTaskContext(wizardState, Boolean(hasAttachments), isDeadlineAvailable)}${freeDateContext}`;
         const payloadText = trimmedInput || 'Continue with the next missing step.';
         const requesterLoginContext = requesterContext ? `\n\n${requesterContext}` : '';
         const userTextBase = systemEvent
@@ -1187,7 +1216,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
         setShowWelcome(false);
 
         if (localFallbackMode) {
-            const localOutcome = buildLocalWizardOutcome(wizardState, Boolean(hasAttachments));
+            const localOutcome = buildLocalWizardOutcome(wizardState, Boolean(hasAttachments), isDeadlineAvailable);
             if (localOutcome.draft) {
                 setTaskDraft(localOutcome.draft);
             }
@@ -1210,7 +1239,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 }));
 
             const response: AIResponse = await sendMessageToAI(chatHistory, userText);
-            const nextMissingQuestion = getNextMissingQuestion(wizardState, Boolean(hasAttachments));
+            const nextMissingQuestion = getNextMissingQuestion(wizardState, Boolean(hasAttachments), isDeadlineAvailable);
 
             if (response.type === 'task_draft' && response.data) {
                 setQuotaBlocked(false);
@@ -1266,7 +1295,12 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                 setMessages(prev => [...prev, assistantMessage]);
             } else if (response.content) {
                 setQuotaBlocked(false);
-                const normalizedReply = normalizeAssistantReply(response.content, wizardState, Boolean(hasAttachments));
+                const normalizedReply = normalizeAssistantReply(
+                    response.content,
+                    wizardState,
+                    Boolean(hasAttachments),
+                    isDeadlineAvailable
+                );
 
                 if (!nextMissingQuestion && !readyNudgeTriggeredRef.current) {
                     readyNudgeTriggeredRef.current = true;
@@ -1324,7 +1358,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             if (isQuotaExhausted) {
                 setQuotaBlocked(false);
                 setLocalFallbackMode(true);
-                const localOutcome = buildLocalWizardOutcome(wizardState, Boolean(hasAttachments));
+                const localOutcome = buildLocalWizardOutcome(wizardState, Boolean(hasAttachments), isDeadlineAvailable);
                 const fallbackMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
@@ -1340,7 +1374,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             if (isRateLimited) {
                 setQuotaBlocked(true);
                 setLocalFallbackMode(true);
-                const localOutcome = buildLocalWizardOutcome(wizardState, Boolean(hasAttachments));
+                const localOutcome = buildLocalWizardOutcome(wizardState, Boolean(hasAttachments), isDeadlineAvailable);
                 const quotaMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
@@ -1367,7 +1401,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
 
             if (isServiceUnavailable) {
                 setLocalFallbackMode(true);
-                const localOutcome = buildLocalWizardOutcome(wizardState, Boolean(hasAttachments));
+                const localOutcome = buildLocalWizardOutcome(wizardState, Boolean(hasAttachments), isDeadlineAvailable);
                 const unavailableMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: 'assistant',
@@ -1592,8 +1626,13 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
     );
 
     return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-3xl h-[700px] flex flex-col p-0 gap-0 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl overflow-hidden rounded-[32px] border-white/20 dark:border-slate-700/60 shadow-2xl ring-1 ring-white/40 dark:ring-slate-700/60">
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+            <DialogContent
+                onInteractOutside={(event) => {
+                    event.preventDefault();
+                }}
+                className="max-w-3xl h-[700px] flex flex-col p-0 gap-0 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl overflow-hidden rounded-[32px] border-white/20 dark:border-slate-700/60 shadow-2xl ring-1 ring-white/40 dark:ring-slate-700/60"
+            >
                 <DialogHeader className="sr-only">
                     <DialogTitle>Task Buddy AI</DialogTitle>
                     <DialogDescription>

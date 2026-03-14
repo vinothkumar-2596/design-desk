@@ -130,6 +130,7 @@ type IncomingAiDraft = Partial<TaskDraft> & {
 type NewRequestLocationState = {
   aiDraft?: IncomingAiDraft;
   aiDraftFiles?: UploadedFile[];
+  openTaskBuddy?: boolean;
   restoreDraft?: boolean;
 } | null;
 
@@ -559,8 +560,6 @@ export default function NewRequest() {
   const hasRestoredDraftRef = useRef(false);
   const lastDraftStorageKeyRef = useRef('');
   const latestFilesRef = useRef<UploadedFile[]>([]);
-  const autoDraftEnabledRef = useRef(true);
-  const persistDraftOnExitRef = useRef<() => void>(() => {});
   const attachmentPreviewViewportRef = useRef<HTMLDivElement | null>(null);
   const attachmentPreviewObjectUrlRef = useRef<string | null>(null);
   const attachmentPreviewDragRef = useRef<{
@@ -758,43 +757,6 @@ export default function NewRequest() {
   }, [files]);
 
   useEffect(() => {
-    persistDraftOnExitRef.current = () => {
-      if (typeof window === 'undefined') return;
-      if (!autoDraftEnabledRef.current || !hasDraftableChanges) return;
-      saveRequestDraft(user, buildRequestDraftPayload(latestFilesRef.current));
-    };
-  }, [
-    buildRequestDraftPayload,
-    hasDraftableChanges,
-    user,
-  ]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-
-    const persistDraftOnExit = () => {
-      persistDraftOnExitRef.current();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        persistDraftOnExit();
-      }
-    };
-
-    window.addEventListener('pagehide', persistDraftOnExit);
-    window.addEventListener('beforeunload', persistDraftOnExit);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener('pagehide', persistDraftOnExit);
-      window.removeEventListener('beforeunload', persistDraftOnExit);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      persistDraftOnExit();
-    };
-  }, []);
-
-  useEffect(() => {
     resetAttachmentPreviewTransform();
   }, [attachmentPreviewFile?.id, attachmentPreviewResolvedUrl]);
 
@@ -943,20 +905,18 @@ export default function NewRequest() {
         thumbnailUrl: file.thumbnailUrl,
       }));
 
-  function buildRequestDraftPayload(sourceFiles: UploadedFile[]): RequestDraftPayload {
-    return {
-      title,
-      description,
-      category,
-      urgency,
-      deadline: deadline ? deadline.toISOString() : '',
-      hasDeadlineInteracted,
-      isEmergency,
-      requesterPhone,
-      files: getPersistableDraftFiles(sourceFiles),
-      savedAt: new Date().toISOString(),
-    };
-  }
+  const buildRequestDraftPayload = (sourceFiles: UploadedFile[]): RequestDraftPayload => ({
+    title,
+    description,
+    category,
+    urgency,
+    deadline: deadline ? deadline.toISOString() : '',
+    hasDeadlineInteracted,
+    isEmergency,
+    requesterPhone,
+    files: getPersistableDraftFiles(sourceFiles),
+    savedAt: new Date().toISOString(),
+  });
 
   const applySavedDraft = (draft: RequestDraftPayload) => {
     setTitle(String(draft.title || ''));
@@ -1036,7 +996,6 @@ export default function NewRequest() {
   };
 
   const handleDiscardAndExit = () => {
-    autoDraftEnabledRef.current = false;
     stopActiveUploads();
     clearSavedDraft();
     setShowCancelDraftDialog(false);
@@ -1104,6 +1063,12 @@ export default function NewRequest() {
       }
     }
   }, [locationState?.aiDraft, locationState?.aiDraftFiles]);
+
+  useEffect(() => {
+    if (!locationState?.openTaskBuddy) return;
+    setIsTaskBuddyOpen(true);
+  }, [locationState?.openTaskBuddy]);
+
   const glassPanelClass =
     'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border-0 ring-1 ring-black/5 rounded-2xl shadow-none dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:ring-white/5';
   const glassInputClass =
@@ -1748,7 +1713,6 @@ export default function NewRequest() {
     }
 
     setIsSubmitting(false);
-    autoDraftEnabledRef.current = false;
     clearSavedDraft();
     setShowThankYou(true);
   };
@@ -2047,7 +2011,7 @@ export default function NewRequest() {
               </Label>
               <Input
                 id="title"
-                placeholder="Enter project request title"
+                placeholder="e.g., Annual Report Cover Design"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className={`h-11 ${glassInputClass}`}
