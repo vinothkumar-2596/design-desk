@@ -168,6 +168,7 @@ export function AppSidebar() {
   const { theme = 'light', resolvedTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const [hasSavedDraft, setHasSavedDraft] = useState(() => hasRequestDraft(user));
+  const [activeQuickAction, setActiveQuickAction] = useState<string | null>(null);
   const [portalLinkCopied, setPortalLinkCopied] = useState(false);
   const portalCopyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDarkTheme = (resolvedTheme || theme) === 'dark';
@@ -218,6 +219,21 @@ export function AppSidebar() {
       const image = new window.Image();
       image.src = src;
     });
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleGuidelinesOpen = () => setActiveQuickAction('open-guidelines');
+    const handleGuidelinesClose = () => setActiveQuickAction((current) => (
+      current === 'open-guidelines' ? null : current
+    ));
+
+    window.addEventListener('designhub:open-guidelines', handleGuidelinesOpen as EventListener);
+    window.addEventListener('designhub:close-guidelines', handleGuidelinesClose as EventListener);
+    return () => {
+      window.removeEventListener('designhub:open-guidelines', handleGuidelinesOpen as EventListener);
+      window.removeEventListener('designhub:close-guidelines', handleGuidelinesClose as EventListener);
+    };
   }, []);
 
   if (!user) return null;
@@ -323,7 +339,14 @@ export function AppSidebar() {
     const gmailUrl = createGmailComposeUrl(draft.to, draft.subject, draft.body);
     const popup = window.open(gmailUrl, '_blank', 'noopener,noreferrer');
     if (!popup) {
-      window.location.href = gmailUrl;
+      const fallbackLink = window.document.createElement('a');
+      fallbackLink.href = gmailUrl;
+      fallbackLink.target = '_blank';
+      fallbackLink.rel = 'noopener noreferrer';
+      fallbackLink.style.display = 'none';
+      window.document.body.appendChild(fallbackLink);
+      fallbackLink.click();
+      fallbackLink.remove();
     }
   };
 
@@ -382,11 +405,19 @@ export function AppSidebar() {
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
 
+  const getQuickAccessButtonClass = (isActive = false) =>
+    cn(
+      "group flex items-center justify-center rounded-full border transition",
+      isActive
+        ? "border-primary/35 bg-primary/12 text-primary shadow-[0_12px_24px_-18px_rgba(53,80,168,0.45)] dark:border-primary/40 dark:bg-primary/20 dark:text-primary"
+        : "border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+    );
+
   return (
     <>
       <aside
         className={cn(
-          'group/sidebar z-40 flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none transition-[width] duration-200 ease-out h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
+          'group/sidebar z-[90] flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none transition-[width] duration-200 ease-out h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
           collapsed ? 'w-16' : 'w-[14.95rem]'
         )}
       >
@@ -575,6 +606,7 @@ export function AppSidebar() {
                 }
 
                 if (item.action === 'open-guidelines') {
+                  const isActive = activeQuickAction === item.action;
                   return (
                     <div key={item.label} className="relative group hover:z-20">
                       {tooltip}
@@ -582,9 +614,10 @@ export function AppSidebar() {
                         type="button"
                         aria-label={item.label}
                         onClick={() => {
+                          setActiveQuickAction(item.action);
                           window.dispatchEvent(new CustomEvent('designhub:open-guidelines'));
                         }}
-                        className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                        className={cn(getQuickAccessButtonClass(isActive), "h-[2.1rem] w-[2.1rem]")}
                       >
                         <item.icon className="h-[0.92rem] w-[0.92rem]" />
                       </button>
@@ -701,6 +734,7 @@ export function AppSidebar() {
               }
 
               if (item.action === 'open-guidelines') {
+                const isActive = activeQuickAction === item.action;
                 return (
                   <div key={`quick-collapsed-${item.label}`} className="relative group hover:z-20">
                     {tooltip}
@@ -708,9 +742,10 @@ export function AppSidebar() {
                       type="button"
                       aria-label={item.label}
                       onClick={() => {
+                        setActiveQuickAction(item.action);
                         window.dispatchEvent(new CustomEvent('designhub:open-guidelines'));
                       }}
-                      className="group mx-auto my-1 flex h-[1.85rem] w-[1.85rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground"
+                      className={cn(getQuickAccessButtonClass(isActive), "mx-auto my-1 h-[1.85rem] w-[1.85rem]")}
                     >
                       <item.icon className="h-[0.92rem] w-[0.92rem]" />
                     </button>

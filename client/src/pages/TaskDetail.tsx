@@ -443,19 +443,23 @@ export default function TaskDetail() {
     if (!taskIdForDraft || !userIdForDraft) return '';
     return `designhub.task.${taskIdForDraft}.chat-draft.${userIdForDraft}`;
   }, [id, taskState?.id, user?.id]);
+  const latestApprovalCheckpointAt = useMemo(
+    () =>
+      changeHistory.reduce((latest, entry) => {
+        if (entry.field !== 'approval_status') return latest;
+        const time = new Date(entry.createdAt ?? 0).getTime();
+        return time > latest ? time : latest;
+      }, 0),
+    [changeHistory]
+  );
   const staffChangeCount = useMemo(() => {
-    const latestApprovalCheckpointAt = changeHistory.reduce((latest, entry) => {
-      if (entry.field !== 'approval_status') return latest;
-      const time = new Date(entry.createdAt ?? 0).getTime();
-      return time > latest ? time : latest;
-    }, 0);
     return changeHistory.filter((entry) => {
       if (entry.userRole !== 'staff') return false;
       if (!STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''))) return false;
       const time = new Date(entry.createdAt ?? 0).getTime();
       return latestApprovalCheckpointAt ? time > latestApprovalCheckpointAt : true;
     }).length;
-  }, [changeHistory]);
+  }, [changeHistory, latestApprovalCheckpointAt]);
   useEffect(() => {
     return () => {
       if (copiedFileResetTimerRef.current) {
@@ -506,7 +510,31 @@ export default function TaskDetail() {
       return time > previousApprovalCheckpointAt && time <= latestPendingApprovalAt;
     });
   }, [chronologicalChangeHistory, editTaskChangeHistory, latestPendingApprovalAt]);
+  const currentStaffCycleChanges = useMemo(() => {
+    if (approvalStatus === 'pending' && treasurerApprovalCycleChanges.length > 0) {
+      return treasurerApprovalCycleChanges.filter((entry) =>
+        STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''))
+      );
+    }
+    const trackedStaffChanges = changeHistory.filter((entry) => {
+      if (String(entry.userRole || '').trim().toLowerCase() !== 'staff') return false;
+      return STAFF_EDIT_CHANGE_FIELDS.has(String(entry.field || ''));
+    });
+    if (!latestApprovalCheckpointAt) return trackedStaffChanges;
+    return trackedStaffChanges.filter((entry) => {
+      const time = new Date(entry.createdAt ?? 0).getTime();
+      return time > latestApprovalCheckpointAt;
+    });
+  }, [
+    approvalStatus,
+    treasurerApprovalCycleChanges,
+    latestApprovalCheckpointAt,
+    changeHistory,
+  ]);
   const changeHistoryForDisplay = useMemo(() => {
+    if (user?.role === 'staff' && currentStaffCycleChanges.length > 0) {
+      return currentStaffCycleChanges;
+    }
     if (
       user?.role === 'treasurer' &&
       approvalStatus === 'pending' &&
@@ -516,6 +544,7 @@ export default function TaskDetail() {
     }
     return editTaskChangeHistory;
   }, [
+    currentStaffCycleChanges,
     user?.role,
     approvalStatus,
     treasurerApprovalCycleChanges,
@@ -4643,7 +4672,7 @@ export default function TaskDetail() {
 
   return (
     <DashboardLayout hideGrid>
-      <div className="relative z-10 max-w-4xl select-none space-y-5">
+      <div className="relative z-10 mx-auto w-[96%] max-w-none select-none space-y-5">
         {/* Back Button */}
         <Button
           variant="ghost"
@@ -4656,8 +4685,8 @@ export default function TaskDetail() {
         </Button>
 
         {/* Header */}
-        <div className="animate-slide-up">
-          <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="animate-slide-up border-b border-[#D9E6FF] pb-2 pt-4 dark:border-border/70">
+          <div className="mb-6 flex flex-wrap items-center gap-2">
             <Badge variant={status.variant} className={badgeGlassClass}>
               <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
                 <ClipboardCheck className="h-3 w-3" />
@@ -4706,17 +4735,19 @@ export default function TaskDetail() {
               {categoryLabels[taskState.category]}
             </span>
           </div>
-          <h1 className="text-2xl font-bold text-foreground premium-headline">{taskState.title}</h1>
+          <h1 className="mt-3 text-[1.65rem] font-semibold leading-tight text-foreground premium-headline">
+            {taskState.title}
+          </h1>
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 pt-1 lg:grid-cols-3">
           {/* Left Column - Details */}
           <div className="space-y-5 lg:col-span-2">
             {/* Description */}
             <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-3">Description</h2>
-              <p className="text-muted-foreground whitespace-pre-wrap">
+              <p className="whitespace-pre-wrap text-[14px] leading-7 text-muted-foreground">
                 {taskState.description}
               </p>
             </div>
@@ -4758,7 +4789,7 @@ export default function TaskDetail() {
                         value={editedDescription}
                         onChange={(event) => setEditedDescription(event.target.value)}
                         rows={4}
-                        className="mt-2 select-text text-[15px] leading-7"
+                      className="mt-2 select-text text-[14px] leading-7"
                         disabled={approvalLockedForStaff}
                       />
                     </div>
@@ -4870,7 +4901,7 @@ export default function TaskDetail() {
                   </div>
                 ) : (
                   <div className="rounded-lg border border-border/60 bg-secondary/30 p-4">
-                    <p className="whitespace-pre-line text-[15px] leading-7 text-[#5B6E8E] dark:text-slate-300">
+                    <p className="whitespace-pre-line text-[14px] leading-7 text-[#5B6E8E] dark:text-slate-300">
                       {taskState.description}
                     </p>
                   </div>

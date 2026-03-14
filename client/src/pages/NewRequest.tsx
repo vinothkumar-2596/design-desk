@@ -2029,7 +2029,7 @@ export default function NewRequest() {
                 rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className={`${glassInputClass} min-h-[120px]`}
+                className={`${glassInputClass} min-h-[120px] text-[13px] font-normal leading-7`}
               />
               <p
                 className={cn(

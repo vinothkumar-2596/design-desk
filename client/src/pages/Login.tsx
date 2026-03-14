@@ -758,7 +758,7 @@ export default function Login() {
                 type="email"
                 value={resetEmail}
                 onChange={(e) => setResetEmail(e.target.value)}
-                placeholder="you@gmail.com"
+                placeholder="you@smvec.ac.in"
                 className={glassInputClass}
               />
             </div>
@@ -839,7 +839,7 @@ export default function Login() {
                 type="email"
                 value={signupEmail}
                 onChange={(e) => setSignupEmail(e.target.value)}
-                placeholder="you@gmail.com"
+                placeholder="you@smvec.ac.in"
                 className={glassInputClass}
               />
             </div>

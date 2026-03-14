@@ -1111,14 +1111,26 @@ export function DashboardLayout({
     userId,
   ]);
   const keepHeaderPinned = globalTypingSummary.total > 0 || localSelfTyping;
+  const closeGuidelines = useCallback(() => {
+    setIsGuidelinesOpen(false);
+    window.dispatchEvent(new CustomEvent('designhub:close-guidelines'));
+  }, []);
 
   useEffect(() => {
     const onOpenGuidelines = () => {
       setIsGuidelinesOpen(true);
+      window.dispatchEvent(new CustomEvent('designhub:guidelines-state', { detail: { open: true } }));
+    };
+    const onCloseGuidelines = () => {
+      setIsGuidelinesOpen(false);
     };
     window.addEventListener('designhub:open-guidelines', onOpenGuidelines as EventListener);
+    window.addEventListener('designhub:close-guidelines', onCloseGuidelines as EventListener);
     return () =>
-      window.removeEventListener('designhub:open-guidelines', onOpenGuidelines as EventListener);
+      {
+        window.removeEventListener('designhub:open-guidelines', onOpenGuidelines as EventListener);
+        window.removeEventListener('designhub:close-guidelines', onCloseGuidelines as EventListener);
+      };
   }, []);
 
   const notificationAction = canShowNotifications ? (
@@ -1238,41 +1250,43 @@ export function DashboardLayout({
   }
 
   return (
-    <DashboardShell
-      userInitial={user?.name?.charAt(0) || 'U'}
-      background={background}
-      contentScrollRef={contentScrollRef}
-      keepHeaderPinned={keepHeaderPinned}
-      hideGrid={hideGrid}
-      onContentScroll={() => {
-        if (previewTimeoutRef.current) {
-          clearTimeout(previewTimeoutRef.current);
-          previewTimeoutRef.current = null;
+    <>
+      <DashboardShell
+        userInitial={user?.name?.charAt(0) || 'U'}
+        background={background}
+        contentScrollRef={contentScrollRef}
+        keepHeaderPinned={keepHeaderPinned}
+        hideGrid={hideGrid}
+        onContentScroll={() => {
+          if (previewTimeoutRef.current) {
+            clearTimeout(previewTimeoutRef.current);
+            previewTimeoutRef.current = null;
+          }
+          setNotificationsOpen(false);
+        }}
+        headerActions={
+          <>
+            {location.pathname !== '/new-request' && (
+              <GeminiBlink
+                onClick={() => navigate('/new-request', { state: { openTaskBuddy: true } })}
+                className="mr-2"
+              />
+            )}
+            <ThemeToggle className="mr-2" />
+            {headerPresenceAction}
+            {notificationAction}
+            {headerActions}
+          </>
         }
-        setNotificationsOpen(false);
-      }}
-      headerActions={
-        <>
-          {location.pathname !== '/new-request' && (
-            <GeminiBlink
-              onClick={() => navigate('/new-request', { state: { openTaskBuddy: true } })}
-              className="mr-2"
-            />
-          )}
-          <ThemeToggle className="mr-2" />
-          {headerPresenceAction}
-          {notificationAction}
-          {headerActions}
-        </>
-      }
-    >
-      {children}
+      >
+        {children}
+      </DashboardShell>
       {isGuidelinesOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
           <button
             type="button"
             aria-label="Close guidelines"
-            onClick={() => setIsGuidelinesOpen(false)}
+            onClick={closeGuidelines}
             className="absolute inset-0 bg-slate-900/25 backdrop-blur-sm"
           />
           <div className="relative w-full max-w-3xl rounded-[28px] border border-[#D9E6FF] bg-white dark:bg-card dark:border-border shadow-[0_22px_48px_-28px_rgba(15,23,42,0.25)]">
@@ -1290,7 +1304,7 @@ export function DashboardLayout({
                 <button
                   type="button"
                   className="text-[#6B7A99] hover:text-[#1E2A5A] rounded-full p-2 bg-[#EEF4FF] hover:bg-[#E5ECFF] dark:text-muted-foreground dark:bg-slate-800 dark:hover:bg-slate-700"
-                  onClick={() => setIsGuidelinesOpen(false)}
+                  onClick={closeGuidelines}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -1355,7 +1369,7 @@ export function DashboardLayout({
           </div>
         </div>
       )}
-    </DashboardShell>
+    </>
   );
 }
 
