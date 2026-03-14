@@ -1,0 +1,25 @@
+2026/01/22-14:51:52.041 25a8 Reusing MANIFEST D:\projects\designhub-main\backend\whatsapp\whatsapp_session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/01/22-14:51:52.041 25a8 Recovering log #1770
+2026/01/22-14:51:52.086 25a8 Reusing old log D:\projects\designhub-main\backend\whatsapp\whatsapp_session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/001770.log 
+2026/01/22-14:51:53.310 67c Level-0 table #1779: started
+2026/01/22-14:51:53.323 67c Level-0 table #1779: 1016965 bytes OK
+2026/01/22-14:51:53.325 67c Delete type=0 #1770
+2026/01/22-14:51:53.325 67c Manual compaction at level-0 from ' \x16\x02\x00\x00\x00' @ 72057594037927935 : 1 .. ' \x17\x02\x00\x00\x00' @ 0 : 0; will stop at ' \x16\x02\x00\x00\x05' @ 4045621 : 1
+2026/01/22-14:51:53.326 67c Compacting 1@0 + 3@1 files
+2026/01/22-14:51:53.365 67c Generated table #1780@0: 63229 keys, 2230903 bytes
+2026/01/22-14:51:53.391 67c Generated table #1781@0: 17925 keys, 2178572 bytes
+2026/01/22-14:51:53.409 67c Generated table #1782@0: 43498 keys, 1005177 bytes
+2026/01/22-14:51:53.409 67c Compacted 1@0 + 3@1 files => 5414652 bytes
+2026/01/22-14:51:53.411 67c compacted to: files[ 0 3 1 0 0 0 0 ]
+2026/01/22-14:51:53.411 67c Delete type=2 #1779
+2026/01/22-14:51:53.411 67c Manual compaction at level-0 from ' \x16\x02\x00\x00\x05' @ 4045621 : 1 .. ' \x17\x02\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/01/22-14:51:54.347 25a8 Compacting 1@1 + 1@2 files
+2026/01/22-14:51:54.383 25a8 Generated table #1783@1: 54309 keys, 2214841 bytes
+2026/01/22-14:51:54.392 25a8 Generated table #1784@1: 9686 keys, 511243 bytes
+2026/01/22-14:51:54.392 25a8 Compacted 1@1 + 1@2 files => 2726084 bytes
+2026/01/22-14:51:54.394 25a8 compacted to: files[ 0 2 2 0 0 0 0 ]
+2026/01/22-14:51:54.394 25a8 Delete type=2 #1773
+2026/01/22-14:51:54.394 25a8 Delete type=2 #1774
+2026/01/22-14:51:54.394 25a8 Delete type=2 #1775
+2026/01/22-14:51:54.394 25a8 Delete type=2 #1776
+2026/01/22-14:51:54.394 25a8 Delete type=2 #1780

@@ -1,0 +1,42 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_AR_HOSTNAME}/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_AR_HOSTNAME}/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --image
+      - ${_AR_HOSTNAME}/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --port
+      - "8080"
+      - --set-env-vars
+      - NODE_ENV=production
+
+images:
+  - ${_AR_HOSTNAME}/${PROJECT_ID}/${_REPOSITORY}/${_SERVICE_NAME}:${BUILD_ID}
+
+substitutions:
+  _AR_HOSTNAME: asia-south1-docker.pkg.dev
+  _REGION: asia-south1
+  _REPOSITORY: design-desk
+  _SERVICE_NAME: design-desk-backend
+
+options:
+  logging: CLOUD_LOGGING_ONLY

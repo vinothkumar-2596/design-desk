@@ -1,0 +1,11 @@
+# Dependencies
+node_modules/
+
+# Environment
+
+cloudrun.env
+cloudrun.env.local
+
+# Credentials
+credentials/
+server/credentials/
