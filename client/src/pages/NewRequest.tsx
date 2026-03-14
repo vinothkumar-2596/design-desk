@@ -535,6 +535,7 @@ export default function NewRequest() {
   const [thankYouAnimation, setThankYouAnimation] = useState<object | null>(null);
   const [uploadAnimation, setUploadAnimation] = useState<object | null>(null);
   const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
+  const [isDraftMenuOpen, setIsDraftMenuOpen] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [attachmentPreviewFile, setAttachmentPreviewFile] = useState<UploadedFile | null>(null);
   const [attachmentPreviewResolvedUrl, setAttachmentPreviewResolvedUrl] = useState('');
@@ -2534,14 +2535,25 @@ export default function NewRequest() {
 
           {/* Submit Button */}
           <div className="flex items-center justify-end gap-3">
-            <DropdownMenu>
+            <DropdownMenu open={isDraftMenuOpen} onOpenChange={setIsDraftMenuOpen}>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" disabled={isSubmitting}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSubmitting}
+                  onMouseEnter={() => setIsDraftMenuOpen(true)}
+                  onMouseLeave={() => setIsDraftMenuOpen(false)}
+                >
                   Save Draft
                   <ChevronDown className="ml-2 h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[180px]">
+              <DropdownMenuContent
+                align="end"
+                className="min-w-[180px]"
+                onMouseEnter={() => setIsDraftMenuOpen(true)}
+                onMouseLeave={() => setIsDraftMenuOpen(false)}
+              >
                 <DropdownMenuItem onSelect={() => handleSaveDraft()}>
                   Save Draft
                 </DropdownMenuItem>

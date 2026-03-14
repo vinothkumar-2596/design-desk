@@ -123,6 +123,32 @@ const FinalDeliverableReviewAnnotationSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const AttachmentVersionFileSchema = new mongoose.Schema(
+  {
+    name: { type: String, default: "" },
+    url: { type: String, default: "" },
+    driveId: { type: String, default: "" },
+    webViewLink: { type: String, default: "" },
+    webContentLink: { type: String, default: "" },
+    size: { type: Number },
+    mime: { type: String, default: "" },
+    thumbnailUrl: { type: String, default: "" },
+    uploadedAt: { type: Date, default: Date.now },
+    uploadedBy: { type: String, default: "" }
+  },
+  { _id: true }
+);
+
+const AttachmentVersionSchema = new mongoose.Schema(
+  {
+    version: { type: Number, required: true },
+    uploadedAt: { type: Date, default: Date.now },
+    uploadedBy: { type: String, default: "" },
+    files: { type: [AttachmentVersionFileSchema], default: [] },
+  },
+  { _id: true }
+);
+
 const FinalDeliverableVersionSchema = new mongoose.Schema(
   {
     version: { type: Number, required: true },
@@ -211,6 +237,7 @@ const TaskSchema = new mongoose.Schema(
     files: { type: [TaskFileSchema], default: [] },
     designVersions: { type: [DesignVersionSchema], default: [] },
     activeDesignVersionId: { type: String, default: "" },
+    attachmentVersions: { type: [AttachmentVersionSchema], default: [] },
     finalDeliverableVersions: { type: [FinalDeliverableVersionSchema], default: [] },
     finalDeliverableReviewStatus: {
       type: String,

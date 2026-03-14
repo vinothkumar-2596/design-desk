@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import http from 'http';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -35,6 +36,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(compression());
 app.use(cors({
   origin: [
     process.env.FRONTEND_URL,
