@@ -289,6 +289,20 @@ const normalizeFinalDeliverableReviewStatus = (
   return fallback;
 };
 const STAFF_EDIT_CHANGE_FIELDS = new Set(['description']);
+const normalizeTaskChangeEntry = (entry: Partial<TaskChange> & { _id?: string }, index: number): TaskChange => ({
+  id:
+    String(entry.id || entry._id || '').trim() ||
+    `change-${index}-${new Date(entry.createdAt ?? Date.now()).getTime()}`,
+  type: (entry.type as TaskChange['type']) || 'update',
+  field: String(entry.field || '').trim(),
+  oldValue: entry.oldValue ?? '',
+  newValue: entry.newValue ?? '',
+  note: entry.note ?? '',
+  userId: String(entry.userId || '').trim(),
+  userName: String(entry.userName || '').trim() || 'Unknown',
+  userRole: normalizeUserRole(entry.userRole),
+  createdAt: entry.createdAt ? new Date(entry.createdAt) : new Date(),
+});
 const isEditTaskHistoryChange = (entry?: Partial<TaskChange>) => {
   if (!entry) return false;
   if (String(entry.userRole || '').trim().toLowerCase() !== 'staff') return false;
@@ -363,7 +377,9 @@ export default function TaskDetail() {
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus | undefined>(
     initialApprovalStatus
   );
-  const [changeHistory, setChangeHistory] = useState<TaskChange[]>(initialTask?.changeHistory ?? []);
+  const [changeHistory, setChangeHistory] = useState<TaskChange[]>(
+    () => (initialTask?.changeHistory ?? []).map((entry, index) => normalizeTaskChangeEntry(entry, index))
+  );
   const [editedDescription, setEditedDescription] = useState(initialTask?.description ?? '');
   const [staffNote, setStaffNote] = useState('');
   const [editedDeadline, setEditedDeadline] = useState(
@@ -434,8 +450,11 @@ export default function TaskDetail() {
   const clientIdRef = useRef<string>('');
   const finalUploadAbortRef = useRef<AbortController | null>(null);
   const workingUploadDismissTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const changeHistoryListRef = useRef<HTMLDivElement | null>(null);
   const [compareLeftId, setCompareLeftId] = useState('');
   const [compareRightId, setCompareRightId] = useState('');
+  const [focusedChangeId, setFocusedChangeId] = useState(highlightChangeId || '');
+  const [designerHistoryJumpId, setDesignerHistoryJumpId] = useState('');
   const storageKey = id ? `designhub.task.${id}` : '';
   const commentDraftKey = useMemo(() => {
     const taskIdForDraft = String(id || taskState?.id || '').trim();
@@ -532,7 +551,7 @@ export default function TaskDetail() {
     changeHistory,
   ]);
   const changeHistoryForDisplay = useMemo(() => {
-    if (user?.role === 'staff' && currentStaffCycleChanges.length > 0) {
+    if (currentStaffCycleChanges.length > 0) {
       return currentStaffCycleChanges;
     }
     if (
@@ -550,6 +569,20 @@ export default function TaskDetail() {
     treasurerApprovalCycleChanges,
     editTaskChangeHistory,
   ]);
+  const changeHistorySelectOptions = useMemo(
+    () =>
+      changeHistoryForDisplay.map((entry, index) => ({
+        id: entry.id,
+        shortLabel: `V${index + 1} - ${format(new Date(entry.createdAt), 'MMM d, h:mm a')}`,
+        longLabel: `Update V${index + 1}`,
+        timeLabel: format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a'),
+      })),
+    [changeHistoryForDisplay]
+  );
+  const selectedHistoryOption = useMemo(
+    () => changeHistorySelectOptions.find((option) => option.id === designerHistoryJumpId) ?? null,
+    [changeHistorySelectOptions, designerHistoryJumpId]
+  );
   const isTreasurerReviewMode = user?.role === 'treasurer' && approvalStatus === 'pending';
   const designVersions = taskState?.designVersions ?? [];
   const activeDesignVersionId =
@@ -584,12 +617,54 @@ export default function TaskDetail() {
   }, []);
 
   useEffect(() => {
-    if (!highlightChangeId || typeof document === 'undefined') return;
-    const target = document.getElementById(`change-${highlightChangeId}`);
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (highlightChangeId) {
+      setFocusedChangeId(highlightChangeId);
     }
-  }, [highlightChangeId, changeHistory.length]);
+  }, [highlightChangeId]);
+
+  useEffect(() => {
+    if (!focusedChangeId || typeof document === 'undefined') return;
+    let frameId = 0;
+    let timeoutId: ReturnType<typeof window.setTimeout> | null = null;
+    const scrollToFocusedCard = () => {
+      const target = document.getElementById(`change-${focusedChangeId}`);
+      if (!target) return;
+      const container = changeHistoryListRef.current;
+      if (!container) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const currentScrollTop = container.scrollTop;
+      const nextScrollTop =
+        currentScrollTop +
+        (targetRect.top - containerRect.top) -
+        container.clientHeight / 2 +
+        target.clientHeight / 2;
+      container.scrollTo({
+        top: Math.max(0, nextScrollTop),
+        behavior: 'smooth',
+      });
+    };
+    frameId = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(scrollToFocusedCard, 60);
+    });
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [focusedChangeId, changeHistoryForDisplay.length]);
+
+  useEffect(() => {
+    if (!designerHistoryJumpId) return;
+    const exists = changeHistoryForDisplay.some((entry) => entry.id === designerHistoryJumpId);
+    if (!exists) {
+      setDesignerHistoryJumpId('');
+    }
+  }, [designerHistoryJumpId, changeHistoryForDisplay]);
 
   useEffect(() => {
     if (designVersions.length < 2) return;
@@ -766,10 +841,7 @@ export default function TaskDetail() {
           }) ?? []
         );
       })(),
-      changeHistory: raw.changeHistory?.map((entry) => ({
-        ...entry,
-        createdAt: new Date(entry.createdAt),
-      })),
+      changeHistory: raw.changeHistory?.map((entry, index) => normalizeTaskChangeEntry(entry, index)),
     };
   };
 
@@ -4565,8 +4637,43 @@ export default function TaskDetail() {
           <History className="h-4 w-4 text-muted-foreground" />
         </div>
       </div>
+      {user?.role === 'designer' && changeHistorySelectOptions.length > 0 && (
+        <div className="mb-4">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Jump to update version
+          </p>
+          <Select
+            value={designerHistoryJumpId || undefined}
+            onValueChange={(value) => {
+              setDesignerHistoryJumpId(value);
+              setFocusedChangeId(value);
+            }}
+          >
+            <SelectTrigger className="h-10 w-full rounded-xl border-[#D9E6FF] bg-white/85 text-left text-sm text-foreground shadow-none dark:border-border dark:bg-card/90">
+              <span className="block truncate font-medium">
+                {selectedHistoryOption?.shortLabel || 'Select update version'}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {changeHistorySelectOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  <div className="flex min-w-0 flex-col">
+                    <span className="truncate">{option.longLabel}</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {option.timeLabel}
+                    </span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       {changeHistoryForDisplay.length > 0 ? (
-        <div className="max-h-[460px] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin">
+        <div
+          ref={changeHistoryListRef}
+          className="max-h-[460px] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin"
+        >
           {changeHistoryForDisplay.map((entry, index) => {
             const oldValueText = String(entry.oldValue || '').trim();
             const newValueText = String(entry.newValue || '').trim();
@@ -4591,7 +4698,8 @@ export default function TaskDetail() {
                   className={cn(
                     changeHistoryCardClass,
                     'rounded-xl border border-[#BFD1F4]/70 bg-gradient-to-br from-white/88 via-[#F4F8FF]/78 to-[#E8F1FF]/70 supports-[backdrop-filter]:bg-[#F4F8FF]/60 backdrop-blur-xl p-3 transition-colors dark:border-border/70 dark:bg-slate-900/55 dark:backdrop-blur-none',
-                    entry.id === highlightChangeId && 'border-primary/40 bg-primary/10'
+                    entry.id === focusedChangeId &&
+                      'border-primary/50 bg-primary/10 ring-2 ring-primary/15'
                   )}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
