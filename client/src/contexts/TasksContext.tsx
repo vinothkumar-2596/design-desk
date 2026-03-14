@@ -30,6 +30,10 @@ const hydrateTask = (task: any): Task => ({
   comments: task.comments?.map((comment: any) => ({
     ...comment,
     createdAt: new Date(comment.createdAt),
+    attachments: comment.attachments?.map((file: any) => ({
+      ...file,
+      uploadedAt: new Date(file.uploadedAt),
+    })) ?? [],
   })) ?? [],
   changeHistory: task.changeHistory?.map((entry: any) => ({
     ...entry,

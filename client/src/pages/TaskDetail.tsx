@@ -37,6 +37,7 @@ import {
   FileText,
   Edit3,
   Upload,
+  Paperclip,
   Loader2,
   CheckCircle2,
   Trash2,
@@ -64,6 +65,7 @@ import {
   FinalDeliverableVersion,
   TaskChange,
   TaskComment,
+  TaskFile,
   TaskStatus,
   UserRole,
 } from '@/types';
@@ -220,6 +222,13 @@ type FileUploadResponse = {
   thumbnailLink?: string;
   error?: string;
 };
+type ComposerTarget = 'comment' | 'reply';
+type MentionContext = {
+  target: ComposerTarget;
+  start: number;
+  end: number;
+  query: string;
+};
 type PendingFinalFile = {
   name: string;
   url: string;
@@ -244,7 +253,7 @@ type OutputDisplayFile = {
   webContentLink?: string;
   driveId?: string;
 };
-type FileActionTarget = (typeof mockTasks)[number]['files'][number] | OutputDisplayFile;
+type FileActionTarget = (typeof mockTasks)[number]['files'][number] | OutputDisplayFile | TaskFile;
 type FileLinkLike = {
   url?: string;
   webViewLink?: string;
@@ -324,11 +333,11 @@ const fileListShellClass =
 const fileListScrollClass =
   'max-h-[30rem] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin';
 const fileActionButtonClass =
-  'icon-action-press h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-border dark:disabled:bg-muted dark:disabled:text-muted-foreground/65';
+  'icon-action-press inline-flex shrink-0 items-center justify-center h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-border dark:disabled:bg-muted dark:disabled:text-muted-foreground/65';
 const fileGlassPillButtonClass =
   'h-8 rounded-lg border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-2.5 text-[#223467] shadow-none transition-all duration-150 ease-out supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#D3E1FF] hover:bg-[#EEF4FF]/62 hover:text-[#223467] hover:shadow-none active:translate-y-[1px] active:scale-[0.98] dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/70 dark:hover:text-slate-100';
 const fileGlassIconButtonClass =
-  'h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 active:translate-y-[1px] active:scale-[0.94] disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-border dark:disabled:bg-muted dark:disabled:text-muted-foreground/65';
+  'inline-flex shrink-0 items-center justify-center h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 active:translate-y-[1px] active:scale-[0.94] disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-border dark:disabled:bg-muted dark:disabled:text-muted-foreground/65';
 const badgeGlassClass =
   'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
 const changeHistoryCardClass = 'rounded-lg border border-border/60 bg-secondary/40';
@@ -365,6 +374,15 @@ export default function TaskDetail() {
   const [newComment, setNewComment] = useState('');
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [isChatComposerFocused, setIsChatComposerFocused] = useState(false);
+  const [commentAttachments, setCommentAttachments] = useState<TaskFile[]>([]);
+  const [replyAttachments, setReplyAttachments] = useState<TaskFile[]>([]);
+  const [isUploadingCommentAttachments, setIsUploadingCommentAttachments] = useState(false);
+  const [commentAttachmentUploadProgress, setCommentAttachmentUploadProgress] = useState<number | null>(
+    null
+  );
+  const [mentionContext, setMentionContext] = useState<MentionContext | null>(null);
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [typingUsers, setTypingUsers] = useState<Record<string, { name: string; role: UserRole }>>(
     {}
   );
@@ -439,21 +457,28 @@ export default function TaskDetail() {
   >({});
   const sizeFetchRef = useRef(new Set<string>());
   const addAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const commentAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const replyAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const workingUploadInputRef = useRef<HTMLInputElement | null>(null);
   const finalUploadInputRef = useRef<HTMLInputElement | null>(null);
   const replaceFinalFileInputRef = useRef<HTMLInputElement | null>(null);
+  const commentComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const replyComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const copiedFileResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mentionBlurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isChatComposerFocusedRef = useRef(false);
   const clientIdRef = useRef<string>('');
   const finalUploadAbortRef = useRef<AbortController | null>(null);
   const workingUploadDismissTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const changeHistoryListRef = useRef<HTMLDivElement | null>(null);
+  const changeHistoryPanelRef = useRef<HTMLDivElement | null>(null);
   const [compareLeftId, setCompareLeftId] = useState('');
   const [compareRightId, setCompareRightId] = useState('');
   const [focusedChangeId, setFocusedChangeId] = useState(highlightChangeId || '');
+  const [highlightedChangeId, setHighlightedChangeId] = useState(highlightChangeId || '');
   const [designerHistoryJumpId, setDesignerHistoryJumpId] = useState('');
   const storageKey = id ? `designhub.task.${id}` : '';
   const commentDraftKey = useMemo(() => {
@@ -483,6 +508,9 @@ export default function TaskDetail() {
     return () => {
       if (copiedFileResetTimerRef.current) {
         clearTimeout(copiedFileResetTimerRef.current);
+      }
+      if (mentionBlurTimeoutRef.current) {
+        clearTimeout(mentionBlurTimeoutRef.current);
       }
       workingUploadDismissTimersRef.current.forEach((timer) => clearTimeout(timer));
       workingUploadDismissTimersRef.current.clear();
@@ -619,6 +647,7 @@ export default function TaskDetail() {
   useEffect(() => {
     if (highlightChangeId) {
       setFocusedChangeId(highlightChangeId);
+      setHighlightedChangeId(highlightChangeId);
     }
   }, [highlightChangeId]);
 
@@ -637,11 +666,11 @@ export default function TaskDetail() {
       const containerRect = container.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
       const currentScrollTop = container.scrollTop;
+      const topOffset = 12;
       const nextScrollTop =
         currentScrollTop +
         (targetRect.top - containerRect.top) -
-        container.clientHeight / 2 +
-        target.clientHeight / 2;
+        topOffset;
       container.scrollTo({
         top: Math.max(0, nextScrollTop),
         behavior: 'smooth',
@@ -657,6 +686,32 @@ export default function TaskDetail() {
       }
     };
   }, [focusedChangeId, changeHistoryForDisplay.length]);
+
+  useEffect(() => {
+    if (!focusedChangeId) return;
+    setHighlightedChangeId(focusedChangeId);
+    const timeoutId = window.setTimeout(() => {
+      setHighlightedChangeId((current) => (current === focusedChangeId ? '' : current));
+    }, 10000);
+    return () => window.clearTimeout(timeoutId);
+  }, [focusedChangeId]);
+
+  useEffect(() => {
+    if (!highlightedChangeId || typeof document === 'undefined') return;
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const panel = changeHistoryPanelRef.current;
+      if (!panel) return;
+      const target = event.target;
+      if (target instanceof Node && panel.contains(target)) return;
+      setHighlightedChangeId('');
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [highlightedChangeId]);
 
   useEffect(() => {
     if (!designerHistoryJumpId) return;
@@ -712,6 +767,14 @@ export default function TaskDetail() {
         userRole: normalizeUserRole(comment.userRole),
         receiverRoles:
           comment.receiverRoles?.filter((role) => allRoles.includes(role)) ?? [],
+        attachments:
+          comment.attachments?.map((attachment, attachmentIndex) => ({
+            ...attachment,
+            id:
+              attachment.id ||
+              `comment-attachment-${index}-${attachmentIndex}-${attachment.name || 'file'}`,
+            uploadedAt: attachment.uploadedAt ? new Date(attachment.uploadedAt) : new Date(),
+          })) ?? [],
         seenBy: comment.seenBy?.map((entry) => ({
           ...entry,
           role: normalizeUserRole(entry.role),
@@ -891,6 +954,15 @@ export default function TaskDetail() {
     userRole: normalizeUserRole(comment?.userRole),
     receiverRoles:
       comment?.receiverRoles?.filter((role: string) => allRoles.includes(role as UserRole)) ?? [],
+    attachments:
+      comment?.attachments?.map((attachment: any, index: number) => ({
+        ...attachment,
+        id:
+          attachment?.id ||
+          attachment?._id ||
+          `comment-attachment-${index}-${attachment?.name || 'file'}`,
+        uploadedAt: new Date(attachment?.uploadedAt ?? Date.now()),
+      })) ?? [],
     seenBy:
       comment?.seenBy?.map((entry: any) => ({
         ...entry,
@@ -947,10 +1019,12 @@ export default function TaskDetail() {
 
   const handleChatComposerFocus = () => {
     isChatComposerFocusedRef.current = true;
+    setIsChatComposerFocused(true);
   };
 
   const handleChatComposerBlur = () => {
     isChatComposerFocusedRef.current = false;
+    setIsChatComposerFocused(false);
     clearTyping();
   };
 
@@ -1241,6 +1315,121 @@ export default function TaskDetail() {
       .join(', ');
   };
 
+  const chatComposerHintLines = useMemo(() => {
+    const mentionTargets = getMentionList(user?.role);
+    const primaryTarget = mentionTargets[0];
+    const secondaryTarget = mentionTargets[1];
+    return [
+      primaryTarget ? `@${primaryTarget} for review` : 'your team for review',
+      secondaryTarget ? `@${secondaryTarget} for approval` : 'stakeholders for approval',
+      'paste screenshots directly here',
+    ];
+  }, [user?.role]);
+
+  const normalizeCommentAttachment = (attachment: any, index: number): TaskFile => ({
+    ...attachment,
+    id:
+      attachment?.id ||
+      attachment?._id ||
+      `comment-attachment-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`,
+    name:
+      String(attachment?.name || `Attachment ${index + 1}`).trim() || `Attachment ${index + 1}`,
+    url: String(attachment?.url || attachment?.webViewLink || attachment?.webContentLink || '').trim(),
+    driveId: String(attachment?.driveId || '').trim(),
+    webViewLink: String(attachment?.webViewLink || '').trim(),
+    webContentLink: String(attachment?.webContentLink || '').trim(),
+    type: 'input',
+    uploadedAt: new Date(attachment?.uploadedAt ?? Date.now()),
+    uploadedBy: String(attachment?.uploadedBy || user?.id || user?.name || '').trim(),
+    size:
+      typeof attachment?.size === 'number'
+        ? attachment.size
+        : Number.isFinite(Number(attachment?.size))
+          ? Number(attachment.size)
+          : undefined,
+    mime: String(attachment?.mime || '').trim(),
+    thumbnailUrl: String(attachment?.thumbnailUrl || attachment?.thumbnailLink || '').trim(),
+  });
+
+  const mentionSuggestions = useMemo(() => {
+    if (!mentionContext) return [];
+    const normalizedQuery = mentionContext.query.trim().toLowerCase();
+    return getMentionList(user?.role).filter((item) =>
+      normalizedQuery ? item.toLowerCase().startsWith(normalizedQuery) : true
+    );
+  }, [mentionContext, user?.role]);
+
+  useEffect(() => {
+    setActiveMentionIndex((current) => {
+      if (mentionSuggestions.length === 0) return 0;
+      return Math.min(current, mentionSuggestions.length - 1);
+    });
+  }, [mentionSuggestions]);
+
+  const clearMentionContext = (target?: ComposerTarget) => {
+    setMentionContext((current) => {
+      if (!current) return null;
+      if (target && current.target !== target) return current;
+      return null;
+    });
+    setActiveMentionIndex(0);
+  };
+
+  const syncMentionContext = (
+    value: string,
+    target: ComposerTarget,
+    selectionStart?: number | null
+  ) => {
+    const caret = typeof selectionStart === 'number' ? selectionStart : value.length;
+    const uptoCaret = value.slice(0, caret);
+    const match = uptoCaret.match(/(^|\s)@([a-z]*)$/i);
+    if (!match) {
+      clearMentionContext(target);
+      return;
+    }
+    const atIndex = uptoCaret.lastIndexOf('@');
+    if (atIndex < 0) {
+      clearMentionContext(target);
+      return;
+    }
+    setMentionContext({
+      target,
+      start: atIndex,
+      end: caret,
+      query: match[2] || '',
+    });
+  };
+
+  const applyMentionSuggestion = (label: string) => {
+    if (!mentionContext) return;
+    const currentValue = mentionContext.target === 'reply' ? replyText : newComment;
+    const nextValue = `${currentValue.slice(0, mentionContext.start)}@${label} ${currentValue.slice(
+      mentionContext.end
+    )}`;
+    const nextCaret = mentionContext.start + label.length + 2;
+    const targetRef = mentionContext.target === 'reply' ? replyComposerRef : commentComposerRef;
+    if (mentionContext.target === 'reply') {
+      setReplyText(nextValue);
+    } else {
+      setNewComment(nextValue);
+    }
+    clearMentionContext(mentionContext.target);
+    window.requestAnimationFrame(() => {
+      targetRef.current?.focus();
+      targetRef.current?.setSelectionRange(nextCaret, nextCaret);
+    });
+  };
+
+  const scheduleMentionContextClose = (target: ComposerTarget) => {
+    if (mentionBlurTimeoutRef.current) {
+      clearTimeout(mentionBlurTimeoutRef.current);
+    }
+    mentionBlurTimeoutRef.current = setTimeout(() => {
+      clearMentionContext(target);
+      mentionBlurTimeoutRef.current = null;
+    }, 120);
+  };
+
   const extractMentions = (content: string) => {
     const matches = content.match(/@(?:Designer|Treasurer|Staff)/gi) ?? [];
     const roles = matches
@@ -1270,6 +1459,148 @@ export default function TaskDetail() {
       }
       return <span key={`${part}-${index}`}>{part}</span>;
     });
+  };
+
+  const renderMentionSuggestions = (target: ComposerTarget) => {
+    if (mentionContext?.target !== target || mentionSuggestions.length === 0) return null;
+    return (
+      <div className="absolute bottom-full left-0 right-0 z-40 mb-2 max-h-56 overflow-y-auto overflow-x-hidden rounded-xl border border-[#D9E6FF] bg-white/95 shadow-lg backdrop-blur-xl dark:border-border dark:bg-card/95">
+        {mentionSuggestions.map((item, index) => {
+          const isActive = index === activeMentionIndex;
+          const mentionRole = mentionRoleMap[item.toLowerCase()];
+          return (
+            <button
+              key={`${target}-${item}`}
+              type="button"
+              className={cn(
+                'flex w-full flex-col items-start px-3 py-2 text-left transition-colors',
+                isActive
+                  ? 'bg-primary/10 text-primary'
+                  : 'hover:bg-secondary/60 text-foreground'
+              )}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                applyMentionSuggestion(item);
+              }}
+            >
+              <span className="text-sm font-medium">@{item}</span>
+              <span className="text-[11px] text-muted-foreground">
+                Notify {mentionRole ? roleLabels[mentionRole] ?? item : item}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderComposerAttachments = (attachments: TaskFile[], target: ComposerTarget) => {
+    if (attachments.length === 0) return null;
+    return (
+      <div className="flex flex-wrap gap-2">
+        {attachments.map((attachment) => {
+          const previewUrl = getPreviewUrl(attachment);
+          const sizeLabel = formatFileSize(attachment.size) || 'Attachment';
+          return (
+            <div
+              key={attachment.id}
+              className="flex min-w-[12rem] max-w-full items-center gap-3 rounded-xl border border-[#D9E6FF] bg-white/80 px-3 py-2 backdrop-blur-md dark:border-border dark:bg-card/85"
+            >
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] dark:border-border dark:bg-muted"
+                onClick={() => {
+                  if (canPreviewFile(attachment)) {
+                    openFilePreviewDialog(attachment);
+                    return;
+                  }
+                  void handleFileAction(attachment);
+                }}
+              >
+                {previewUrl ? (
+                  <img src={previewUrl} alt={attachment.name} className="h-full w-full object-cover" />
+                ) : (
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                <p className="text-[11px] text-muted-foreground">{sizeLabel}</p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full"
+                onClick={() => removeComposerAttachment(target, attachment.id)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderCommentAttachments = (attachments?: TaskFile[]) => {
+    if (!attachments || attachments.length === 0) return null;
+    return (
+      <div className="mt-3 space-y-2">
+        {attachments.map((attachment) => {
+          const previewUrl = getPreviewUrl(attachment);
+          const sizeLabel = formatFileSize(attachment.size) || 'Attachment';
+          return (
+            <div
+              key={attachment.id}
+              className="flex items-center gap-3 rounded-xl border border-[#D9E6FF] bg-white/70 px-3 py-2 backdrop-blur-md dark:border-border dark:bg-card/75"
+            >
+              <button
+                type="button"
+                className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] dark:border-border dark:bg-muted"
+                onClick={() => {
+                  if (canPreviewFile(attachment)) {
+                    openFilePreviewDialog(attachment);
+                    return;
+                  }
+                  void handleFileAction(attachment);
+                }}
+              >
+                {previewUrl ? (
+                  <img src={previewUrl} alt={attachment.name} className="h-full w-full object-cover" />
+                ) : (
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
+                <p className="text-[11px] text-muted-foreground">{sizeLabel}</p>
+              </div>
+              <div className="flex items-center gap-1">
+                {canPreviewFile(attachment) && (
+                  <button
+                    type="button"
+                    className={fileGlassIconButtonClass}
+                    onClick={() => openFilePreviewDialog(attachment)}
+                    aria-label={`Preview ${attachment.name}`}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={fileGlassIconButtonClass}
+                  onClick={() => void handleFileAction(attachment)}
+                  aria-label={`Open ${attachment.name}`}
+                >
+                  <Download className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
 
@@ -2625,14 +2956,16 @@ export default function TaskDetail() {
   const submitComment = async (
     content: string,
     parentId?: string,
-    onSuccess?: () => void
+    onSuccess?: () => void,
+    attachments: TaskFile[] = []
   ) => {
-    if (!content.trim() || !taskState) return;
+    if (!taskState) return;
     if (!canComment) {
       toast.error('Comments are disabled for this task.');
       return;
     }
     const trimmed = content.trim();
+    if (!trimmed && attachments.length === 0) return;
     const mentions = extractMentions(trimmed);
     const receiverRoles = buildReceiverRoles(trimmed);
 
@@ -2649,6 +2982,7 @@ export default function TaskDetail() {
             receiverRoles,
             parentId,
             mentions,
+            attachments,
           }),
         });
         if (!response.ok) {
@@ -2692,6 +3026,7 @@ export default function TaskDetail() {
       mentions,
       createdAt: new Date(),
       receiverRoles,
+      attachments,
       seenBy: [],
     };
     const nextTask = {
@@ -2707,14 +3042,88 @@ export default function TaskDetail() {
   };
 
   const handleAddComment = () => {
-    submitComment(newComment, undefined, () => setNewComment(''));
+    submitComment(newComment, undefined, () => {
+      setNewComment('');
+      clearComposerAttachments('comment');
+      clearMentionContext('comment');
+    }, commentAttachments);
   };
 
   const handleReplySubmit = (parentId: string) => {
     submitComment(replyText, parentId, () => {
       setReplyText('');
       setReplyToId(null);
-    });
+      clearComposerAttachments('reply');
+      clearMentionContext('reply');
+    }, replyAttachments);
+  };
+
+  const handleComposerChange = (
+    target: ComposerTarget,
+    value: string,
+    selectionStart?: number | null
+  ) => {
+    if (target === 'reply') {
+      setReplyText(value);
+    } else {
+      setNewComment(value);
+    }
+    syncMentionContext(value, target, selectionStart);
+    handleChatTypingInput();
+  };
+
+  const handleComposerKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+    target: ComposerTarget,
+    content: string,
+    attachments: TaskFile[],
+    parentId?: string
+  ) => {
+    if (mentionContext?.target === target && mentionSuggestions.length > 0) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setActiveMentionIndex((current) => (current + 1) % mentionSuggestions.length);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setActiveMentionIndex((current) =>
+          current === 0 ? mentionSuggestions.length - 1 : current - 1
+        );
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        applyMentionSuggestion(mentionSuggestions[activeMentionIndex] || mentionSuggestions[0]);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        clearMentionContext(target);
+        return;
+      }
+    }
+
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      if (target === 'reply') {
+        if (content.trim() || attachments.length > 0) {
+          handleReplySubmit(parentId || '');
+        }
+      } else if (content.trim() || attachments.length > 0) {
+        handleAddComment();
+      }
+    }
+  };
+
+  const handleChatAttachmentSelection = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+    target: ComposerTarget
+  ) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) return;
+    await uploadCommentFiles(files, target);
   };
 
   const handleStatusChange = (status: TaskStatus) => {
@@ -4013,6 +4422,151 @@ export default function TaskDetail() {
     }
   };
 
+  const appendComposerAttachments = (target: ComposerTarget, attachments: TaskFile[]) => {
+    if (attachments.length === 0) return;
+    if (target === 'reply') {
+      setReplyAttachments((current) => [...current, ...attachments]);
+      return;
+    }
+    setCommentAttachments((current) => [...current, ...attachments]);
+  };
+
+  const removeComposerAttachment = (target: ComposerTarget, attachmentId: string) => {
+    if (target === 'reply') {
+      setReplyAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
+      return;
+    }
+    setCommentAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
+  };
+
+  const clearComposerAttachments = (target: ComposerTarget) => {
+    if (target === 'reply') {
+      setReplyAttachments([]);
+      return;
+    }
+    setCommentAttachments([]);
+  };
+
+  const uploadCommentFiles = async (selectedFiles: File[], target: ComposerTarget) => {
+    if (!selectedFiles || selectedFiles.length === 0) return 0;
+    if (!taskState || !apiUrl) {
+      toast.error('Comment attachment upload requires the backend.');
+      return 0;
+    }
+    if (!canComment) {
+      toast.error('Comments are disabled for this task.');
+      return 0;
+    }
+
+    const taskId = String(
+      (taskState as { id?: string; _id?: string })?.id ||
+      (taskState as { _id?: string })?._id ||
+      ''
+    ).trim();
+    const uploads = Array.from(selectedFiles);
+    const uploadedAttachments: TaskFile[] = [];
+    setIsUploadingCommentAttachments(true);
+    setCommentAttachmentUploadProgress(0);
+
+    try {
+      for (let index = 0; index < uploads.length; index += 1) {
+        const file = uploads[index];
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('taskTitle', taskState.title);
+        formData.append('taskSection', 'Internal Chat');
+        if (taskId) {
+          formData.append('taskId', taskId);
+        }
+
+        const response = await authFetch(`${apiUrl}/api/files/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.error || 'Upload failed');
+        }
+        const uploadedUrl = resolveUploadedDriveUrl(data);
+        if (!uploadedUrl) {
+          throw new Error('Upload succeeded but file link is missing. Please retry.');
+        }
+        uploadedAttachments.push(
+          normalizeCommentAttachment(
+            {
+              id: data?.id,
+              name: file.name,
+              url: uploadedUrl,
+              driveId: data?.id,
+              webViewLink: data?.webViewLink,
+              webContentLink: data?.webContentLink,
+              size: file.size,
+              mime: file.type,
+              thumbnailUrl: data?.thumbnailLink,
+              uploadedAt: new Date(),
+              uploadedBy: user?.id || user?.name || '',
+            },
+            index
+          )
+        );
+        setCommentAttachmentUploadProgress(
+          Math.min(99, Math.round(((index + 1) / uploads.length) * 100))
+        );
+      }
+
+      appendComposerAttachments(target, uploadedAttachments);
+      setCommentAttachmentUploadProgress(100);
+      toast.success(
+        uploadedAttachments.length === 1
+          ? 'Attachment uploaded.'
+          : `${uploadedAttachments.length} attachments uploaded.`
+      );
+      return uploadedAttachments.length;
+    } catch (error: any) {
+      const errorMsg = error?.message || 'Upload failed';
+      if (shouldPromptDriveReconnect(errorMsg)) {
+        toast.error('Google Drive Disconnected', {
+          description: 'Reconnect Drive access and try uploading again.',
+          action: {
+            label: 'Connect',
+            onClick: async () => {
+              try {
+                await openDriveReconnectWindow();
+              } catch (reconnectError) {
+                const message =
+                  reconnectError instanceof Error ? reconnectError.message : 'Failed to get auth URL';
+                toast.error('Drive reconnect failed', { description: message });
+              }
+            },
+          },
+          duration: 10000,
+        });
+      } else {
+        toast.error('Comment attachment upload failed', { description: errorMsg });
+      }
+      return 0;
+    } finally {
+      setIsUploadingCommentAttachments(false);
+      setCommentAttachmentUploadProgress(null);
+    }
+  };
+
+  const extractClipboardFiles = (items?: DataTransferItemList | null) =>
+    Array.from(items ?? [])
+      .filter((item) => item.kind === 'file')
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+
+  const handleChatComposerPaste = async (
+    event: React.ClipboardEvent<HTMLTextAreaElement>,
+    target: ComposerTarget
+  ) => {
+    const files = extractClipboardFiles(event.clipboardData?.items);
+    if (files.length === 0) return;
+    event.preventDefault();
+    await uploadCommentFiles(files, target);
+  };
+
   const handleEditAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
     if (selectedFiles.length === 0) return;
@@ -4522,9 +5076,12 @@ export default function TaskDetail() {
               </span>
             )}
           </div>
-          <div className="text-sm text-muted-foreground flex flex-wrap gap-1">
-            {renderCommentContent(comment.content)}
-          </div>
+          {comment.content ? (
+            <div className="text-sm text-muted-foreground flex flex-wrap gap-1">
+              {renderCommentContent(comment.content)}
+            </div>
+          ) : null}
+          {renderCommentAttachments(comment.attachments)}
           <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-3">
             <span>{format(comment.createdAt, 'MMM d, yyyy - h:mm a')}</span>
             {canComment && (
@@ -4534,6 +5091,8 @@ export default function TaskDetail() {
                 onClick={() => {
                   setReplyToId(comment.id);
                   setReplyText('');
+                  setReplyAttachments([]);
+                  clearMentionContext('reply');
                 }}
               >
                 Reply
@@ -4572,23 +5131,73 @@ export default function TaskDetail() {
           </div>
           {canComment && replyToId === comment.id && (
             <div className="mt-3 flex gap-2">
-              <Textarea
-                placeholder={getMentionPlaceholder(user?.role, 'Reply with')}
-                value={replyText}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setReplyText(value);
-                  handleChatTypingInput();
-                }}
-                onFocus={handleChatComposerFocus}
-                onBlur={handleChatComposerBlur}
-                rows={2}
-                className="flex-1 select-text"
-              />
+              <div className="relative flex-1">
+                <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-3 backdrop-blur-md transition-colors focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20 dark:border-border dark:bg-card/85">
+                  {replyAttachments.length > 0 && (
+                    <div className="mb-3">{renderComposerAttachments(replyAttachments, 'reply')}</div>
+                  )}
+                  <Textarea
+                    ref={replyComposerRef}
+                    placeholder={getMentionPlaceholder(user?.role, 'Reply with')}
+                    value={replyText}
+                    onChange={(e) =>
+                      handleComposerChange('reply', e.target.value, e.target.selectionStart)
+                    }
+                    onPaste={(event) => void handleChatComposerPaste(event, 'reply')}
+                    onFocus={() => {
+                      if (mentionBlurTimeoutRef.current) {
+                        clearTimeout(mentionBlurTimeoutRef.current);
+                        mentionBlurTimeoutRef.current = null;
+                      }
+                      handleChatComposerFocus();
+                      syncMentionContext(
+                        replyText,
+                        'reply',
+                        replyComposerRef.current?.selectionStart
+                      );
+                    }}
+                    onBlur={() => {
+                      handleChatComposerBlur();
+                      scheduleMentionContextClose('reply');
+                    }}
+                    onKeyDown={(event) =>
+                      handleComposerKeyDown(event, 'reply', replyText, replyAttachments, comment.id)
+                    }
+                    rows={2}
+                    className="min-h-[88px] resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                  />
+                  {isUploadingCommentAttachments && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Uploading attachment
+                      {commentAttachmentUploadProgress ? ` (${commentAttachmentUploadProgress}%)` : ''}...
+                    </p>
+                  )}
+                </div>
+                {renderMentionSuggestions('reply')}
+              </div>
               <div className="flex flex-col gap-2">
+                <input
+                  ref={replyAttachmentInputRef}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  onChange={(event) => void handleChatAttachmentSelection(event, 'reply')}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => replyAttachmentInputRef.current?.click()}
+                  disabled={isUploadingCommentAttachments}
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
                 <Button
                   onClick={() => handleReplySubmit(comment.id)}
-                  disabled={!replyText.trim()}
+                  disabled={
+                    isUploadingCommentAttachments ||
+                    (!replyText.trim() && replyAttachments.length === 0)
+                  }
                   size="sm"
                 >
                   Send
@@ -4599,6 +5208,8 @@ export default function TaskDetail() {
                   onClick={() => {
                     setReplyToId(null);
                     setReplyText('');
+                    setReplyAttachments([]);
+                    clearMentionContext('reply');
                   }}
                 >
                   Cancel
@@ -4617,7 +5228,7 @@ export default function TaskDetail() {
   };
 
   const renderChangeHistoryPanel = () => (
-    <div className={`${glassPanelClass} p-5 animate-slide-up`}>
+    <div ref={changeHistoryPanelRef} className={`${glassPanelClass} p-5 animate-slide-up`}>
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="font-semibold text-foreground">Change History</h2>
@@ -4672,7 +5283,7 @@ export default function TaskDetail() {
       {changeHistoryForDisplay.length > 0 ? (
         <div
           ref={changeHistoryListRef}
-          className="max-h-[460px] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin"
+          className="max-h-[460px] overflow-y-auto overflow-x-hidden pr-1 pt-2 pb-1 scrollbar-thin"
         >
           {changeHistoryForDisplay.map((entry, index) => {
             const oldValueText = String(entry.oldValue || '').trim();
@@ -4686,20 +5297,22 @@ export default function TaskDetail() {
               <div
                 key={entry.id}
                 id={`change-${entry.id}`}
-                className="relative pl-10 pb-4 last:pb-0"
+                className="grid scroll-mt-4 grid-cols-[2rem_minmax(0,1fr)] gap-3 pb-4 last:pb-0"
               >
-                {index !== changeHistoryForDisplay.length - 1 && (
-                  <span className="absolute left-[0.875rem] top-8 h-[calc(100%-1.1rem)] w-px bg-[#C9D7FF]/70 dark:bg-gradient-to-b dark:from-[#3A60A8]/75 dark:to-[#24457F]/55" />
-                )}
-                <span className="absolute left-0 top-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#BFD1F4] bg-gradient-to-br from-white/95 via-[#F2F7FF]/90 to-[#E5EEFF]/85 text-[11px] font-semibold text-[#1E2A5A] dark:border-[#4D70B4]/70 dark:bg-gradient-to-br dark:from-[#1E3D79]/95 dark:via-[#1A3468]/92 dark:to-[#132951]/92 dark:text-[#E6EEFF] dark:shadow-none">
-                  {index + 1}
-                </span>
+                <div className="relative flex justify-center">
+                  {index !== changeHistoryForDisplay.length - 1 && (
+                    <span className="absolute top-8 h-[calc(100%-0.35rem)] w-px bg-[#C9D7FF]/70 dark:bg-gradient-to-b dark:from-[#3A60A8]/75 dark:to-[#24457F]/55" />
+                  )}
+                  <span className="relative z-[1] mt-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#BFD1F4] bg-gradient-to-br from-white/95 via-[#F2F7FF]/90 to-[#E5EEFF]/85 text-[11px] font-semibold text-[#1E2A5A] dark:border-[#4D70B4]/70 dark:bg-gradient-to-br dark:from-[#1E3D79]/95 dark:via-[#1A3468]/92 dark:to-[#132951]/92 dark:text-[#E6EEFF] dark:shadow-none">
+                    {index + 1}
+                  </span>
+                </div>
                 <div
                   className={cn(
                     changeHistoryCardClass,
                     'rounded-xl border border-[#BFD1F4]/70 bg-gradient-to-br from-white/88 via-[#F4F8FF]/78 to-[#E8F1FF]/70 supports-[backdrop-filter]:bg-[#F4F8FF]/60 backdrop-blur-xl p-3 transition-colors dark:border-border/70 dark:bg-slate-900/55 dark:backdrop-blur-none',
-                    entry.id === focusedChangeId &&
-                      'border-primary/50 bg-primary/10 ring-2 ring-primary/15'
+                    entry.id === highlightedChangeId &&
+                      'change-history-highlight border-transparent bg-white/90 ring-0 dark:bg-[#101C39]/90'
                   )}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -6199,36 +6812,111 @@ export default function TaskDetail() {
               )}
 
               <div className="flex gap-3">
-                <Textarea
-                  placeholder={canComment ? getMentionPlaceholder(user?.role) : ''}
-                  value={newComment}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setNewComment(value);
-                    handleChatTypingInput();
-                  }}
-                  onFocus={handleChatComposerFocus}
-                  onBlur={handleChatComposerBlur}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                      e.preventDefault();
-                      if (newComment.trim()) {
-                        handleAddComment();
-                      }
+                <div className="relative flex-1">
+                  <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-3 backdrop-blur-md transition-colors focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20 dark:border-border dark:bg-card/85">
+                    {commentAttachments.length > 0 && (
+                      <div className="mb-3">
+                        {renderComposerAttachments(commentAttachments, 'comment')}
+                      </div>
+                    )}
+                    <div className="relative">
+                      {canComment &&
+                        !isChatComposerFocused &&
+                        !newComment.trim() &&
+                        commentAttachments.length === 0 && (
+                        <div className="pointer-events-none absolute inset-x-0 top-0 flex min-h-[88px] items-start">
+                          <div className="chat-composer-placeholder pt-0.5">
+                            <MessageSquare className="chat-composer-placeholder-icon h-4 w-4" />
+                            <span className="chat-composer-placeholder-static">Message</span>
+                            <span className="chat-composer-placeholder-words">
+                              <span className="chat-composer-placeholder-wordlist">
+                                {chatComposerHintLines.map((line) => (
+                                  <span key={line}>{line}</span>
+                                ))}
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      <Textarea
+                        ref={commentComposerRef}
+                        placeholder=""
+                        value={newComment}
+                        onChange={(e) =>
+                          handleComposerChange('comment', e.target.value, e.target.selectionStart)
+                        }
+                        onPaste={(event) => void handleChatComposerPaste(event, 'comment')}
+                        onFocus={() => {
+                          if (mentionBlurTimeoutRef.current) {
+                            clearTimeout(mentionBlurTimeoutRef.current);
+                            mentionBlurTimeoutRef.current = null;
+                          }
+                          handleChatComposerFocus();
+                          syncMentionContext(
+                            newComment,
+                            'comment',
+                            commentComposerRef.current?.selectionStart
+                          );
+                        }}
+                        onBlur={() => {
+                          handleChatComposerBlur();
+                          scheduleMentionContextClose('comment');
+                        }}
+                        onKeyDown={(event) =>
+                          handleComposerKeyDown(
+                            event,
+                            'comment',
+                            newComment,
+                            commentAttachments
+                          )
+                        }
+                        rows={2}
+                        className="min-h-[88px] resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-transparent"
+                        disabled={!canComment}
+                      />
+                    </div>
+                    {isUploadingCommentAttachments && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Uploading attachment
+                        {commentAttachmentUploadProgress
+                          ? ` (${commentAttachmentUploadProgress}%)`
+                          : ''}...
+                      </p>
+                    )}
+                  </div>
+                  {renderMentionSuggestions('comment')}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={commentAttachmentInputRef}
+                    type="file"
+                    className="hidden"
+                    multiple
+                    onChange={(event) => void handleChatAttachmentSelection(event, 'comment')}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="self-end"
+                    onClick={() => commentAttachmentInputRef.current?.click()}
+                    disabled={!canComment || isUploadingCommentAttachments}
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    onClick={handleAddComment}
+                    disabled={
+                      !canComment ||
+                      isUploadingCommentAttachments ||
+                      (!newComment.trim() && commentAttachments.length === 0)
                     }
-                  }}
-                  rows={2}
-                  className="flex-1 select-text"
-                  disabled={!canComment}
-                />
-                <Button
-                  onClick={handleAddComment}
-                  disabled={!canComment || !newComment.trim()}
-                  size="icon"
-                  className="self-end"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
+                    size="icon"
+                    className="self-end"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               {Object.keys(typingUsers).length > 0 && (
                 <div className="mt-2 inline-flex max-w-full items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/80 px-3 py-1 text-[11px] font-semibold text-muted-foreground dark:border-slate-600/70 dark:bg-slate-800/85 dark:text-slate-200">
@@ -6413,88 +7101,7 @@ export default function TaskDetail() {
               </dl>
             </div>
 
-            {/* Status Timeline */}
-            <div className={`${glassPanelClass} p-5 overflow-hidden animate-slide-up`}>
-              <h2 className="font-semibold text-foreground mb-4">Status</h2>
-              {(() => {
-                const steps: DisplayTaskStatus[] = [
-                  'pending',
-                  'assigned',
-                  'accepted',
-                  'in_progress',
-                  'clarification_required',
-                  'under_review',
-                  'completed',
-                ];
-                const currentIndex = steps.indexOf(normalizedTaskStatus);
-                return (
-                  <div className="space-y-3">
-                    {steps.map((step, index) => {
-                      const isCurrent = index === currentIndex;
-                      const isPast = index < currentIndex;
-                      return (
-                        <div key={step} className="flex items-start gap-3">
-                          <div className="relative flex flex-col items-center">
-                            <div className="relative flex h-9 w-9 items-center justify-center overflow-visible">
-                              {isPast ? (
-                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/85 text-white dark:bg-primary/80 dark:shadow-none">
-                                  <Check className="h-3.5 w-3.5" />
-                                </span>
-                              ) : isCurrent ? (
-                                <DotLottieReact
-                                  src="https://lottie.host/31b5d829-4d1f-42a6-ba16-3560e550c0ac/KTsiywVfWC.lottie"
-                                  loop
-                                  autoplay
-                                  className="pointer-events-none absolute left-1/2 top-1/2 h-[2.7rem] w-[2.7rem] -translate-x-[52%] -translate-y-1/2"
-                                />
-                              ) : (
-                                <span className="h-6 w-6 rounded-full border-2 border-[#D9E6FF] bg-white dark:border-slate-500/80 dark:bg-slate-800" />
-                              )}
-                            </div>
-                            {index !== steps.length - 1 && (
-                              <div
-                                className={cn(
-                                  'mt-1 h-7 w-px rounded-full',
-                                  isPast
-                                    ? 'bg-primary/75 dark:bg-primary/55'
-                                    : 'bg-[#D9E6FF] dark:bg-slate-700/70'
-                                )}
-                              />
-                            )}
-                          </div>
-                          <div className={cn(changeHistoryCardClass, 'w-full min-w-0 flex-1 px-3 py-2')}>
-                            <div
-                              className={cn(
-                                'min-w-0 text-[13px] font-semibold leading-tight',
-                                isCurrent
-                                  ? 'text-foreground dark:text-slate-100'
-                                  : isPast
-                                    ? 'text-muted-foreground dark:text-slate-300'
-                                    : 'text-muted-foreground/60 dark:text-slate-300'
-                              )}
-                            >
-                              {statusConfig[step].label}
-                            </div>
-                            <div
-                              className={cn(
-                                'mt-1 text-[11px] leading-relaxed',
-                                isCurrent
-                                  ? 'text-muted-foreground dark:text-slate-300'
-                                  : isPast
-                                    ? 'text-muted-foreground/80 dark:text-slate-400'
-                                    : 'text-muted-foreground/60 dark:text-slate-400'
-                              )}
-                            >
-                              {statusDetails[step]}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
+            {user?.role !== 'treasurer' && renderChangeHistoryPanel()}
             {emergencyStatus && designVersions.length > 0 && (
               <div className={`${glassPanelClass} p-5 animate-slide-up`}>
                 <div className="mb-6">
@@ -6629,7 +7236,88 @@ export default function TaskDetail() {
               </div>
             )}
 
-            {user?.role !== 'treasurer' && renderChangeHistoryPanel()}
+            {/* Status Timeline */}
+            <div className={`${glassPanelClass} p-5 overflow-hidden animate-slide-up`}>
+              <h2 className="font-semibold text-foreground mb-4">Status</h2>
+              {(() => {
+                const steps: DisplayTaskStatus[] = [
+                  'pending',
+                  'assigned',
+                  'accepted',
+                  'in_progress',
+                  'clarification_required',
+                  'under_review',
+                  'completed',
+                ];
+                const currentIndex = steps.indexOf(normalizedTaskStatus);
+                return (
+                  <div className="space-y-3">
+                    {steps.map((step, index) => {
+                      const isCurrent = index === currentIndex;
+                      const isPast = index < currentIndex;
+                      return (
+                        <div key={step} className="flex items-start gap-3">
+                          <div className="relative flex flex-col items-center">
+                            <div className="relative flex h-9 w-9 items-center justify-center overflow-visible">
+                              {isPast ? (
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/85 text-white dark:bg-primary/80 dark:shadow-none">
+                                  <Check className="h-3.5 w-3.5" />
+                                </span>
+                              ) : isCurrent ? (
+                                <DotLottieReact
+                                  src="https://lottie.host/31b5d829-4d1f-42a6-ba16-3560e550c0ac/KTsiywVfWC.lottie"
+                                  loop
+                                  autoplay
+                                  className="pointer-events-none absolute left-1/2 top-1/2 h-[2.7rem] w-[2.7rem] -translate-x-[52%] -translate-y-1/2"
+                                />
+                              ) : (
+                                <span className="h-6 w-6 rounded-full border-2 border-[#D9E6FF] bg-white dark:border-slate-500/80 dark:bg-slate-800" />
+                              )}
+                            </div>
+                            {index !== steps.length - 1 && (
+                              <div
+                                className={cn(
+                                  'mt-1 h-7 w-px rounded-full',
+                                  isPast
+                                    ? 'bg-primary/75 dark:bg-primary/55'
+                                    : 'bg-[#D9E6FF] dark:bg-slate-700/70'
+                                )}
+                              />
+                            )}
+                          </div>
+                          <div className={cn(changeHistoryCardClass, 'w-full min-w-0 flex-1 px-3 py-2')}>
+                            <div
+                              className={cn(
+                                'min-w-0 text-[13px] font-semibold leading-tight',
+                                isCurrent
+                                  ? 'text-foreground dark:text-slate-100'
+                                  : isPast
+                                    ? 'text-muted-foreground dark:text-slate-300'
+                                    : 'text-muted-foreground/60 dark:text-slate-300'
+                              )}
+                            >
+                              {statusConfig[step].label}
+                            </div>
+                            <div
+                              className={cn(
+                                'mt-1 text-[11px] leading-relaxed',
+                                isCurrent
+                                  ? 'text-muted-foreground dark:text-slate-300'
+                                  : isPast
+                                    ? 'text-muted-foreground/80 dark:text-slate-400'
+                                    : 'text-muted-foreground/60 dark:text-slate-400'
+                              )}
+                            >
+                              {statusDetails[step]}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </div>
       </div>

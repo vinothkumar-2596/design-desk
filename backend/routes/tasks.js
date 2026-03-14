@@ -296,6 +296,42 @@ const toFiniteNumber = (value) => {
   return Number.isFinite(numeric) ? numeric : undefined;
 };
 
+const normalizeCommentAttachments = (attachments, uploadedBy = "") => {
+  if (!Array.isArray(attachments)) return [];
+  return attachments
+    .map((attachment, index) => {
+      const normalized = normalizeTaskFileLinks({
+        ...(attachment || {}),
+        type: "input",
+      });
+      const name = String(normalized?.name || "").trim() || `Attachment ${index + 1}`;
+      const uploadedAt = normalized?.uploadedAt ? new Date(normalized.uploadedAt) : new Date();
+      return {
+        name,
+        url: String(normalized?.url || "").trim(),
+        driveId: String(normalized?.driveId || "").trim(),
+        webViewLink: String(normalized?.webViewLink || "").trim(),
+        webContentLink: String(normalized?.webContentLink || "").trim(),
+        type: "input",
+        uploadedAt,
+        uploadedBy: String(normalized?.uploadedBy || uploadedBy || "").trim(),
+        size: toFiniteNumber(normalized?.size),
+        mime: String(normalized?.mime || "").trim(),
+        thumbnailUrl: String(normalized?.thumbnailUrl || "").trim(),
+      };
+    })
+    .filter(
+      (attachment) =>
+        Boolean(
+          attachment.name ||
+            attachment.url ||
+            attachment.driveId ||
+            attachment.webViewLink ||
+            attachment.webContentLink
+        )
+    );
+};
+
 const hasUsableTaskFileLink = (file) => {
   const normalizedFile = normalizeTaskFileLinks(file);
   return Boolean(
@@ -2848,13 +2884,20 @@ router.patch("/:id", ensureTaskAccess, async (req, res) => {
 
 router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
   try {
-    const { content, receiverRoles, parentId, mentions } = req.body;
+    const { content, receiverRoles, parentId, mentions, attachments } = req.body;
     const userId = getUserId(req);
     const userName = req.user?.name || req.body.userName || "";
     const userRole = req.user?.role || "";
+    const normalizedContent = String(content || "").trim();
+    const normalizedAttachments = normalizeCommentAttachments(
+      attachments,
+      userId || userName || ""
+    );
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ error: "Comment content is required." });
+    if (!normalizedContent && normalizedAttachments.length === 0) {
+      return res.status(400).json({
+        error: "Comment text or at least one attachment is required.",
+      });
     }
 
     const validRoles = ["staff", "treasurer", "designer", "admin"];
@@ -2890,10 +2933,11 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
             userId,
             userName,
             userRole: senderRole,
-            content,
+            content: normalizedContent,
             parentId: parentId || "",
             mentions: normalizedMentions,
-            receiverRoles: uniqueReceivers
+            receiverRoles: uniqueReceivers,
+            attachments: normalizedAttachments,
           }
         }
       },
@@ -2932,15 +2976,29 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
             (task.requesterEmail ? await resolveUserIdByEmail(task.requesterEmail) : "");
           const designerUserId = task.assignedToId || "";
           const treasurerUserIds = await getUserIdsByRole(["treasurer"]);
-          const allRecipients = new Set([
-            requesterUserId,
-            designerUserId,
-            ...treasurerUserIds,
-          ]);
-          const finalRecipients = Array.from(allRecipients).filter(Boolean);
+          const recipientsByRole = {
+            staff: requesterUserId ? [requesterUserId] : [],
+            designer: designerUserId ? [designerUserId] : [],
+            treasurer: treasurerUserIds,
+            admin: [],
+          };
+          const finalRecipients = Array.from(
+            new Set(
+              uniqueReceivers.flatMap((role) =>
+                Array.isArray(recipientsByRole[role]) ? recipientsByRole[role] : []
+              )
+            )
+          ).filter(Boolean);
           if (finalRecipients.length > 0) {
-            const snippet =
-              content.length > 140 ? `${content.slice(0, 137)}...` : content;
+            const attachmentSnippet =
+              normalizedAttachments.length === 1
+                ? "attached 1 file"
+                : `attached ${normalizedAttachments.length} files`;
+            const snippet = normalizedContent
+              ? normalizedContent.length > 140
+                ? `${normalizedContent.slice(0, 137)}...`
+                : normalizedContent
+              : attachmentSnippet;
             const commentEventId = createdComment._id
               ? `comment:${createdComment._id.toString()}`
               : undefined;
@@ -2977,13 +3035,18 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
           if (recipients.length > 0) {
             const baseUrl = process.env.FRONTEND_URL || "";
             const taskUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}` : "";
+            const attachmentSnippet =
+              normalizedAttachments.length === 1
+                ? "Attached 1 file"
+                : `Attached ${normalizedAttachments.length} files`;
+            const whatsappContent = normalizedContent || attachmentSnippet;
 
             Promise.all(recipients.map(to =>
               sendCommentNotificationSms({
                 to,
                 taskTitle: task.title,
                 userName: userName,
-                content: content,
+                content: whatsappContent,
                 taskUrl: taskUrl
               })
             )).catch(err => console.error("Background Notification Error (Comment):", err));

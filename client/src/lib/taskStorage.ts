@@ -46,6 +46,11 @@ const hydrateTask = (raw: Task): Task => ({
   comments: raw.comments?.map((comment) => ({
     ...comment,
     createdAt: new Date(comment.createdAt),
+    attachments:
+      comment.attachments?.map((file) => ({
+        ...file,
+        uploadedAt: new Date(file.uploadedAt),
+      })) ?? [],
     seenBy: comment.seenBy?.map((entry) => ({
       ...entry,
       seenAt: new Date(entry.seenAt),

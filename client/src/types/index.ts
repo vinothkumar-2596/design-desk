@@ -56,6 +56,7 @@ export interface TaskComment {
   createdAt: Date;
   receiverRoles?: UserRole[];
   seenBy?: CommentSeen[];
+  attachments?: TaskFile[];
 }
 
 export interface CommentSeen {
