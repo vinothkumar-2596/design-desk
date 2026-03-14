@@ -32,14 +32,7 @@ import { AlertCircle, LoaderCircle, Palette, Users, Briefcase, Eye, EyeOff } fro
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 
-type RoleOption = {
-  value: UserRole;
-  label: string;
-  icon: React.ElementType;
-  description: string;
-};
-
-const roleOptions: RoleOption[] = [
+const roleOptions: { value: UserRole; label: string; icon: React.ElementType; description: string }[] = [
   { value: 'designer', label: 'Designer', icon: Palette, description: 'Manage & complete tasks' },
   { value: 'staff', label: 'Staff', icon: Users, description: 'Submit design requests' },
   { value: 'treasurer', label: 'Treasurer', icon: Briefcase, description: 'Approve modifications' },
@@ -64,34 +57,11 @@ const FORCED_DESIGNER_EMAILS = [
   'zayaaa1432004@gmail.com',
   'graphics@indbazaar.com',
 ];
-const FORCED_DESIGN_LEAD_EMAILS = ['chandruvino003@gmail.com'];
 const DESIGNER_ROLE_HINT_EMAILS = new Set([
   ...FORCED_DESIGNER_EMAILS,
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAIL),
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAILS),
 ]);
-const DESIGN_LEAD_HINT_EMAILS = new Set([
-  ...FORCED_DESIGN_LEAD_EMAILS,
-  ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAIL),
-  ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAILS),
-]);
-
-const isDesignLeadEmail = (email: string) => {
-  const normalized = normalizeEmail(email);
-  return Boolean(normalized && DESIGN_LEAD_HINT_EMAILS.has(normalized));
-};
-
-const getRoleOption = (role: UserRole, email = ''): RoleOption => {
-  const matchedOption = roleOptions.find((option) => option.value === role) ?? roleOptions[1];
-  if (role === 'designer' && isDesignLeadEmail(email)) {
-    return {
-      ...matchedOption,
-      label: 'Design Lead',
-      description: 'Assign, review & complete tasks',
-    };
-  }
-  return matchedOption;
-};
 
 const resolveLoginRole = (email: string): UserRole => {
   const normalized = normalizeEmail(email);
@@ -171,8 +141,8 @@ export default function Login() {
   const [signupRole, setSignupRole] = useState<UserRole>('staff');
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const inferredLoginRole = resolveLoginRole(email);
-  const inferredLoginRoleOption = getRoleOption(inferredLoginRole, email);
-  const selectedRoleOption = getRoleOption(role, email);
+  const inferredLoginRoleOption =
+    roleOptions.find((option) => option.value === inferredLoginRole) ?? roleOptions[1];
   const { login, signup, loginWithGoogle, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -254,7 +224,7 @@ export default function Login() {
     try {
       await login(email, password, role);
       toast.success('Welcome back!', {
-        description: `Logged in as ${selectedRoleOption.label}`,
+        description: `Logged in as ${roleOptions.find(r => r.value === role)?.label}`,
       });
       navigate(safeRedirect);
     } catch (error) {
@@ -600,7 +570,7 @@ export default function Login() {
                   onValueChange={(v) => handleRoleChange(v as UserRole)}
                 >
                   <SelectTrigger className={selectTriggerClass}>
-                    <SelectValue aria-label={selectedRoleOption.label} />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent className={selectContentClass}>
                     <SelectItem value={inferredLoginRoleOption.value}>

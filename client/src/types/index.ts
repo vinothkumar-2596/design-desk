@@ -170,28 +170,6 @@ export interface FinalDeliverableReviewAnnotation {
   createdBy?: string;
 }
 
-export interface AttachmentVersionFile {
-  id?: string;
-  name: string;
-  url: string;
-  driveId?: string;
-  webViewLink?: string;
-  webContentLink?: string;
-  size?: number;
-  mime?: string;
-  thumbnailUrl?: string;
-  uploadedAt?: Date | string;
-  uploadedBy?: string;
-}
-
-export interface AttachmentVersion {
-  id?: string;
-  version: number;
-  uploadedAt?: Date | string;
-  uploadedBy?: string;
-  files: AttachmentVersionFile[];
-}
-
 export interface FinalDeliverableVersion {
   id: string;
   version: number;
@@ -247,7 +225,6 @@ export interface Task {
   files: TaskFile[];
   designVersions?: DesignVersion[];
   activeDesignVersionId?: string;
-  attachmentVersions?: AttachmentVersion[];
   finalDeliverableVersions?: FinalDeliverableVersion[];
   finalDeliverableReviewStatus?: FinalDeliverableReviewStatus;
   finalDeliverableReviewedBy?: string;

@@ -535,7 +535,6 @@ export default function NewRequest() {
   const [thankYouAnimation, setThankYouAnimation] = useState<object | null>(null);
   const [uploadAnimation, setUploadAnimation] = useState<object | null>(null);
   const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
-  const [isDraftMenuOpen, setIsDraftMenuOpen] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [attachmentPreviewFile, setAttachmentPreviewFile] = useState<UploadedFile | null>(null);
   const [attachmentPreviewResolvedUrl, setAttachmentPreviewResolvedUrl] = useState('');
@@ -560,8 +559,6 @@ export default function NewRequest() {
   const hasRestoredDraftRef = useRef(false);
   const lastDraftStorageKeyRef = useRef('');
   const latestFilesRef = useRef<UploadedFile[]>([]);
-  const autoDraftEnabledRef = useRef(true);
-  const persistDraftOnExitRef = useRef<() => void>(() => {});
   const attachmentPreviewViewportRef = useRef<HTMLDivElement | null>(null);
   const attachmentPreviewObjectUrlRef = useRef<string | null>(null);
   const attachmentPreviewDragRef = useRef<{
@@ -759,43 +756,6 @@ export default function NewRequest() {
   }, [files]);
 
   useEffect(() => {
-    persistDraftOnExitRef.current = () => {
-      if (typeof window === 'undefined') return;
-      if (!autoDraftEnabledRef.current || !hasDraftableChanges) return;
-      saveRequestDraft(user, buildRequestDraftPayload(latestFilesRef.current));
-    };
-  }, [
-    buildRequestDraftPayload,
-    hasDraftableChanges,
-    user,
-  ]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-
-    const persistDraftOnExit = () => {
-      persistDraftOnExitRef.current();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        persistDraftOnExit();
-      }
-    };
-
-    window.addEventListener('pagehide', persistDraftOnExit);
-    window.addEventListener('beforeunload', persistDraftOnExit);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener('pagehide', persistDraftOnExit);
-      window.removeEventListener('beforeunload', persistDraftOnExit);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      persistDraftOnExit();
-    };
-  }, []);
-
-  useEffect(() => {
     resetAttachmentPreviewTransform();
   }, [attachmentPreviewFile?.id, attachmentPreviewResolvedUrl]);
 
@@ -944,20 +904,18 @@ export default function NewRequest() {
         thumbnailUrl: file.thumbnailUrl,
       }));
 
-  function buildRequestDraftPayload(sourceFiles: UploadedFile[]): RequestDraftPayload {
-    return {
-      title,
-      description,
-      category,
-      urgency,
-      deadline: deadline ? deadline.toISOString() : '',
-      hasDeadlineInteracted,
-      isEmergency,
-      requesterPhone,
-      files: getPersistableDraftFiles(sourceFiles),
-      savedAt: new Date().toISOString(),
-    };
-  }
+  const buildRequestDraftPayload = (sourceFiles: UploadedFile[]): RequestDraftPayload => ({
+    title,
+    description,
+    category,
+    urgency,
+    deadline: deadline ? deadline.toISOString() : '',
+    hasDeadlineInteracted,
+    isEmergency,
+    requesterPhone,
+    files: getPersistableDraftFiles(sourceFiles),
+    savedAt: new Date().toISOString(),
+  });
 
   const applySavedDraft = (draft: RequestDraftPayload) => {
     setTitle(String(draft.title || ''));
@@ -1037,7 +995,6 @@ export default function NewRequest() {
   };
 
   const handleDiscardAndExit = () => {
-    autoDraftEnabledRef.current = false;
     stopActiveUploads();
     clearSavedDraft();
     setShowCancelDraftDialog(false);
@@ -1749,7 +1706,6 @@ export default function NewRequest() {
     }
 
     setIsSubmitting(false);
-    autoDraftEnabledRef.current = false;
     clearSavedDraft();
     setShowThankYou(true);
   };
@@ -2048,7 +2004,7 @@ export default function NewRequest() {
               </Label>
               <Input
                 id="title"
-                placeholder="Enter project request title"
+                placeholder="e.g., Annual Report Cover Design"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className={`h-11 ${glassInputClass}`}
@@ -2535,25 +2491,14 @@ export default function NewRequest() {
 
           {/* Submit Button */}
           <div className="flex items-center justify-end gap-3">
-            <DropdownMenu open={isDraftMenuOpen} onOpenChange={setIsDraftMenuOpen}>
+            <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isSubmitting}
-                  onMouseEnter={() => setIsDraftMenuOpen(true)}
-                  onMouseLeave={() => setIsDraftMenuOpen(false)}
-                >
+                <Button type="button" variant="outline" disabled={isSubmitting}>
                   Save Draft
                   <ChevronDown className="ml-2 h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="min-w-[180px]"
-                onMouseEnter={() => setIsDraftMenuOpen(true)}
-                onMouseLeave={() => setIsDraftMenuOpen(false)}
-              >
+              <DropdownMenuContent align="end" className="min-w-[180px]">
                 <DropdownMenuItem onSelect={() => handleSaveDraft()}>
                   Save Draft
                 </DropdownMenuItem>

@@ -51,15 +51,12 @@ import {
   XCircle,
   ExternalLink,
   Folder,
-  RotateCw,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { toast } from 'sonner';
 import {
   ApprovalStatus,
-  AttachmentVersion,
-  AttachmentVersionFile,
   DesignVersion,
   FinalDeliverableFile,
   FinalDeliverableReviewAnnotation,
@@ -399,7 +396,6 @@ export default function TaskDetail() {
   const [finalLinkValidationError, setFinalLinkValidationError] = useState('');
   const [finalVersionNote, setFinalVersionNote] = useState('');
   const [selectedFinalVersionId, setSelectedFinalVersionId] = useState('');
-  const [selectedAttachmentVersionId, setSelectedAttachmentVersionId] = useState('');
   const [isAddingFinalLink, setIsAddingFinalLink] = useState(false);
   const [isUpdatingFinalVersionNote, setIsUpdatingFinalVersionNote] = useState(false);
   const [showHandoverModal, setShowHandoverModal] = useState(false);
@@ -1425,24 +1421,6 @@ export default function TaskDetail() {
     }
   }, [sortedFinalDeliverableVersions, selectedFinalVersionId]);
 
-  const rawAttachmentVersions = taskState?.attachmentVersions ?? [];
-  const sortedAttachmentVersions = useMemo(
-    () => [...rawAttachmentVersions].sort((a, b) => (b.version || 0) - (a.version || 0)),
-    [rawAttachmentVersions]
-  );
-  const latestAttachmentVersion = sortedAttachmentVersions[0];
-  // selectedAttachmentVersionId holds the version NUMBER as a string ("1", "2", …)
-  const activeAttachmentVersion =
-    sortedAttachmentVersions.find((v) => String(v.version) === selectedAttachmentVersionId) ||
-    latestAttachmentVersion;
-  useEffect(() => {
-    if (sortedAttachmentVersions.length === 0) { setSelectedAttachmentVersionId(''); return; }
-    const latestNum = String(sortedAttachmentVersions[0]?.version ?? '');
-    if (!selectedAttachmentVersionId || !sortedAttachmentVersions.some((v) => String(v.version) === selectedAttachmentVersionId)) {
-      setSelectedAttachmentVersionId(latestNum);
-    }
-  }, [sortedAttachmentVersions]);
-
   const activeFinalVersion =
     sortedFinalDeliverableVersions.find((version) => version.id === selectedFinalVersionId) ||
     sortedFinalDeliverableVersions[0];
@@ -1544,19 +1522,21 @@ export default function TaskDetail() {
   );
   const finalUploadProgress = useMemo(() => {
     if (finalUploadItems.length === 0) return 0;
-    const totalProgress = finalUploadItems.reduce((sum, item) => {
+    const progressItems = finalUploadItems.some((item) => item.status === 'uploading')
+      ? finalUploadItems.filter((item) => item.status === 'uploading')
+      : finalUploadItems;
+    if (progressItems.length === 0) return 0;
+    const totalProgress = progressItems.reduce((sum, item) => {
       if (item.status === 'done') return sum + 100;
       const raw = Number(item.progress);
       const normalized = Number.isFinite(raw) ? Math.max(0, Math.min(99, Math.round(raw))) : 0;
       return sum + normalized;
     }, 0);
-    return Math.max(0, Math.min(100, Math.round(totalProgress / finalUploadItems.length)));
+    return Math.max(0, Math.min(100, Math.round(totalProgress / progressItems.length)));
   }, [finalUploadItems]);
-  const hasPendingFinalUploads =
-    finalUploadTotals.uploading > 0;
   const finalUploadLabel =
-    hasPendingFinalUploads
-      ? `Uploading ${finalUploadItems.length} item${finalUploadItems.length === 1 ? '' : 's'} (${finalUploadProgress}%)`
+    finalUploadTotals.uploading > 0
+      ? `Uploading ${finalUploadTotals.uploading} item${finalUploadTotals.uploading === 1 ? '' : 's'} (${finalUploadProgress}%)`
       : finalUploadTotals.error > 0 && finalUploadTotals.done === 0
         ? 'Upload failed'
         : `${finalUploadTotals.done || finalUploadItems.length} upload${(finalUploadTotals.done || finalUploadItems.length) === 1 ? '' : 's'} complete`;
@@ -3659,7 +3639,7 @@ export default function TaskDetail() {
     }
     setFinalUploadItems((prev) =>
       prev.map((item) =>
-        item.status !== 'done' ? { ...item, status: 'error' } : item
+        item.status === 'uploading' ? { ...item, status: 'error' } : item
       )
     );
     setIsUploadingFinal(false);
@@ -3937,7 +3917,7 @@ export default function TaskDetail() {
   const handleEditAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
     if (selectedFiles.length === 0) return;
-    await uploadAttachmentVersion(selectedFiles);
+    await uploadTaskAttachments(selectedFiles, { type: 'input', category: 'reference' });
     e.target.value = '';
   };
 
@@ -4330,93 +4310,7 @@ export default function TaskDetail() {
     if (isUploadingAttachment) return;
     const files = Array.from(event.dataTransfer.files || []);
     if (files.length === 0) return;
-    await uploadAttachmentVersion(files);
-  };
-
-  const uploadAttachmentVersion = async (selectedFiles: File[]) => {
-    if (!selectedFiles.length || !taskState) return;
-    if (!ensureWritableTask()) return;
-    if (!apiUrl) { toast.error('File upload requires the backend.'); return; }
-
-    const taskId = String(
-      (taskState as { id?: string; _id?: string })?.id ||
-      (taskState as { _id?: string })?._id || ''
-    ).trim();
-
-    setTaskUploadState('attachment', true, 0);
-    const uploads = Array.from(selectedFiles);
-    const uploadedFiles: AttachmentVersionFile[] = [];
-
-    try {
-      for (let i = 0; i < uploads.length; i++) {
-        const file = uploads[i];
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('taskTitle', taskState.title);
-        if (taskId) formData.append('taskId', taskId);
-
-        const response = await authFetch(`${apiUrl}/api/files/upload`, { method: 'POST', body: formData });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data?.error || 'Upload failed');
-
-        const uploadedUrl = resolveUploadedDriveUrl(data);
-        if (!uploadedUrl) throw new Error('Upload succeeded but file link is missing. Please retry.');
-
-        uploadedFiles.push({
-          id: `avf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          name: file.name,
-          url: uploadedUrl,
-          driveId: data.id,
-          webViewLink: data.webViewLink,
-          webContentLink: data.webContentLink,
-          size: file.size,
-          thumbnailUrl: data.thumbnailLink,
-          uploadedAt: new Date(),
-          uploadedBy: user?.id || '',
-        });
-        setTaskUploadState('attachment', true, Math.min(99, Math.round(((i + 1) / uploads.length) * 100)));
-      }
-
-      if (uploadedFiles.length > 0) {
-        const currentVersions = taskState.attachmentVersions ?? [];
-        const nextVersion = currentVersions.length > 0
-          ? Math.max(...currentVersions.map((v) => v.version)) + 1
-          : 1;
-        const newVersion: AttachmentVersion = {
-          id: `av-${Date.now()}`,
-          version: nextVersion,
-          uploadedAt: new Date(),
-          uploadedBy: user?.id || '',
-          files: uploadedFiles,
-        };
-        await recordChanges(
-          [{ type: 'file_added', field: 'attachmentVersions', oldValue: '', newValue: `V${nextVersion} (${uploadedFiles.length} file${uploadedFiles.length > 1 ? 's' : ''})`, note: 'Attachment version uploaded' }],
-          { attachmentVersions: [...currentVersions, newVersion] }
-        );
-        setSelectedAttachmentVersionId(String(newVersion.version));
-        setTaskUploadState('attachment', true, 100);
-        toast.success(uploadedFiles.length === 1 ? 'File uploaded.' : 'Files uploaded.');
-      }
-    } catch (error: any) {
-      const errorMsg = error.message || 'Upload failed';
-      if (shouldPromptDriveReconnect(errorMsg)) {
-        toast.error('Google Drive Disconnected', {
-          description: 'Reconnect Drive access and try uploading again.',
-          action: {
-            label: 'Connect',
-            onClick: async () => {
-              try { await openDriveReconnectWindow(); }
-              catch (e: any) { toast.error('Drive reconnect failed', { description: e.message }); }
-            }
-          },
-          duration: 10000,
-        });
-      } else {
-        toast.error('File upload failed', { description: errorMsg });
-      }
-    } finally {
-      setTaskUploadState('attachment', false, null);
-    }
+    await uploadTaskAttachments(files, { type: 'input', category: 'reference' });
   };
 
   const handleRequestDeadline = () => {
@@ -4900,51 +4794,8 @@ export default function TaskDetail() {
                     )}
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                        Attachments
+                        Attachments (optional)
                       </p>
-                      {sortedAttachmentVersions.length > 0 && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">Version</span>
-                          <Select
-                            value={activeAttachmentVersion ? String(activeAttachmentVersion.version) : ''}
-                            onValueChange={setSelectedAttachmentVersionId}
-                          >
-                            <SelectTrigger className="h-8 w-auto min-w-[210px] text-xs">
-                              <SelectValue placeholder="Select version" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {sortedAttachmentVersions.map((v) => (
-                                <SelectItem key={v.version} value={String(v.version)}>
-                                  {`V${v.version} · ${formatVersionTimestamp(v.uploadedAt)}`}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                      {activeAttachmentVersion && activeAttachmentVersion.files.length > 0 && (
-                        <div className="mt-2 space-y-1.5">
-                          {activeAttachmentVersion.files.map((file) => (
-                            <div key={file.id || file.name} className={fileRowClass}>
-                              <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
-                                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                <span className="block truncate text-[13px] font-medium text-foreground">{file.name}</span>
-                              </div>
-                              {(file.webViewLink || file.url) && (file.webViewLink || file.url) !== '#' && (
-                                <a
-                                  href={file.webViewLink || file.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="shrink-0 text-xs text-primary hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  View
-                                </a>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
                       <div
                         className={cn(
                           'mt-2 rounded-lg border border-dashed px-3 py-3 transition-colors',
@@ -4958,27 +4809,25 @@ export default function TaskDetail() {
                         onDrop={handleEditAttachmentDrop}
                       >
                         <div className="flex flex-wrap items-center gap-3">
-                          <input
-                            type="file"
-                            multiple
-                            onChange={handleEditAttachmentUpload}
-                            className="hidden"
-                            id="edit-attachment-upload"
-                            disabled={isUploadingAttachment}
-                          />
-                          <label
-                            htmlFor="edit-attachment-upload"
-                            className="inline-flex cursor-pointer items-center justify-center rounded-md border border-border bg-secondary px-3 py-2 text-xs font-medium text-foreground"
-                          >
-                            {isUploadingAttachment
-                              ? `Uploading... ${attachmentUploadProgress ?? 0}%`
-                              : 'Select files'}
-                          </label>
-                          <span className="text-xs text-muted-foreground">
-                            {sortedAttachmentVersions.length > 0
-                              ? `Will create V${(latestAttachmentVersion?.version ?? 0) + 1}`
-                              : 'Upload as V1 · drag and drop here.'}
-                          </span>
+                        <input
+                          type="file"
+                          multiple
+                          onChange={handleEditAttachmentUpload}
+                          className="hidden"
+                          id="edit-attachment-upload"
+                          disabled={isUploadingAttachment}
+                        />
+                        <label
+                          htmlFor="edit-attachment-upload"
+                          className="inline-flex cursor-pointer items-center justify-center rounded-md border border-border bg-secondary px-3 py-2 text-xs font-medium text-foreground"
+                        >
+                          {isUploadingAttachment
+                            ? `Uploading... ${attachmentUploadProgress ?? 0}%`
+                            : 'Select files'}
+                        </label>
+                        <span className="text-xs text-muted-foreground">
+                          Add associated files if needed, or drag and drop here.
+                        </span>
                         </div>
                       </div>
                     </div>
@@ -5244,83 +5093,6 @@ export default function TaskDetail() {
                           </div>
                         </div>
                       )})}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {sortedAttachmentVersions.length > 0 && (
-                <div className="mb-6">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-medium text-muted-foreground">Attachment Versions</h3>
-                    <Select
-                      value={activeAttachmentVersion ? String(activeAttachmentVersion.version) : ''}
-                      onValueChange={setSelectedAttachmentVersionId}
-                    >
-                      <SelectTrigger className="h-8 w-auto min-w-[210px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {sortedAttachmentVersions.map((v) => (
-                          <SelectItem key={v.version} value={String(v.version)}>
-                            {`V${v.version} · ${formatVersionTimestamp(v.uploadedAt)}`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {activeAttachmentVersion && activeAttachmentVersion.files.length > 0 && (
-                    <div className={cn('space-y-1.5', activeAttachmentVersion.files.length > 8 && fileListShellClass)}>
-                      <div className={cn('space-y-1.5', activeAttachmentVersion.files.length > 8 && fileListScrollClass)}>
-                        {activeAttachmentVersion.files.map((file) => {
-                          const isCopied = copiedFileKey === `av-${file.id || file.name}`;
-                          return (
-                            <div key={file.id || file.name} className={fileRowClass}>
-                              <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
-                                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="block truncate text-[13px] font-medium text-foreground">{file.name}</span>
-                                  {file.size && (
-                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">{formatFileSize(file.size)}</span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex shrink-0 items-center gap-1.5">
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  data-success={isCopied}
-                                  className={cn(
-                                    fileActionButtonClass,
-                                    isCopied && 'border-primary/50 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/20 dark:text-primary'
-                                  )}
-                                  onClick={() => {
-                                    const url = file.webViewLink || file.url || '';
-                                    if (!url || url === '#') return;
-                                    navigator.clipboard.writeText(url).then(() => {
-                                      setCopiedFileKey(`av-${file.id || file.name}`);
-                                      setTimeout(() => setCopiedFileKey(''), 2000);
-                                    });
-                                  }}
-                                  title={isCopied ? 'Copied' : 'Copy link'}
-                                >
-                                  {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                                </Button>
-                                {(file.webViewLink || file.url) && (file.webViewLink || file.url) !== '#' && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    className={fileActionButtonClass}
-                                    onClick={() => window.open(file.webViewLink || file.url, '_blank')}
-                                  >
-                                    <ExternalLink className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
                       </div>
                     </div>
                   )}
@@ -6065,7 +5837,7 @@ export default function TaskDetail() {
                         {isUploadingFinal ? 'Uploading...' : 'Select files'}
                       </label>
                       {finalUploadItems.length > 0 && (
-                        <div className="mt-4 w-full relative overflow-hidden rounded-[22px] border border-[#CBD9FF]/60 bg-gradient-to-br from-white/92 via-[#F8FBFF]/84 to-[#E8F1FF]/86 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-[#F8FBFF]/62 supports-[backdrop-filter]:to-[#E8F1FF]/64 backdrop-blur-2xl shadow-none ring-1 ring-white/60 dark:border-border dark:bg-card/78 dark:bg-none dark:ring-0 p-3 text-left">
+                        <div className="mt-4 w-full rounded-2xl border border-[#D9E6FF] bg-white/80 p-3 text-left dark:border-border dark:bg-card/90 dark:shadow-none">
                           <div className="flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold text-foreground">
                               {finalUploadLabel}
@@ -6104,74 +5876,68 @@ export default function TaskDetail() {
                             </div>
                           </div>
                           {showFinalUploadList && (
-                            <div className="mt-3 border-t border-[#E1E9FF] pt-3 dark:border-border">
-                              <div className={cn(finalUploadItems.length > 8 && fileListShellClass)}>
-                                <div className={cn('space-y-2', finalUploadItems.length > 8 && fileListScrollClass)}>
-                                  {finalUploadItems.map((item) => {
-                                    const extension = getFileExtension(item.name);
-                                    const itemProgress =
-                                      item.status === 'done'
-                                        ? 100
-                                        : Math.max(0, Math.min(99, Math.round(Number(item.progress) || 0)));
-                                    return (
-                                      <div
-                                        key={item.id}
-                                        className="rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2.5 dark:border-border dark:bg-slate-900/70"
-                                      >
-                                        <div className="flex items-center justify-between gap-3">
-                                          <div className="flex min-w-0 items-center gap-3">
-                                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:border dark:border-border dark:bg-muted dark:text-foreground">
-                                              {extension.slice(0, 4)}
-                                            </div>
-                                            <span className="min-w-0 truncate text-xs font-medium text-foreground">
-                                              {item.name}
-                                            </span>
-                                          </div>
-                                          <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                                            {item.status === 'uploading' && (
-                                              <>
-                                                <RotateCw className="h-4 w-4 animate-spin text-[#7D8FB8] dark:text-slate-300" />
-                                                <span className="font-semibold uppercase tracking-[0.08em] text-[#7D8FB8] dark:text-slate-300">
-                                                  Uploading
-                                                </span>
-                                              </>
-                                            )}
-                                            {item.status === 'done' && (
-                                              <>
-                                                <Check className="h-4 w-4 text-primary" />
-                                                <span className="font-semibold tabular-nums text-primary">
-                                                  100%
-                                                </span>
-                                              </>
-                                            )}
-                                            {item.status === 'error' && (
-                                              <>
-                                                <AlertTriangle className="h-4 w-4 text-red-500" />
-                                                <span className="font-semibold text-red-500">Failed</span>
-                                              </>
-                                            )}
-                                          </div>
+                            <div className="mt-3 space-y-2 border-t border-[#E1E9FF] pt-3 dark:border-border">
+                              {finalUploadItems.map((item) => {
+                                const extension = getFileExtension(item.name);
+                                const itemProgress =
+                                  item.status === 'done'
+                                    ? 100
+                                    : Math.max(0, Math.min(99, Math.round(Number(item.progress) || 0)));
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className="rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2.5 dark:border-border dark:bg-card/95"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex min-w-0 items-center gap-3">
+                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:bg-muted dark:text-slate-200">
+                                          {extension.slice(0, 4)}
                                         </div>
+                                        <span className="min-w-0 truncate text-xs font-medium text-foreground">
+                                          {item.name}
+                                        </span>
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                                         {item.status === 'uploading' && (
-                                          <div className="mt-2 flex items-center gap-2">
-                                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#D7E3FF]/90 dark:bg-slate-800/90">
-                                              <div
-                                                className="h-full rounded-full bg-primary transition-all duration-300"
-                                                style={{ width: `${itemProgress}%` }}
-                                              />
-                                            </div>
-                                            <span className="w-9 text-right text-[11px] font-medium tabular-nums text-muted-foreground">
-                                              {itemProgress}%
+                                          <>
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/90">
+                                              Uploading
                                             </span>
-                                          </div>
+                                          </>
+                                        )}
+                                        {item.status === 'done' && (
+                                          <>
+                                            <Check className="h-4 w-4 text-emerald-500" />
+                                            <span className="font-semibold tabular-nums text-emerald-500">
+                                              100%
+                                            </span>
+                                          </>
+                                        )}
+                                        {item.status === 'error' && (
+                                          <>
+                                            <AlertTriangle className="h-4 w-4 text-red-500" />
+                                            <span className="font-semibold text-red-500">Failed</span>
+                                          </>
                                         )}
                                       </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                              {hasPendingFinalUploads && (
-                                <p className="mt-2 text-xs text-muted-foreground">
+                                    </div>
+                                    {item.status === 'uploading' && (
+                                      <div className="mt-2.5 grid grid-cols-[1fr_auto] items-center gap-2">
+                                        <Progress
+                                          value={itemProgress}
+                                          className="h-1.5 rounded-full bg-[#E7EEFF] dark:bg-[#1A2748]"
+                                        />
+                                        <span className="min-w-[2.5rem] text-right text-[11px] font-semibold tabular-nums text-foreground/90 dark:text-slate-100">
+                                          {itemProgress}%
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {finalUploadTotals.uploading > 0 && (
+                                <p className="text-xs text-muted-foreground">
                                   Upload in progress: {finalUploadProgress}%
                                 </p>
                               )}

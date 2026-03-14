@@ -1,9 +1,12 @@
 export const legalPageStyles = {
   page:
     'relative min-h-screen overflow-hidden bg-gradient-to-br from-[#F7FAFF] via-[#EEF4FF] to-[#E5EEFF] dark:from-[#050B18] dark:via-[#081530] dark:to-[#0B1738]',
-  glowPrimary: 'hidden',
-  glowSecondary: 'hidden',
-  glowTertiary: 'hidden',
+  glowPrimary:
+    'pointer-events-none absolute -left-24 top-0 h-80 w-80 rounded-full bg-[#DCE8FF]/90 blur-3xl dark:bg-[#1A2E5C]/42',
+  glowSecondary:
+    'pointer-events-none absolute right-0 top-32 h-72 w-72 rounded-full bg-[#EDF4FF]/85 blur-3xl dark:bg-[#243A6A]/26',
+  glowTertiary:
+    'pointer-events-none absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-[#E3EDFF]/75 blur-3xl dark:bg-[#16305F]/24',
   topButton:
     'h-10 rounded-full border-[#C9D7FF] bg-white/82 px-5 text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] dark:border-border dark:bg-card/80 dark:text-foreground dark:hover:bg-muted',
   topBadge:
@@ -29,7 +32,7 @@ export const legalPageStyles = {
   contactSection:
     'mt-6 rounded-[26px] border border-[#D7E0F8] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(239,244,255,0.92))] p-6 dark:border-border dark:bg-background/45 dark:bg-none',
   contactCard:
-    'rounded-2xl border border-[#D7E0F8] bg-white/85 px-4 py-3 text-sm dark:border-border dark:bg-muted/40',
+    'rounded-2xl border border-[#D7E0F8] bg-white/85 px-4 py-3 text-sm dark:border-border dark:bg-card/78',
   contactTitle: 'text-lg font-semibold text-[#1E2A5A] dark:text-foreground',
   contactBody: 'mt-2 text-sm leading-6 text-[#5C6E95] dark:text-muted-foreground',
   contactMeta: 'mt-1 text-[#6B7A99] dark:text-muted-foreground',

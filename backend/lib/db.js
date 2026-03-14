@@ -12,12 +12,6 @@ const connectDB = async () => {
 
         await mongoose.connect(mongoUri, {
             dbName: "designhub",
-            maxPoolSize: 10,
-            minPoolSize: 2,
-            maxIdleTimeMS: 45000,
-            socketTimeoutMS: 45000,
-            serverSelectionTimeoutMS: 5000,
-            retryWrites: true,
         });
         console.log("MongoDB connected successfully");
     } catch (error) {

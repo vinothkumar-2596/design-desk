@@ -106,31 +106,14 @@ const removeSocketFromGlobalTyping = (userId, socketId) => {
 };
 
 export const initSocket = (httpServer) => {
-  const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    "http://localhost:5173",
-    "http://localhost:8080",
-    "http://localhost:8081",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:8080",
-    "http://127.0.0.1:8081",
-  ].filter(Boolean);
-
   io = new Server(httpServer, {
     path: "/socket.io/",
     cors: {
-      origin: allowedOrigins,
-      methods: ["GET", "POST"],
-      credentials: true,
+      origin: "*",
+      methods: ["GET", "POST"]
     },
-    transports: ['websocket', 'polling'],
-    perMessageDeflate: {
-      threshold: 1024,
-    },
+    transports: ['websocket', 'polling']
   });
-
-  // Periodically clean up stale global presence entries (every 30 min)
-  setInterval(() => pruneGlobalPresence(), 30 * 60 * 1000);
 
   io.on("connection", (socket) => {
     console.log("Socket connected:", socket.id);
