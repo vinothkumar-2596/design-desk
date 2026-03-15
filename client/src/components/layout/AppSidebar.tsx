@@ -145,7 +145,7 @@ const navItems: NavItem[] = [
     title: 'Designer Availability',
     href: '/designer-availability',
     icon: Calendar,
-    roles: ['designer', 'staff', 'treasurer', 'admin'],
+    roles: ['designer', 'treasurer', 'admin'],
   },
   {
     title: 'My Requests',

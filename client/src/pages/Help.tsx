@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -274,6 +275,12 @@ const helpItems: HelpItem[] = [
 ];
 
 export default function Help() {
+  const { user } = useAuth();
+  const visibleHelpItems =
+    user?.role === 'staff'
+      ? helpItems.filter((item) => item.title !== 'Designer Availability')
+      : helpItems;
+
   return (
     <DashboardLayout>
       <div className="rounded-[32px] border border-[#D9E6FF] bg-white/90 p-6 md:p-10 shadow-none dark:border-border dark:bg-card/90 dark:shadow-none">
@@ -322,7 +329,7 @@ export default function Help() {
           </div>
 
           <div className="space-y-4">
-            {helpItems.map((item, index) => {
+            {visibleHelpItems.map((item, index) => {
               const Icon = item.icon;
               return (
                 <details

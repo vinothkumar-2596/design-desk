@@ -46,6 +46,7 @@ interface DashboardLayoutProps {
   headerActions?: ReactNode;
   background?: ReactNode;
   hideGrid?: boolean;
+  allowContentOverflow?: boolean;
 }
 
 type NotificationItem = {
@@ -93,6 +94,7 @@ export function DashboardLayout({
   headerActions,
   background,
   hideGrid = false,
+  allowContentOverflow = false,
 }: DashboardLayoutProps) {
   const { isAuthenticated, user } = useAuth();
   const { tasks: hydratedTasks } = useTasksContext();
@@ -1382,6 +1384,7 @@ function DashboardShell({
   contentScrollRef,
   keepHeaderPinned = false,
   hideGrid = false,
+  allowContentOverflow = false,
 }: {
   children: ReactNode;
   userInitial: string;
@@ -1391,6 +1394,7 @@ function DashboardShell({
   contentScrollRef?: React.RefObject<HTMLDivElement>;
   keepHeaderPinned?: boolean;
   hideGrid?: boolean;
+  allowContentOverflow?: boolean;
 }) {
   const { query, setQuery, items, scopeLabel } = useGlobalSearch();
   const { resolvedTheme } = useTheme();
@@ -1736,7 +1740,10 @@ function DashboardShell({
         <main className="flex-1 min-w-0 flex justify-center">
           <div
             ref={shellCardRef}
-            className="w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-none flex flex-col overflow-hidden"
+            className={cn(
+              "w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-none flex flex-col",
+              allowContentOverflow ? "overflow-visible" : "overflow-hidden"
+            )}
           >
             <div
               ref={headerRef}
@@ -1859,7 +1866,10 @@ function DashboardShell({
             <div
               ref={contentScrollRef}
               data-app-scroll-container="true"
-              className="relative flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin"
+              className={cn(
+                "relative flex-1 overflow-y-auto scrollbar-thin",
+                allowContentOverflow ? "overflow-x-visible" : "overflow-x-hidden"
+              )}
               onScroll={handleContentScroll}
             >
               {background}

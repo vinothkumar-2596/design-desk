@@ -66,6 +66,7 @@ import {
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { PickersDay, type PickersDayProps } from '@mui/x-date-pickers/PickersDay';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Sheet,
@@ -82,6 +83,7 @@ import {
 } from '@/lib/designerSchedule';
 import {
   addOfficeOpenDays,
+  getOfficeGovernmentHolidayName,
   isOfficeClosedDate,
   OFFICE_REGION_LABEL,
 } from '@/lib/officeCalendar';
@@ -97,8 +99,32 @@ import {
 import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
 import { GeminiBlink } from '@/components/common/GeminiBlink';
 import { AttachmentPreviewDialog } from '@/components/tasks/AttachmentPreviewDialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TaskDraft } from '@/lib/ai';
 import { cn } from '@/lib/utils';
+
+type DeadlineCalendarDayProps = PickersDayProps & {
+  tooltipLabel?: string;
+};
+
+function DeadlineCalendarDay({ tooltipLabel, ...props }: DeadlineCalendarDayProps) {
+  const dayButton = <PickersDay {...props} />;
+
+  if (!tooltipLabel || props.outsideCurrentMonth) {
+    return dayButton;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">{dayButton}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" sideOffset={8} className="z-[100100]">
+        {tooltipLabel}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 interface UploadedFile {
   id: string;
@@ -1113,6 +1139,52 @@ export default function NewRequest() {
   };
   const isDateBlocked = (value: Date) =>
     isOfficeClosedDate(value) || (!isEmergency && hasDesignerConflict(value));
+  const getDeadlineCalendarDayMeta = (value: Date) => {
+    const normalizedValue = startOfDay(value);
+    const holidayName = getOfficeGovernmentHolidayName(normalizedValue);
+    const isSunday = normalizedValue.getDay() === 0;
+    const isSaturday = normalizedValue.getDay() === 6;
+    const hasConflict = hasDesignerConflict(normalizedValue);
+    const isPastDate = isBefore(normalizedValue, todayDate);
+    const isInsideLeadWindow =
+      !isEmergency && !isPastDate && isBefore(normalizedValue, minDeadlineDate);
+
+    let title = '';
+    let dotColor = '';
+    let textColor = '';
+    const mutedMarkerColor = '#94A3B8';
+
+    if (holidayName) {
+      title = `${holidayName} holiday in ${OFFICE_REGION_LABEL}`;
+      dotColor = mutedMarkerColor;
+    } else if (isSunday) {
+      title = 'Sunday';
+      dotColor = mutedMarkerColor;
+    } else if (isSaturday) {
+      title = 'Saturday';
+      dotColor = mutedMarkerColor;
+    }
+
+    if (hasConflict) {
+      title = title
+        ? `${title} | Designer already has scheduled work`
+        : 'Designer already has scheduled work';
+      if (!dotColor) {
+        dotColor = mutedMarkerColor;
+      }
+    }
+
+    if (!title && isInsideLeadWindow) {
+      title = 'Inside the 3-working-day lead window';
+    }
+
+    return {
+      title,
+      dotColor,
+      textColor,
+      shouldShowDot: Boolean(dotColor),
+    };
+  };
   const getNextAvailableDeadline = (baseDate: Date) => {
     let candidate = startOfDay(baseDate);
     if (isBefore(candidate, todayDate)) {
@@ -1144,6 +1216,7 @@ export default function NewRequest() {
     return suggestions;
   }, [invalidRanges, isEmergency, minDeadlineDate, todayDate]);
   const selectedDeadlineKey = deadline ? format(startOfDay(deadline), 'yyyy-MM-dd') : '';
+  const pickerPortalContainer = typeof document === 'undefined' ? undefined : document.body;
   const scheduleEndpoint =
     apiUrl && user?.role === 'staff'
       ? `${apiUrl}/api/tasks/availability`
@@ -1884,6 +1957,7 @@ export default function NewRequest() {
 
   return (
     <DashboardLayout
+      allowContentOverflow
       background={
         <div className="pointer-events-none absolute inset-0 -z-10 bg-white dark:bg-slate-950 overflow-hidden rounded-[32px]">
           <div className="absolute left-1/2 top-[-22%] h-[680px] w-[780px] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(77,92,218,0.6),_rgba(120,190,255,0.4)_45%,_transparent_72%)] blur-[90px] opacity-90 dark:opacity-0" />
@@ -2114,7 +2188,21 @@ export default function NewRequest() {
                     }}
                     minDate={isEmergency ? todayDate : minDeadlineDate}
                     shouldDisableDate={isDateBlocked}
+                    slots={{
+                      day: DeadlineCalendarDay,
+                    }}
                     slotProps={{
+                      popper: {
+                        container: pickerPortalContainer,
+                        disablePortal: false,
+                        placement: 'bottom-start',
+                        sx: {
+                          zIndex: 99999,
+                          '& .MuiPaper-root': {
+                            zIndex: 99999,
+                          },
+                        },
+                      },
                       textField: {
                         size: 'small',
                         fullWidth: true,
@@ -2159,6 +2247,41 @@ export default function NewRequest() {
                             color: 'hsl(var(--muted-foreground))',
                           },
                         },
+                      },
+                      day: ({ day, isDayOutsideMonth, isDaySelected }) => {
+                        const meta = getDeadlineCalendarDayMeta(day as Date);
+
+                        if (isDayOutsideMonth || (!meta.shouldShowDot && !meta.textColor && !meta.title)) {
+                          return {
+                            tooltipLabel: isDayOutsideMonth ? '' : meta.title,
+                          };
+                        }
+
+                        return {
+                          tooltipLabel: meta.title,
+                          sx: {
+                            ...(meta.textColor && !isDaySelected
+                              ? {
+                                  color: meta.textColor,
+                                }
+                              : {}),
+                            ...(meta.shouldShowDot && !isDaySelected
+                              ? {
+                                  '&::after': {
+                                    content: '""',
+                                    position: 'absolute',
+                                    left: '50%',
+                                    bottom: 3,
+                                    width: 5,
+                                    height: 5,
+                                    borderRadius: '999px',
+                                    backgroundColor: meta.dotColor,
+                                    transform: 'translateX(-50%)',
+                                  },
+                                }
+                              : {}),
+                          },
+                        };
                       },
                     }}
                   />

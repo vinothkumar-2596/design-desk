@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { Navigate } from 'react-router-dom';
 import {
   Select,
   SelectContent,
@@ -56,19 +57,21 @@ export default function DesignerAvailability() {
   const dragStateRef = useRef({ isDragging: false, startX: 0, startScrollLeft: 0 });
   const today = useMemo(() => startOfDay(new Date()), []);
   const userRole = String(user?.role || '').trim().toLowerCase();
+  if (userRole === 'staff') {
+    return <Navigate to="/dashboard" replace />;
+  }
   const userIsMainDesigner = isMainDesigner(user);
   const useAvailabilityEndpoint = Boolean(
     apiUrl &&
     (
-      userRole === 'staff' ||
       userRole === 'treasurer' ||
       userRole === 'admin' ||
       userRole === 'manager' ||
       (userRole === 'designer' && userIsMainDesigner)
     )
   );
-  const showTaskSearch = userRole !== 'staff';
-  const showDesignerPicker = userRole !== 'staff';
+  const showTaskSearch = true;
+  const showDesignerPicker = true;
   const showDesignerScope = Boolean(
     userRole === 'treasurer' ||
     userRole === 'admin' ||
