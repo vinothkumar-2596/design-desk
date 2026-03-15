@@ -54,14 +54,28 @@ export interface TaskComment {
   parentId?: string;
   mentions?: UserRole[];
   createdAt: Date;
+  editedAt?: Date;
+  deletedAt?: Date;
+  deletedByName?: string;
   receiverRoles?: UserRole[];
   seenBy?: CommentSeen[];
+  reactions?: CommentReaction[];
   attachments?: TaskFile[];
 }
 
 export interface CommentSeen {
   role: UserRole;
+  userId?: string;
+  userName?: string;
   seenAt: Date;
+}
+
+export interface CommentReaction {
+  emoji: string;
+  userId: string;
+  userName: string;
+  userRole?: UserRole;
+  createdAt: Date;
 }
 
 export interface TaskFile {

@@ -27,12 +27,29 @@ const TaskCommentSchema = new mongoose.Schema(
     mentions: { type: [String], default: [] },
     attachments: { type: [TaskFileSchema], default: [] },
     createdAt: { type: Date, default: Date.now },
+    editedAt: { type: Date },
+    deletedAt: { type: Date },
+    deletedByName: { type: String, default: "" },
     receiverRoles: { type: [String], default: [] },
     seenBy: {
       type: [
         {
           role: { type: String, default: "" },
+          userId: { type: String, default: "" },
+          userName: { type: String, default: "" },
           seenAt: { type: Date, default: Date.now }
+        }
+      ],
+      default: []
+    },
+    reactions: {
+      type: [
+        {
+          emoji: { type: String, default: "" },
+          userId: { type: String, default: "" },
+          userName: { type: String, default: "" },
+          userRole: { type: String, default: "" },
+          createdAt: { type: Date, default: Date.now }
         }
       ],
       default: []

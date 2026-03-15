@@ -8,6 +8,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -34,7 +48,6 @@ import {
   Tag,
   MessageSquare,
   Send,
-  FileText,
   Edit3,
   Upload,
   Paperclip,
@@ -52,9 +65,11 @@ import {
   XCircle,
   ExternalLink,
   Folder,
+  MoreHorizontal,
+  Search,
 } from 'lucide-react';
-import { format, formatDistanceToNow, isPast } from 'date-fns';
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
+import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { toast } from 'sonner';
 import {
   ApprovalStatus,
@@ -82,6 +97,7 @@ import {
 } from '@/components/tasks/AttachmentPreviewDialog';
 import { ImageAnnotationDialog } from '@/components/tasks/ImageAnnotationDialog';
 import { isMainDesigner } from '@/lib/designerAccess';
+import { UserAvatar } from '@/components/common/UserAvatar';
 
 type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
 const statusConfig: Record<DisplayTaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
@@ -147,8 +163,22 @@ const roleLabels: Record<UserRole, string> = {
   designer: 'Designer',
 };
 const allRoles: UserRole[] = ['staff', 'treasurer', 'designer'];
+const quickCommentReactions = [
+  '\u{1F44D}',
+  '\u{2764}\u{FE0F}',
+  '\u{1F440}',
+  '\u{1F527}',
+] as const;
+const getAttachmentThumbnailLabel = (name: string) => {
+  const ext = name.split('.').pop()?.trim().toUpperCase() || '';
+  if (ext) {
+    return ext.slice(0, 4);
+  }
+  return 'FILE';
+};
 const normalizeUserRole = (role?: string) =>
   allRoles.includes(role as UserRole) ? (role as UserRole) : 'staff';
+const formatCommentTimestampHover = (value: Date) => format(value, 'MMMM d, yyyy - h:mm a');
 type TaskAccessMode = 'full' | 'view_only';
 const normalizeTaskAccessMode = (value?: string): TaskAccessMode | null => {
   const normalized = String(value || '').trim().toLowerCase();
@@ -356,6 +386,38 @@ const shouldPromptDriveReconnect = (errorMessage?: string) => {
   );
 };
 
+function AttachmentThumbnail({
+  previewUrl,
+  name,
+}: {
+  previewUrl?: string;
+  name: string;
+}) {
+  const [hasError, setHasError] = useState(!previewUrl);
+
+  useEffect(() => {
+    setHasError(!previewUrl);
+  }, [previewUrl]);
+
+  if (!previewUrl || hasError) {
+    return (
+      <span className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.5),_transparent_58%),linear-gradient(160deg,_rgba(245,248,255,0.95),_rgba(224,234,255,0.75))] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#5B6E96] dark:bg-[linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.75))] dark:text-slate-200">
+        {getAttachmentThumbnailLabel(name)}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={previewUrl}
+      alt=""
+      className="block h-full w-full object-cover"
+      loading="lazy"
+      onError={() => setHasError(true)}
+    />
+  );
+}
+
 export default function TaskDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -374,9 +436,16 @@ export default function TaskDetail() {
   const [newComment, setNewComment] = useState('');
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [commentSearch, setCommentSearch] = useState('');
+  const [isCommentSearchVisible, setIsCommentSearchVisible] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
   const [isChatComposerFocused, setIsChatComposerFocused] = useState(false);
   const [commentAttachments, setCommentAttachments] = useState<TaskFile[]>([]);
   const [replyAttachments, setReplyAttachments] = useState<TaskFile[]>([]);
+  const [commentUpdateInFlightId, setCommentUpdateInFlightId] = useState<string | null>(null);
+  const [commentDeleteInFlightId, setCommentDeleteInFlightId] = useState<string | null>(null);
+  const [commentReactionInFlightKey, setCommentReactionInFlightKey] = useState<string | null>(null);
   const [isUploadingCommentAttachments, setIsUploadingCommentAttachments] = useState(false);
   const [commentAttachmentUploadProgress, setCommentAttachmentUploadProgress] = useState<number | null>(
     null
@@ -462,6 +531,7 @@ export default function TaskDetail() {
   const workingUploadInputRef = useRef<HTMLInputElement | null>(null);
   const finalUploadInputRef = useRef<HTMLInputElement | null>(null);
   const replaceFinalFileInputRef = useRef<HTMLInputElement | null>(null);
+  const commentSearchInputRef = useRef<HTMLInputElement | null>(null);
   const commentComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const replyComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const socketRef = useRef<ReturnType<typeof createSocket> | null>(null);
@@ -765,6 +835,8 @@ export default function TaskDetail() {
         parentId: comment.parentId || '',
         mentions: comment.mentions?.filter((role) => allRoles.includes(role as UserRole)) ?? [],
         userRole: normalizeUserRole(comment.userRole),
+        editedAt: comment.editedAt ? new Date(comment.editedAt) : undefined,
+        deletedAt: comment.deletedAt ? new Date(comment.deletedAt) : undefined,
         receiverRoles:
           comment.receiverRoles?.filter((role) => allRoles.includes(role)) ?? [],
         attachments:
@@ -779,6 +851,11 @@ export default function TaskDetail() {
           ...entry,
           role: normalizeUserRole(entry.role),
           seenAt: new Date(entry.seenAt),
+        })) ?? [],
+        reactions: comment.reactions?.map((reaction) => ({
+          ...reaction,
+          userRole: normalizeUserRole(reaction.userRole),
+          createdAt: new Date(reaction.createdAt),
         })) ?? [],
         createdAt: new Date(comment.createdAt),
       })),
@@ -952,6 +1029,8 @@ export default function TaskDetail() {
     parentId: comment?.parentId || '',
     mentions: comment?.mentions?.filter((role: string) => allRoles.includes(role as UserRole)) ?? [],
     userRole: normalizeUserRole(comment?.userRole),
+    editedAt: comment?.editedAt ? new Date(comment.editedAt) : undefined,
+    deletedAt: comment?.deletedAt ? new Date(comment.deletedAt) : undefined,
     receiverRoles:
       comment?.receiverRoles?.filter((role: string) => allRoles.includes(role as UserRole)) ?? [],
     attachments:
@@ -969,8 +1048,35 @@ export default function TaskDetail() {
         role: normalizeUserRole(entry.role),
         seenAt: new Date(entry.seenAt),
       })) ?? [],
+    reactions:
+      comment?.reactions?.map((reaction: any) => ({
+        ...reaction,
+        userRole: normalizeUserRole(reaction?.userRole),
+        createdAt: new Date(reaction?.createdAt ?? Date.now()),
+      })) ?? [],
     createdAt: new Date(comment?.createdAt ?? Date.now()),
   });
+
+  const mergeCommentIntoState = (incomingComment: any) => {
+    const normalizedComment = normalizeIncomingComment(incomingComment);
+    setTaskState((prev) => {
+      if (!prev) return prev;
+      const existingIndex = prev.comments.findIndex((comment) => comment.id === normalizedComment.id);
+      const nextComments =
+        existingIndex === -1
+          ? [...prev.comments, normalizedComment]
+          : prev.comments.map((comment, index) =>
+              index === existingIndex ? normalizedComment : comment
+            );
+      const nextTask = {
+        ...prev,
+        comments: nextComments,
+        updatedAt: new Date(),
+      };
+      persistTask(nextTask);
+      return nextTask;
+    });
+  };
 
   const emitTyping = (isTyping: boolean) => {
     const roomId = taskState?.id || (taskState as { _id?: string } | undefined)?._id || id;
@@ -1087,17 +1193,18 @@ export default function TaskDetail() {
 
     socket.on('comment:new', (payload: any) => {
       if (!payload || payload.taskId !== roomId || !payload.comment) return;
-      const incoming = normalizeIncomingComment(payload.comment);
-      setTaskState((prev) => {
-        if (!prev) return prev;
-        if (prev.comments.some((comment) => comment.id === incoming.id)) {
-          return prev;
-        }
-        return {
-          ...prev,
-          comments: [...prev.comments, incoming],
-          updatedAt: new Date(),
-        };
+      mergeCommentIntoState(payload.comment);
+    });
+
+    socket.on('comment:updated', (payload: any) => {
+      if (!payload || payload.taskId !== roomId || !payload.comment) return;
+      mergeCommentIntoState(payload.comment);
+    });
+
+    socket.on('comments:seen', (payload: any) => {
+      if (!payload || payload.taskId !== roomId || !Array.isArray(payload.comments)) return;
+      payload.comments.forEach((comment: any) => {
+        mergeCommentIntoState(comment);
       });
     });
 
@@ -1252,32 +1359,39 @@ export default function TaskDetail() {
     return allRoles;
   };
 
-  const hasUnseenForRole = (task: typeof taskState, role?: UserRole) => {
+  const hasUnseenForRole = (task: typeof taskState, role?: UserRole, userId?: string) => {
     if (!task || !role) return false;
+    const normalizedUserId = String(userId || '').trim();
     return task.comments?.some((comment) => {
       const receivers = resolveCommentReceivers(comment);
       if (!receivers.includes(role)) return false;
       const seenBy = comment.seenBy ?? [];
-      return !seenBy.some((entry) => entry.role === role);
+      return normalizedUserId
+        ? !seenBy.some((entry) => String(entry.userId || '').trim() === normalizedUserId)
+        : !seenBy.some((entry) => entry.role === role);
     });
   };
 
   const hasUnseenComments = useMemo(
-    () => hasUnseenForRole(taskState, user?.role),
-    [taskState?.comments, user?.role]
+    () => hasUnseenForRole(taskState, user?.role, user?.id),
+    [taskState?.comments, user?.id, user?.role]
   );
   const unseenFingerprint = useMemo(() => {
     if (!taskState || !user?.role) return '';
+    const normalizedUserId = String(user.id || '').trim();
     const relevant = taskState.comments
       .filter((comment) => resolveCommentReceivers(comment).includes(user.role))
       .map((comment) => {
         const id = (comment as { id?: string; _id?: string }).id || (comment as { _id?: string })._id;
-        const seenCount = (comment.seenBy ?? []).length;
-        return `${id || comment.createdAt?.toString() || 'comment'}:${seenCount}`;
+        const seenBy = comment.seenBy ?? [];
+        const isSeen = normalizedUserId
+          ? seenBy.some((entry) => String(entry.userId || '').trim() === normalizedUserId)
+          : seenBy.some((entry) => entry.role === user.role);
+        return `${id || comment.createdAt?.toString() || 'comment'}:${isSeen ? 'seen' : 'unseen'}:${seenBy.length}`;
       })
       .join('|');
-    return `${taskState.id}:${user.role}:${relevant}`;
-  }, [taskState?.comments, taskState?.id, user?.role]);
+    return `${taskState.id}:${user.role}:${normalizedUserId}:${relevant}`;
+  }, [taskState?.comments, taskState?.id, user?.id, user?.role]);
   const seenRequestRef = useRef(false);
   const lastSeenAttemptAtRef = useRef(0);
   const lastSeenFingerprintRef = useRef('');
@@ -1517,11 +1631,7 @@ export default function TaskDetail() {
                   void handleFileAction(attachment);
                 }}
               >
-                {previewUrl ? (
-                  <img src={previewUrl} alt={attachment.name} className="h-full w-full object-cover" />
-                ) : (
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                )}
+                <AttachmentThumbnail previewUrl={previewUrl} name={attachment.name} />
               </button>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
@@ -1566,11 +1676,7 @@ export default function TaskDetail() {
                   void handleFileAction(attachment);
                 }}
               >
-                {previewUrl ? (
-                  <img src={previewUrl} alt={attachment.name} className="h-full w-full object-cover" />
-                ) : (
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                )}
+                <AttachmentThumbnail previewUrl={previewUrl} name={attachment.name} />
               </button>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
@@ -1621,6 +1727,268 @@ export default function TaskDetail() {
     const roots = sorted.filter((comment) => !comment.parentId);
     return { topLevelComments: roots, repliesByParent: replyMap };
   }, [taskState]);
+
+  const normalizedCommentSearch = commentSearch.trim().toLowerCase();
+  const currentUserId = String(user?.id || '').trim();
+
+  useEffect(() => {
+    if (!isCommentSearchVisible) return;
+    window.requestAnimationFrame(() => {
+      commentSearchInputRef.current?.focus();
+    });
+  }, [isCommentSearchVisible]);
+
+  const doesCommentMatchSearch = (comment: TaskComment) => {
+    if (!normalizedCommentSearch) return true;
+    const searchableText = [
+      comment.userName,
+      comment.userRole ? roleLabels[comment.userRole] : '',
+      comment.content,
+      ...(comment.attachments ?? []).map((attachment) => attachment.name),
+    ]
+      .join(' ')
+      .toLowerCase();
+    return searchableText.includes(normalizedCommentSearch);
+  };
+
+  const threadMatchesSearch = (comment: TaskComment): boolean => {
+    if (doesCommentMatchSearch(comment)) return true;
+    return (repliesByParent.get(comment.id) ?? []).some((reply) => threadMatchesSearch(reply));
+  };
+
+  const visibleTopLevelComments = useMemo(
+    () =>
+      normalizedCommentSearch
+        ? topLevelComments.filter((comment) => threadMatchesSearch(comment))
+        : topLevelComments,
+    [normalizedCommentSearch, repliesByParent, topLevelComments]
+  );
+
+  const matchingCommentCount = useMemo(
+    () =>
+      normalizedCommentSearch
+        ? (taskState?.comments ?? []).filter((comment) => doesCommentMatchSearch(comment)).length
+        : taskState?.comments.length ?? 0,
+    [normalizedCommentSearch, taskState?.comments]
+  );
+
+  const getCommentSeenEntries = (comment: TaskComment) => {
+    const uniqueSeenEntries = new Map<string, NonNullable<TaskComment['seenBy']>[number]>();
+    (comment.seenBy ?? []).forEach((entry) => {
+      const key =
+        String(entry.userId || '').trim() ||
+        `${entry.role}:${String(entry.userName || roleLabels[entry.role] || entry.role).trim()}`;
+      const existing = uniqueSeenEntries.get(key);
+      if (!existing || new Date(entry.seenAt).getTime() > new Date(existing.seenAt).getTime()) {
+        uniqueSeenEntries.set(key, entry);
+      }
+    });
+    return Array.from(uniqueSeenEntries.values()).sort(
+      (left, right) => new Date(right.seenAt).getTime() - new Date(left.seenAt).getTime()
+    );
+  };
+
+  const getGroupedCommentReactions = (comment: TaskComment) => {
+    const grouped = new Map<
+      string,
+      {
+        emoji: string;
+        count: number;
+        reactedByCurrentUser: boolean;
+        users: { id: string; name: string; role?: UserRole }[];
+      }
+    >();
+
+    (comment.reactions ?? []).forEach((reaction) => {
+      const emoji = String(reaction.emoji || '').trim();
+      if (!emoji) return;
+      const existing = grouped.get(emoji);
+      const reactionUserId = String(reaction.userId || '').trim();
+      if (existing) {
+        if (!existing.users.some((userEntry) => userEntry.id === reactionUserId && reactionUserId)) {
+          existing.users.push({
+            id: reactionUserId,
+            name: reaction.userName || 'User',
+            role: reaction.userRole,
+          });
+          existing.count += 1;
+        }
+        if (reactionUserId && reactionUserId === currentUserId) {
+          existing.reactedByCurrentUser = true;
+        }
+        return;
+      }
+
+      grouped.set(emoji, {
+        emoji,
+        count: 1,
+        reactedByCurrentUser: reactionUserId === currentUserId,
+        users: [
+          {
+            id: reactionUserId,
+            name: reaction.userName || 'User',
+            role: reaction.userRole,
+          },
+        ],
+      });
+    });
+
+    return Array.from(grouped.values()).sort((left, right) => {
+      const leftIndex = quickCommentReactions.indexOf(left.emoji as (typeof quickCommentReactions)[number]);
+      const rightIndex = quickCommentReactions.indexOf(right.emoji as (typeof quickCommentReactions)[number]);
+      if (leftIndex !== -1 || rightIndex !== -1) {
+        return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) -
+          (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+      }
+      return left.emoji.localeCompare(right.emoji);
+    });
+  };
+
+  const formatSeenEntryLabel = (entry: NonNullable<TaskComment['seenBy']>[number]) =>
+    String(entry.userName || (entry.role ? roleLabels[entry.role] : 'User')).trim() || 'User';
+
+  const getCommentReceiptSummary = (comment: TaskComment, seenEntries: NonNullable<TaskComment['seenBy']>) => {
+    const receivers = resolveCommentReceivers(comment);
+    if (receivers.length === 0) return null;
+    if (seenEntries.length === 0) return 'Sent';
+
+    const seenText =
+      seenEntries.length <= 2
+        ? `Seen by ${seenEntries.map((entry) => formatSeenEntryLabel(entry)).join(', ')}`
+        : `Seen by ${seenEntries.length} users`;
+    const pendingRoles = receivers.filter(
+      (role) => !seenEntries.some((entry) => entry.role === role)
+    );
+
+    if (pendingRoles.length === 0) {
+      return seenText;
+    }
+
+    return `${seenText} - Pending ${pendingRoles
+      .map((role) => roleLabels[role] ?? role)
+      .join(', ')}`;
+  };
+
+  const renderFinalFileStatusCard = (audience: 'staff' | 'junior') => {
+    const isPendingStatus = finalDeliverableReviewStatus === 'pending';
+    const normalizedReviewNote = finalDeliverableReviewNote.toLowerCase();
+    const hasUrgentWorkloadReason =
+      /urgent|deadline|committed|commitment|busy|occupied|other work|workload|priority/.test(
+        normalizedReviewNote
+      );
+    const hasCorrectionReason =
+      /correction|correct|revision|revise|fix|feedback|change requested|changes requested/.test(
+        normalizedReviewNote
+      );
+    const hasSatisfactionReason =
+      /not satisf|not satisfied|expectation|quality|refine|refinement|improve|polish/.test(
+        normalizedReviewNote
+      );
+
+    const scenario = (() => {
+      if (isPendingStatus) {
+        return {
+          breadcrumbItems: ['Files Uploaded', 'Design Lead Review', 'Pending'],
+          statusPillLabel: 'In Review',
+          description:
+            audience === 'staff'
+              ? 'Final deliverables are submitted and waiting for Design Lead approval.'
+              : 'Waiting for Design Lead approval.',
+        };
+      }
+
+      if (hasUrgentWorkloadReason) {
+        return audience === 'staff'
+          ? {
+              breadcrumbItems: ['Files Uploaded', 'Designer Workload', 'Deadline Updated'],
+              statusPillLabel: 'Timeline Shifted',
+              description: `The junior designer is currently committed to urgent deadline work. Updated final files will be shared once that priority is cleared${taskState.deadline ? `, with the next working target around ${format(taskState.deadline, 'MMM d, yyyy')}.` : '.'}`,
+            }
+          : {
+              breadcrumbItems: ['Files Uploaded', 'Urgent Workload', 'Resubmit Later'],
+              statusPillLabel: 'Deadline Conflict',
+              description: 'You are currently committed to urgent deadline work. Align the revised delivery timeline, complete the pending updates, and resubmit the final files once ready.',
+            };
+      }
+
+      if (hasCorrectionReason) {
+        return audience === 'staff'
+          ? {
+              breadcrumbItems: ['Files Uploaded', 'Corrections Shared', 'With Designer'],
+              statusPillLabel: 'Correction in Progress',
+              description: 'Requested corrections have been shared with the designer. Updated final files are being prepared before the next share.',
+            }
+          : {
+              breadcrumbItems: ['Files Uploaded', 'Feedback Received', 'Apply Corrections'],
+              statusPillLabel: 'Changes Required',
+              description: 'Specific corrections were shared on this submission. Apply the requested changes and upload the updated final files again.',
+            };
+      }
+
+      if (hasSatisfactionReason) {
+        return audience === 'staff'
+          ? {
+              breadcrumbItems: ['Files Uploaded', 'Internal Review', 'Design Refinement'],
+              statusPillLabel: 'Refining Design',
+              description: 'The latest version did not fully satisfy the internal review. The designer is refining the final files before sharing them again.',
+            }
+          : {
+              breadcrumbItems: ['Files Uploaded', 'Review Feedback', 'Refine Submission'],
+              statusPillLabel: 'Refinement Needed',
+              description: 'The current final file needs a stronger refinement pass before resubmission. Rework the output and upload the next version.',
+            };
+      }
+
+      return audience === 'staff'
+        ? {
+            breadcrumbItems: ['Files Uploaded', 'Internal Review', 'With Designer'],
+            statusPillLabel: 'Update in Progress',
+            description: 'Design updates are being made based on internal review.',
+          }
+        : {
+            breadcrumbItems: ['Files Uploaded', 'Feedback Received', 'Resubmit'],
+            statusPillLabel: 'Update Needed',
+            description: `Design Lead marked this submission as update needed.${finalDeliverableReviewNote ? ` Reason: ${finalDeliverableReviewNote}` : ''} Upload updates and submit again.`,
+          };
+    })();
+
+    return (
+      <div className="mb-4 rounded-xl border border-[#D9E6FF]/75 bg-[#F7FBFF]/88 px-4 py-3.5 dark:border-border/70 dark:bg-card/80">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Final File Status
+            </p>
+            <Breadcrumb className="mt-1">
+              <BreadcrumbList className="gap-1 text-[11px] text-[#7282A3] dark:text-slate-400">
+                {scenario.breadcrumbItems.map((item, index) => {
+                  const isLast = index === scenario.breadcrumbItems.length - 1;
+                  return (
+                    <Fragment key={`${audience}-${item}`}>
+                      <BreadcrumbItem>
+                        {isLast ? (
+                          <BreadcrumbPage className="font-medium text-[#1E2A5A] dark:text-slate-100">
+                            {item}
+                          </BreadcrumbPage>
+                        ) : (
+                          <span>{item}</span>
+                        )}
+                      </BreadcrumbItem>
+                      {!isLast && <BreadcrumbSeparator className="text-[#9BAACC] dark:text-slate-500" />}
+                    </Fragment>
+                  );
+                })}
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+          <span className="inline-flex items-center rounded-full border border-[#D3E1FF] bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-[#35508A] dark:border-border dark:bg-muted/70 dark:text-slate-200">
+            {scenario.statusPillLabel}
+          </span>
+        </div>
+        <p className="mt-2 text-sm text-[#1E2A5A] dark:text-slate-200">{scenario.description}</p>
+      </div>
+    );
+  };
 
   if (!taskState) {
     const fallbackHref = user?.role === 'designer' ? '/tasks' : '/dashboard';
@@ -2924,10 +3292,26 @@ export default function TaskDetail() {
           const receivers = resolveCommentReceivers(comment);
           if (!receivers.includes(user.role)) return comment;
           const seenBy = comment.seenBy ?? [];
-          if (seenBy.some((entry) => entry.role === user.role)) return comment;
+          if (
+            seenBy.some((entry) =>
+              user.id
+                ? String(entry.userId || '').trim() === String(user.id).trim()
+                : entry.role === user.role
+            )
+          ) {
+            return comment;
+          }
           return {
             ...comment,
-            seenBy: [...seenBy, { role: user.role, seenAt: new Date() }],
+            seenBy: [
+              ...seenBy,
+              {
+                role: user.role,
+                userId: user.id,
+                userName: user.name,
+                seenAt: new Date(),
+              },
+            ],
           };
         }),
       };
@@ -3028,6 +3412,7 @@ export default function TaskDetail() {
       receiverRoles,
       attachments,
       seenBy: [],
+      reactions: [],
     };
     const nextTask = {
       ...taskState,
@@ -3056,6 +3441,229 @@ export default function TaskDetail() {
       clearComposerAttachments('reply');
       clearMentionContext('reply');
     }, replyAttachments);
+  };
+
+  const startReplyToComment = (commentId: string) => {
+    setEditingCommentId(null);
+    setEditingCommentText('');
+    setReplyToId(commentId);
+    setReplyText('');
+    setReplyAttachments([]);
+    clearMentionContext('reply');
+  };
+
+  const cancelReplyComposer = () => {
+    setReplyToId(null);
+    setReplyText('');
+    setReplyAttachments([]);
+    clearMentionContext('reply');
+  };
+
+  const startCommentEdit = (comment: TaskComment) => {
+    setReplyToId(null);
+    setReplyText('');
+    setReplyAttachments([]);
+    clearMentionContext('reply');
+    setEditingCommentId(comment.id);
+    setEditingCommentText(comment.content);
+  };
+
+  const cancelCommentEdit = () => {
+    setEditingCommentId(null);
+    setEditingCommentText('');
+  };
+
+  const handleCommentEditSave = async (comment: TaskComment) => {
+    if (!taskState || commentUpdateInFlightId) return;
+    const trimmed = editingCommentText.trim();
+    if (!trimmed && (comment.attachments?.length ?? 0) === 0) {
+      toast.error('Message text or an attachment is required.');
+      return;
+    }
+
+    const mentions = extractMentions(trimmed);
+    const receiverRoles = buildReceiverRoles(trimmed);
+    setCommentUpdateInFlightId(comment.id);
+
+    if (apiUrl) {
+      try {
+        const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/comments/${comment.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: trimmed,
+            mentions,
+            receiverRoles,
+          }),
+        });
+        if (!response.ok) {
+          let message = 'Failed to update message.';
+          try {
+            const errorData = await response.json();
+            if (errorData?.error) {
+              message = errorData.error;
+            }
+          } catch {
+            // ignore parse errors
+          }
+          throw new Error(message);
+        }
+        const updated = await response.json();
+        if (updated?.comment) {
+          mergeCommentIntoState(updated.comment);
+        }
+        cancelCommentEdit();
+        toast.success('Message updated');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to update message.';
+        toast.error('Failed to update message', { description: message });
+      } finally {
+        setCommentUpdateInFlightId(null);
+      }
+      return;
+    }
+
+    mergeCommentIntoState({
+      ...comment,
+      content: trimmed,
+      mentions,
+      receiverRoles,
+      editedAt: new Date(),
+    });
+    cancelCommentEdit();
+    setCommentUpdateInFlightId(null);
+    toast.success('Message updated');
+  };
+
+  const handleCommentDelete = async (comment: TaskComment) => {
+    if (!taskState || commentDeleteInFlightId) return;
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Delete this message?');
+      if (!confirmed) return;
+    }
+
+    setCommentDeleteInFlightId(comment.id);
+
+    if (apiUrl) {
+      try {
+        const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/comments/${comment.id}`, {
+          method: 'DELETE',
+        });
+        if (!response.ok) {
+          let message = 'Failed to delete message.';
+          try {
+            const errorData = await response.json();
+            if (errorData?.error) {
+              message = errorData.error;
+            }
+          } catch {
+            // ignore parse errors
+          }
+          throw new Error(message);
+        }
+        const updated = await response.json();
+        if (updated?.comment) {
+          mergeCommentIntoState(updated.comment);
+        }
+        if (editingCommentId === comment.id) {
+          cancelCommentEdit();
+        }
+        if (replyToId === comment.id) {
+          cancelReplyComposer();
+        }
+        toast.success('Message deleted');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to delete message.';
+        toast.error('Failed to delete message', { description: message });
+      } finally {
+        setCommentDeleteInFlightId(null);
+      }
+      return;
+    }
+
+    mergeCommentIntoState({
+      ...comment,
+      content: '',
+      attachments: [],
+      mentions: [],
+      reactions: [],
+      deletedAt: new Date(),
+      deletedByName: user?.name || '',
+      editedAt: undefined,
+    });
+    if (editingCommentId === comment.id) {
+      cancelCommentEdit();
+    }
+    if (replyToId === comment.id) {
+      cancelReplyComposer();
+    }
+    setCommentDeleteInFlightId(null);
+    toast.success('Message deleted');
+  };
+
+  const handleCommentReactionToggle = async (comment: TaskComment, emoji: string) => {
+    if (!taskState || commentReactionInFlightKey) return;
+    const reactionKey = `${comment.id}:${emoji}`;
+    setCommentReactionInFlightKey(reactionKey);
+
+    if (apiUrl) {
+      try {
+        const response = await authFetch(
+          `${apiUrl}/api/tasks/${taskState.id}/comments/${comment.id}/reactions`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ emoji }),
+          }
+        );
+        if (!response.ok) {
+          let message = 'Failed to update reaction.';
+          try {
+            const errorData = await response.json();
+            if (errorData?.error) {
+              message = errorData.error;
+            }
+          } catch {
+            // ignore parse errors
+          }
+          throw new Error(message);
+        }
+        const updated = await response.json();
+        if (updated?.comment) {
+          mergeCommentIntoState(updated.comment);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to update reaction.';
+        toast.error('Failed to update reaction', { description: message });
+      } finally {
+        setCommentReactionInFlightKey(null);
+      }
+      return;
+    }
+
+    const existingReactions = comment.reactions ?? [];
+    const nextReactions = existingReactions.some(
+      (reaction) => reaction.emoji === emoji && reaction.userId === user?.id
+    )
+      ? existingReactions.filter(
+          (reaction) => !(reaction.emoji === emoji && reaction.userId === user?.id)
+        )
+      : [
+          ...existingReactions,
+          {
+            emoji,
+            userId: user?.id || 'local-user',
+            userName: user?.name || 'User',
+            userRole: user?.role || 'staff',
+            createdAt: new Date(),
+          },
+        ];
+
+    mergeCommentIntoState({
+      ...comment,
+      reactions: nextReactions,
+    });
+    setCommentReactionInFlightKey(null);
   };
 
   const handleComposerChange = (
@@ -5055,86 +5663,268 @@ export default function TaskDetail() {
   };
 
   const renderCommentThread = (comment: TaskComment, depth = 0) => {
-    const replies = repliesByParent.get(comment.id) ?? [];
+    const allReplies = repliesByParent.get(comment.id) ?? [];
+    const replies = normalizedCommentSearch
+      ? allReplies.filter((reply) => threadMatchesSearch(reply))
+      : allReplies;
     const isReply = depth > 0;
+    const isDeleted = Boolean(comment.deletedAt);
+    const isEditing = editingCommentId === comment.id;
+    const isOwnComment = comment.userId === user?.id;
+    const matchesSearch = doesCommentMatchSearch(comment);
+    const seenEntries = getCommentSeenEntries(comment);
+    const groupedReactions = getGroupedCommentReactions(comment);
+    const currentUserReactions = new Set(
+      groupedReactions.filter((reaction) => reaction.reactedByCurrentUser).map((reaction) => reaction.emoji)
+    );
+    const receiptSummary = isOwnComment ? getCommentReceiptSummary(comment, seenEntries) : null;
+
+    if (normalizedCommentSearch && !matchesSearch && replies.length === 0) {
+      return null;
+    }
+
     return (
-      <div key={comment.id} className={cn('flex gap-3', isReply && 'pl-6 border-l border-border/60')}>
-        <div
+      <div
+        key={comment.id}
+        className={cn('group/comment flex gap-3', isReply && 'border-l border-[#DCE5F8] pl-5')}
+      >
+        <UserAvatar
+          name={comment.userName}
           className={cn(
-            'rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium flex-shrink-0',
-            isReply ? 'h-7 w-7 text-xs' : 'h-8 w-8 text-sm'
+            'ring-1 ring-white/90 shadow-sm dark:ring-slate-900/80',
+            isReply ? 'h-7 w-7' : 'h-8 w-8'
           )}
-        >
-          {comment.userName.charAt(0)}
-        </div>
-        <div className="flex-1 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-sm">{comment.userName}</span>
-            {comment.userRole && (
-              <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                {roleLabels[comment.userRole] ?? comment.userRole}
-              </span>
+          fallbackClassName={cn(isReply ? 'text-[10px]' : 'text-xs')}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="truncate font-medium text-sm text-foreground">{comment.userName}</span>
+              {comment.userRole && (
+                <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  {roleLabels[comment.userRole] ?? comment.userRole}
+                </span>
+              )}
+              {normalizedCommentSearch && !matchesSearch && replies.length > 0 && (
+                <span className="text-[11px] text-[#7A89A8] dark:text-muted-foreground">
+                  Match in thread
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/comment:opacity-100 group-focus-within/comment:opacity-100">
+              {!isDeleted &&
+                quickCommentReactions.map((emoji) => (
+                  <button
+                    key={`${comment.id}-${emoji}`}
+                    type="button"
+                    className={cn(
+                      'inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs transition-colors',
+                      currentUserReactions.has(emoji)
+                        ? 'border-primary/30 bg-primary/10 text-primary'
+                        : 'border-[#D9E6FF] bg-white/85 text-[#51627E] hover:border-[#BFD3FF] hover:bg-[#F3F7FF] dark:border-border dark:bg-muted/80 dark:text-muted-foreground dark:hover:bg-muted'
+                    )}
+                    onClick={() => void handleCommentReactionToggle(comment, emoji)}
+                    disabled={commentReactionInFlightKey === `${comment.id}:${emoji}`}
+                    aria-label={`React with ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+
+              {isOwnComment && !isDeleted && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[#D9E6FF] bg-white/85 text-[#51627E] transition-colors hover:border-[#BFD3FF] hover:bg-[#F3F7FF] dark:border-border dark:bg-muted/80 dark:text-muted-foreground dark:hover:bg-muted"
+                      aria-label="Message actions"
+                    >
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    <DropdownMenuItem onSelect={() => startCommentEdit(comment)}>
+                      <Edit3 className="mr-2 h-4 w-4" />
+                      Edit message
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onSelect={() => void handleCommentDelete(comment)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete message
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-1.5 space-y-2">
+            {isEditing ? (
+              <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-3 dark:border-border dark:bg-card/85">
+                <Textarea
+                  value={editingCommentText}
+                  onChange={(event) => setEditingCommentText(event.target.value)}
+                  rows={3}
+                  className="min-h-[100px] resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                />
+                {(comment.attachments?.length ?? 0) > 0 && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Attachments stay on the message while you edit the text.
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => void handleCommentEditSave(comment)}
+                    disabled={commentUpdateInFlightId === comment.id}
+                  >
+                    {commentUpdateInFlightId === comment.id ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelCommentEdit}
+                    disabled={commentUpdateInFlightId === comment.id}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : isDeleted ? (
+              <div className="text-sm italic text-muted-foreground">
+                This message was deleted.
+              </div>
+            ) : (
+              <>
+                {comment.content ? (
+                  <div className="flex flex-wrap gap-1 text-sm text-[#5E6D8A] dark:text-slate-100">
+                    {renderCommentContent(comment.content)}
+                  </div>
+                ) : null}
+                {renderCommentAttachments(comment.attachments)}
+              </>
             )}
           </div>
-          {comment.content ? (
-            <div className="text-sm text-muted-foreground flex flex-wrap gap-1">
-              {renderCommentContent(comment.content)}
-            </div>
-          ) : null}
-          {renderCommentAttachments(comment.attachments)}
-          <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-3">
-            <span>{format(comment.createdAt, 'MMM d, yyyy - h:mm a')}</span>
-            {canComment && (
+
+          <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="transition-colors hover:text-foreground">
+                  {isToday(comment.createdAt)
+                    ? format(comment.createdAt, 'h:mm a')
+                    : format(comment.createdAt, 'MMM d, yyyy - h:mm a')}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{formatCommentTimestampHover(comment.createdAt)}</TooltipContent>
+            </Tooltip>
+            {comment.editedAt && !isDeleted && <span>Edited</span>}
+            {canComment && !isDeleted && (
               <button
                 type="button"
-                className="text-primary/80 hover:text-primary font-medium"
-                onClick={() => {
-                  setReplyToId(comment.id);
-                  setReplyText('');
-                  setReplyAttachments([]);
-                  clearMentionContext('reply');
-                }}
+                className="font-medium text-primary/80 transition-colors hover:text-primary"
+                onClick={() => startReplyToComment(comment.id)}
               >
                 Reply
               </button>
             )}
-            {comment.userId === user?.id && (
-              <span>
-                {(() => {
-                  const receivers = resolveCommentReceivers(comment);
-                  const seenBy = comment.seenBy ?? [];
-                  const seenRoles = receivers.filter((role) =>
-                    seenBy.some((entry) => entry.role === role)
-                  );
-                  const pendingRoles = receivers.filter(
-                    (role) => !seenRoles.includes(role)
-                  );
-                  if (receivers.length === 0) {
-                    return null;
-                  }
-                  if (seenRoles.length === 0) {
-                    return 'Sent';
-                  }
-                  if (pendingRoles.length === 0) {
-                    return `Seen by ${seenRoles
-                      .map((role) => roleLabels[role] ?? role)
-                      .join(', ')}`;
-                  }
-                  return `Seen by ${seenRoles
-                    .map((role) => roleLabels[role] ?? role)
-                    .join(', ')} - Pending ${pendingRoles
-                      .map((role) => roleLabels[role] ?? role)
-                      .join(', ')}`;
-                })()}
-              </span>
-            )}
+            {receiptSummary &&
+              (seenEntries.length > 0 ? (
+                <HoverCard>
+                  <HoverCardTrigger asChild>
+                    <button type="button" className="transition-colors hover:text-foreground">
+                      {receiptSummary}
+                    </button>
+                  </HoverCardTrigger>
+                  <HoverCardContent align="start" className="w-72 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Read receipts
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {seenEntries.map((entry) => (
+                        <div
+                          key={`${comment.id}-${entry.userId || entry.role}-${entry.seenAt.toString()}`}
+                          className="flex items-center gap-2"
+                        >
+                          <UserAvatar
+                            name={formatSeenEntryLabel(entry)}
+                            className="h-7 w-7 ring-1 ring-[#D9E6FF] dark:ring-border"
+                            fallbackClassName="text-[10px]"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{formatSeenEntryLabel(entry)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {(entry.role && roleLabels[entry.role]) || 'Viewer'} -{' '}
+                              {formatCommentTimestampHover(entry.seenAt)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </HoverCardContent>
+                </HoverCard>
+              ) : (
+                <span>{receiptSummary}</span>
+              ))}
           </div>
-          {canComment && replyToId === comment.id && (
-            <div className="mt-3 flex gap-2">
+
+          {groupedReactions.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {groupedReactions.map((reaction) => (
+                <HoverCard key={`${comment.id}-${reaction.emoji}`}>
+                  <HoverCardTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors',
+                        reaction.reactedByCurrentUser
+                          ? 'border-primary/30 bg-primary/10 text-primary'
+                          : 'border-[#D9E6FF] bg-white/85 text-[#51627E] hover:border-[#BFD3FF] hover:bg-[#F3F7FF] dark:border-border dark:bg-muted/80 dark:text-muted-foreground dark:hover:bg-muted'
+                      )}
+                      onClick={() => void handleCommentReactionToggle(comment, reaction.emoji)}
+                    >
+                      <span>{reaction.emoji}</span>
+                      <span>{reaction.count}</span>
+                    </button>
+                  </HoverCardTrigger>
+                  <HoverCardContent align="start" className="w-56 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Reactions
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {reaction.users.map((userEntry) => (
+                        <div
+                          key={`${reaction.emoji}-${userEntry.id || userEntry.name}`}
+                          className="flex items-center gap-2"
+                        >
+                          <UserAvatar
+                            name={userEntry.name}
+                            className="h-7 w-7 ring-1 ring-[#D9E6FF] dark:ring-border"
+                            fallbackClassName="text-[10px]"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{userEntry.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {userEntry.role ? roleLabels[userEntry.role] : 'Viewer'}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </HoverCardContent>
+                </HoverCard>
+              ))}
+            </div>
+          )}
+
+          {canComment && replyToId === comment.id && !isDeleted && (
+            <div className="mt-2.5 flex gap-2">
               <div className="relative flex-1">
-                <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-3 backdrop-blur-md transition-colors focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20 dark:border-border dark:bg-card/85">
+                <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-2.5 backdrop-blur-md transition-colors focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20 dark:border-border dark:bg-card/85">
                   {replyAttachments.length > 0 && (
-                    <div className="mb-3">{renderComposerAttachments(replyAttachments, 'reply')}</div>
+                    <div className="mb-2.5">{renderComposerAttachments(replyAttachments, 'reply')}</div>
                   )}
                   <Textarea
                     ref={replyComposerRef}
@@ -5164,7 +5954,7 @@ export default function TaskDetail() {
                       handleComposerKeyDown(event, 'reply', replyText, replyAttachments, comment.id)
                     }
                     rows={2}
-                    className="min-h-[88px] resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                    className="min-h-[72px] resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
                   />
                   {isUploadingCommentAttachments && (
                     <p className="mt-2 text-xs text-muted-foreground">
@@ -5205,20 +5995,16 @@ export default function TaskDetail() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    setReplyToId(null);
-                    setReplyText('');
-                    setReplyAttachments([]);
-                    clearMentionContext('reply');
-                  }}
+                  onClick={cancelReplyComposer}
                 >
                   Cancel
                 </Button>
               </div>
             </div>
           )}
+
           {replies.length > 0 && (
-            <div className="mt-4 space-y-4">
+            <div className="mt-2.5 space-y-3">
               {replies.map((reply) => renderCommentThread(reply, depth + 1))}
             </div>
           )}
@@ -6077,19 +6863,11 @@ export default function TaskDetail() {
               )}
 
               {shouldShowStaffFinalReviewState && (
-                <div className="mb-4 rounded-lg border border-[#D9E6FF]/70 bg-[#F7FBFF]/80 px-4 py-3 text-sm text-[#1E2A5A] dark:border-border/70 dark:bg-card/80 dark:text-slate-200">
-                  {finalDeliverableReviewStatus === 'pending'
-                    ? 'Final deliverables are submitted and waiting for Design Lead approval.'
-                    : `Design Lead requested updates before sharing with staff.${finalDeliverableReviewNote ? ` Reason: ${finalDeliverableReviewNote}` : ''}`}
-                </div>
+                renderFinalFileStatusCard('staff')
               )}
 
               {shouldShowJuniorFinalReviewState && (
-                <div className="mb-4 rounded-lg border border-[#D9E6FF]/70 bg-[#F7FBFF]/80 px-4 py-3 text-sm text-[#1E2A5A] dark:border-border/70 dark:bg-card/80 dark:text-slate-200">
-                  {finalDeliverableReviewStatus === 'pending'
-                    ? 'Waiting for Design Lead approval.'
-                    : `Design Lead marked this submission as update needed.${finalDeliverableReviewNote ? ` Reason: ${finalDeliverableReviewNote}` : ''} Upload updates and submit again.`}
-                </div>
+                renderFinalFileStatusCard('junior')
               )}
 
               {/* Output Files */}
@@ -6430,24 +7208,7 @@ export default function TaskDetail() {
               )}
 
               {canEditTask && (
-                hasFinalDeliverables ? (
-                  <div className="rounded-lg border border-dashed border-border bg-secondary/30 p-4">
-                    <p className="text-sm font-medium text-foreground">Final deliverables shared</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {latestFinalUploadAt
-                        ? `Last updated ${format(new Date(latestFinalUploadAt), 'MMM d, yyyy')}.`
-                        : 'Designer has shared final files. Please review the files above.'}
-                    </p>
-                    {activeFinalVersionNote && (
-                      <div className="mt-3 rounded-md border border-[#D9E6FF]/60 bg-white/75 px-3 py-2 text-sm text-foreground/90 dark:border-border/70 dark:bg-card/75 dark:text-slate-200">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                          Version note:
-                        </span>{' '}
-                        {activeFinalVersionNote}
-                      </div>
-                    )}
-                  </div>
-                ) : (
+                !hasFinalDeliverables && (
                   <div className="rounded-lg border border-dashed border-border p-4">
                     <p className="text-sm font-medium text-foreground mb-3">Add Attachment</p>
                     <div className="flex flex-wrap items-center gap-3">
@@ -6795,15 +7556,76 @@ export default function TaskDetail() {
             )}
 
             {/* Internal Chat */}
-            <div className={`${glassPanelClass} p-5 animate-slide-up`}>
-              <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
-                Internal Chat ({taskState.comments.length})
-              </h2>
+            <div className={`${glassPanelClass} p-4 animate-slide-up`}>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="font-semibold text-foreground flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5" />
+                    Internal Chat ({taskState.comments.length})
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  className={cn(
+                    'inline-flex h-9 w-9 items-center justify-center rounded-full border transition-colors',
+                    commentSearch.trim() || isCommentSearchVisible
+                      ? 'border-primary/30 bg-primary/10 text-primary'
+                      : 'border-[#D9E6FF] bg-white/85 text-[#6B7A99] hover:border-[#BFD3FF] hover:bg-[#F3F7FF] dark:border-border dark:bg-card/85 dark:text-muted-foreground dark:hover:bg-muted'
+                  )}
+                  onClick={() => {
+                    if (commentSearch.trim()) {
+                      setCommentSearch('');
+                      setIsCommentSearchVisible(false);
+                      return;
+                    }
+                    setIsCommentSearchVisible((current) => !current);
+                  }}
+                  aria-label={commentSearch.trim() ? 'Clear message search' : 'Search messages'}
+                >
+                  {commentSearch.trim() ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                </button>
+              </div>
 
-              {topLevelComments.length > 0 ? (
-                <div className="space-y-5 mb-6">
-                  {topLevelComments.map((comment) => renderCommentThread(comment))}
+              {(isCommentSearchVisible || commentSearch.trim()) && (
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="search-elastic group flex max-w-sm flex-1 items-center gap-2 rounded-full border border-[#D9E6FF] bg-white/95 px-3 py-2 shadow-none dark:border-border dark:bg-card/80">
+                    <Search className="search-elastic-icon h-4 w-4 text-muted-foreground" />
+                    <input
+                      ref={commentSearchInputRef}
+                      value={commentSearch}
+                      onChange={(event) => setCommentSearch(event.target.value)}
+                      placeholder="Search messages"
+                      className="search-elastic-input w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none dark:text-slate-100 dark:placeholder:text-slate-500"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 rounded-full px-3 text-muted-foreground"
+                    onClick={() => {
+                      setCommentSearch('');
+                      setIsCommentSearchVisible(false);
+                    }}
+                  >
+                    Close
+                  </Button>
+                </div>
+              )}
+
+              {commentSearch.trim() && (
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>{matchingCommentCount} match{matchingCommentCount === 1 ? '' : 'es'}</span>
+                </div>
+              )}
+
+              {visibleTopLevelComments.length > 0 ? (
+                <div className="mb-4 max-h-[30rem] space-y-3 overflow-y-auto pr-1 scrollbar-thin">
+                  {visibleTopLevelComments.map((comment) => renderCommentThread(comment))}
+                </div>
+              ) : taskState.comments.length > 0 && commentSearch.trim() ? (
+                <div className="mb-6 rounded-2xl border border-dashed border-[#D9E6FF] bg-white/55 px-4 py-5 text-sm text-muted-foreground dark:border-border dark:bg-card/25">
+                  No messages match "{commentSearch.trim()}".
                 </div>
               ) : (
                 <div className="mb-6 text-sm text-muted-foreground">
@@ -6813,9 +7635,9 @@ export default function TaskDetail() {
 
               <div className="flex gap-3">
                 <div className="relative flex-1">
-                  <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-3 backdrop-blur-md transition-colors focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20 dark:border-border dark:bg-card/85">
+                  <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-2.5 backdrop-blur-md transition-colors focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20 dark:border-border dark:bg-card/85">
                     {commentAttachments.length > 0 && (
-                      <div className="mb-3">
+                      <div className="mb-2.5">
                         {renderComposerAttachments(commentAttachments, 'comment')}
                       </div>
                     )}
@@ -6824,7 +7646,7 @@ export default function TaskDetail() {
                         !isChatComposerFocused &&
                         !newComment.trim() &&
                         commentAttachments.length === 0 && (
-                        <div className="pointer-events-none absolute inset-x-0 top-0 flex min-h-[88px] items-start">
+                        <div className="pointer-events-none absolute inset-x-0 top-0 flex min-h-[72px] items-start">
                           <div className="chat-composer-placeholder pt-0.5">
                             <MessageSquare className="chat-composer-placeholder-icon h-4 w-4" />
                             <span className="chat-composer-placeholder-static">Message</span>
@@ -6871,7 +7693,7 @@ export default function TaskDetail() {
                           )
                         }
                         rows={2}
-                        className="min-h-[88px] resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-transparent"
+                        className="min-h-[72px] resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-transparent"
                         disabled={!canComment}
                       />
                     </div>
@@ -6952,7 +7774,7 @@ export default function TaskDetail() {
                   <dt className="text-xs text-muted-foreground uppercase tracking-wider">
                     Requester
                   </dt>
-                  <dd className="mt-1 flex items-center gap-2 text-sm">
+                  <dd className="mt-1 flex items-center gap-2 text-[13px]">
                     <User className="h-4 w-4 text-muted-foreground" />
                     <span>{taskState.requesterName}</span>
                   </dd>
@@ -6968,7 +7790,7 @@ export default function TaskDetail() {
                     <dt className="text-xs text-muted-foreground uppercase tracking-wider">
                       Assigned To
                     </dt>
-                    <dd className="mt-1 flex items-center gap-2 text-sm">
+                    <dd className="mt-1 flex items-center gap-2 text-[13px]">
                       <User className="h-4 w-4 text-muted-foreground" />
                       <span>{taskState.assignedToName}</span>
                     </dd>
@@ -6981,7 +7803,7 @@ export default function TaskDetail() {
                   </dt>
                   <dd
                     className={cn(
-                      'mt-1 flex items-center gap-2 text-sm',
+                      'mt-1 flex items-center gap-2 text-[13px]',
                       isOverdue && 'text-status-urgent font-medium dark:text-rose-300'
                     )}
                   >
@@ -7000,7 +7822,7 @@ export default function TaskDetail() {
                   <dt className="text-xs text-muted-foreground uppercase tracking-wider">
                     Created
                   </dt>
-                  <dd className="mt-1 flex items-center gap-2 text-sm">
+                  <dd className="mt-1 flex items-center gap-2 text-[13px]">
                     <Clock className="h-4 w-4 text-muted-foreground" />
                     <span>{format(taskState.createdAt, 'MMM d, yyyy')}</span>
                   </dd>
@@ -7010,7 +7832,7 @@ export default function TaskDetail() {
                   <dt className="text-xs text-muted-foreground uppercase tracking-wider">
                     Last Updated
                   </dt>
-                  <dd className="mt-1 text-sm text-muted-foreground">
+                  <dd className="mt-1 text-[13px] text-muted-foreground">
                     {formatDistanceToNow(taskState.updatedAt, { addSuffix: true })}
                   </dd>
                 </div>

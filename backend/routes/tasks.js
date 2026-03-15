@@ -1471,24 +1471,37 @@ const ensureTaskAccess = async (req, res, next) => {
     const userRole = normalizeTaskRole(req.user?.role);
     const isMainDesigner = userRole === "designer" && isMainDesignerUser(req.user);
     const isUnassigned = await isTaskEffectivelyUnassigned(task);
+    const requestPath = typeof req.path === "string" ? req.path : "";
     const isCommentWrite =
-      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/comments");
+      req.method === "POST" && requestPath.endsWith("/comments");
+    const isCommentMutationWrite =
+      !requestPath.endsWith("/comments/seen") &&
+      (
+        (
+          (req.method === "PATCH" || req.method === "DELETE") &&
+          /\/comments\/[^/]+$/.test(requestPath)
+        ) ||
+        (
+          req.method === "POST" &&
+          /\/comments\/[^/]+\/reactions$/.test(requestPath)
+        )
+      );
     const isChangeWrite =
-      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/changes");
+      req.method === "POST" && requestPath.endsWith("/changes");
     const isAssignDesignerWrite =
-      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/assign-designer");
+      req.method === "POST" && requestPath.endsWith("/assign-designer");
     const isLegacyAssignWrite =
-      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/assign");
+      req.method === "POST" && requestPath.endsWith("/assign");
     const isFinalDeliverablesWrite =
-      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/final-deliverables");
+      req.method === "POST" && requestPath.endsWith("/final-deliverables");
     const isFinalDeliverablesReviewWrite =
-      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/final-deliverables/review");
+      req.method === "POST" && requestPath.endsWith("/final-deliverables/review");
     const isFinalDeliverableNoteWrite =
-      req.method === "PATCH" && typeof req.path === "string" && req.path.endsWith("/note");
+      req.method === "PATCH" && requestPath.endsWith("/note");
     const isAcceptWrite =
-      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/accept");
+      req.method === "POST" && requestPath.endsWith("/accept");
     const isCommentsSeenWrite =
-      req.method === "POST" && typeof req.path === "string" && req.path.endsWith("/comments/seen");
+      req.method === "POST" && requestPath.endsWith("/comments/seen");
     const usesAssignedAccessRules = hasAssignedDesignerAccessMetadata(task);
 
     if (usesAssignedAccessRules) {
@@ -1552,7 +1565,7 @@ const ensureTaskAccess = async (req, res, next) => {
         hasManagerApprovalChanges &&
         hasOnlyManagerApprovalUpdates;
       const canVisibleUserCommentWrite =
-        isCommentWrite &&
+        (isCommentWrite || isCommentMutationWrite || isCommentsSeenWrite) &&
         accessContext.mode !== "none";
       const completionWriteFields = new Set(["status"]);
       const completionWriteUpdateKeys = new Set(["status", "updatedAt"]);
@@ -1660,6 +1673,7 @@ const ensureTaskAccess = async (req, res, next) => {
       isUnassigned &&
       (isReadOnly ||
         isCommentWrite ||
+        isCommentMutationWrite ||
         isChangeWrite ||
         isAssignDesignerWrite ||
         isFinalDeliverablesWrite ||
@@ -2882,6 +2896,62 @@ router.patch("/:id", ensureTaskAccess, async (req, res) => {
   }
 });
 
+const VALID_COMMENT_ROLES = ["staff", "treasurer", "designer", "admin"];
+const QUICK_COMMENT_REACTIONS = new Set([
+  "\u{1F44D}",
+  "\u{2764}\u{FE0F}",
+  "\u{1F440}",
+  "\u{1F527}",
+]);
+
+const getTaskIdValue = (task) => task?.id || task?._id?.toString?.() || "";
+
+const getTaskCommentId = (comment) =>
+  String(comment?.id || comment?._id?.toString?.() || "").trim();
+
+const buildCommentPayload = (comment) => {
+  const payload = typeof comment?.toObject === "function"
+    ? comment.toObject()
+    : { ...(comment || {}) };
+  payload.attachments = Array.isArray(payload.attachments)
+    ? payload.attachments.map((attachment) => normalizeTaskFileLinks(attachment))
+    : [];
+  return payload;
+};
+
+const findTaskComment = (task, commentId) => {
+  const normalizedId = String(commentId || "").trim();
+  if (!normalizedId || !Array.isArray(task?.comments)) return null;
+  return task.comments.find((comment) => getTaskCommentId(comment) === normalizedId) || null;
+};
+
+const canManageTaskComment = (comment, req) => {
+  const actorId = String(getUserId(req) || "").trim();
+  const actorRole = normalizeTaskRole(req.user?.role);
+  if (actorRole === "admin") return true;
+  return actorId && actorId === String(comment?.userId || "").trim();
+};
+
+const emitCommentSocketEvent = (eventName, task, comment) => {
+  const io = getSocket();
+  const taskId = getTaskIdValue(task);
+  if (!io || !taskId || !comment) return;
+  io.to(String(taskId)).emit(eventName, {
+    taskId,
+    comment: buildCommentPayload(comment),
+  });
+};
+
+const emitCommentsSeenSocketEvent = (task, comments) => {
+  const io = getSocket();
+  const taskId = getTaskIdValue(task);
+  if (!io || !taskId || !Array.isArray(comments) || comments.length === 0) return;
+  io.to(String(taskId)).emit("comments:seen", {
+    taskId,
+    comments: comments.map((comment) => buildCommentPayload(comment)),
+  });
+};
+
 router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
   try {
     const { content, receiverRoles, parentId, mentions, attachments } = req.body;
@@ -2900,14 +2970,13 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
       });
     }
 
-    const validRoles = ["staff", "treasurer", "designer", "admin"];
     const normalizedUserRole = normalizeTaskRole(userRole);
-    const senderRole = validRoles.includes(normalizedUserRole) ? normalizedUserRole : "";
+    const senderRole = VALID_COMMENT_ROLES.includes(normalizedUserRole) ? normalizedUserRole : "";
     const normalizedMentions = Array.isArray(mentions)
-      ? mentions.filter((role) => validRoles.includes(role))
+      ? mentions.filter((role) => VALID_COMMENT_ROLES.includes(role))
       : [];
     const normalizedReceivers = Array.isArray(receiverRoles)
-      ? receiverRoles.filter((role) => validRoles.includes(role))
+      ? receiverRoles.filter((role) => VALID_COMMENT_ROLES.includes(role))
       : [];
     const resolvedReceivers =
       normalizedMentions.length > 0
@@ -2915,8 +2984,8 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
         : normalizedReceivers.length > 0
           ? normalizedReceivers
           : senderRole
-            ? validRoles.filter((role) => role !== senderRole)
-            : validRoles;
+            ? VALID_COMMENT_ROLES.filter((role) => role !== senderRole)
+            : VALID_COMMENT_ROLES;
     const uniqueReceivers = [
       ...new Set(
         senderRole
@@ -3061,7 +3130,7 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
         if (io && createdComment) {
           io.to(taskId).emit("comment:new", {
             taskId,
-            comment: createdComment
+            comment: buildCommentPayload(createdComment)
           });
         }
       } catch (error) {
@@ -3075,39 +3144,196 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
   }
 });
 
+router.patch("/:id/comments/:commentId", ensureTaskAccess, async (req, res) => {
+  try {
+    const task = req.task;
+    const comment = findTaskComment(task, req.params.commentId);
+    if (!comment) {
+      return res.status(404).json({ error: "Comment not found." });
+    }
+    if (!canManageTaskComment(comment, req)) {
+      return res.status(403).json({ error: "You can only edit your own messages." });
+    }
+    if (comment.deletedAt) {
+      return res.status(400).json({ error: "Deleted messages cannot be edited." });
+    }
+
+    const normalizedContent = String(req.body?.content || "").trim();
+    const normalizedUserRole = normalizeTaskRole(comment.userRole || req.user?.role);
+    const senderRole = VALID_COMMENT_ROLES.includes(normalizedUserRole) ? normalizedUserRole : "";
+    const normalizedMentions = Array.isArray(req.body?.mentions)
+      ? req.body.mentions.filter((role) => VALID_COMMENT_ROLES.includes(role))
+      : [];
+    const normalizedReceivers = Array.isArray(req.body?.receiverRoles)
+      ? req.body.receiverRoles.filter((role) => VALID_COMMENT_ROLES.includes(role))
+      : [];
+    const resolvedReceivers =
+      normalizedMentions.length > 0
+        ? normalizedMentions
+        : normalizedReceivers.length > 0
+          ? normalizedReceivers
+          : senderRole
+            ? VALID_COMMENT_ROLES.filter((role) => role !== senderRole)
+            : VALID_COMMENT_ROLES;
+    const uniqueReceivers = [
+      ...new Set(
+        senderRole
+          ? resolvedReceivers.filter((role) => role !== senderRole)
+          : resolvedReceivers
+      ),
+    ];
+    const existingAttachments = Array.isArray(comment.attachments) ? comment.attachments : [];
+
+    if (!normalizedContent && existingAttachments.length === 0) {
+      return res.status(400).json({
+        error: "Comment text or at least one attachment is required.",
+      });
+    }
+
+    comment.content = normalizedContent;
+    comment.mentions = normalizedMentions;
+    comment.receiverRoles = uniqueReceivers;
+    comment.editedAt = new Date();
+
+    task.markModified("comments");
+    await task.save();
+
+    emitCommentSocketEvent("comment:updated", task, comment);
+    return res.json({ comment: buildCommentPayload(comment) });
+  } catch (error) {
+    return res.status(400).json({
+      error: error instanceof Error && error.message ? error.message : "Failed to edit comment.",
+    });
+  }
+});
+
+router.delete("/:id/comments/:commentId", ensureTaskAccess, async (req, res) => {
+  try {
+    const task = req.task;
+    const comment = findTaskComment(task, req.params.commentId);
+    if (!comment) {
+      return res.status(404).json({ error: "Comment not found." });
+    }
+    if (!canManageTaskComment(comment, req)) {
+      return res.status(403).json({ error: "You can only delete your own messages." });
+    }
+    if (comment.deletedAt) {
+      return res.json({ comment: buildCommentPayload(comment) });
+    }
+
+    comment.content = "";
+    comment.attachments = [];
+    comment.mentions = [];
+    comment.reactions = [];
+    comment.deletedAt = new Date();
+    comment.deletedByName = req.user?.name || "";
+    comment.editedAt = undefined;
+
+    task.markModified("comments");
+    await task.save();
+
+    emitCommentSocketEvent("comment:updated", task, comment);
+    return res.json({ comment: buildCommentPayload(comment) });
+  } catch (error) {
+    return res.status(400).json({
+      error: error instanceof Error && error.message ? error.message : "Failed to delete comment.",
+    });
+  }
+});
+
+router.post("/:id/comments/:commentId/reactions", ensureTaskAccess, async (req, res) => {
+  try {
+    const emoji = String(req.body?.emoji || "").trim();
+    if (!QUICK_COMMENT_REACTIONS.has(emoji)) {
+      return res.status(400).json({ error: "Unsupported reaction." });
+    }
+
+    const userId = String(getUserId(req) || "").trim();
+    if (!userId) {
+      return res.status(400).json({ error: "Missing user identity." });
+    }
+
+    const task = req.task;
+    const comment = findTaskComment(task, req.params.commentId);
+    if (!comment) {
+      return res.status(404).json({ error: "Comment not found." });
+    }
+    if (comment.deletedAt) {
+      return res.status(400).json({ error: "Deleted messages cannot receive reactions." });
+    }
+
+    const reactions = Array.isArray(comment.reactions) ? [...comment.reactions] : [];
+    const existingIndex = reactions.findIndex(
+      (entry) =>
+        String(entry?.userId || "").trim() === userId &&
+        String(entry?.emoji || "").trim() === emoji
+    );
+
+    if (existingIndex >= 0) {
+      reactions.splice(existingIndex, 1);
+    } else {
+      reactions.push({
+        emoji,
+        userId,
+        userName: req.user?.name || "User",
+        userRole: normalizeTaskRole(req.user?.role),
+        createdAt: new Date(),
+      });
+    }
+
+    comment.reactions = reactions;
+    task.markModified("comments");
+    await task.save();
+
+    emitCommentSocketEvent("comment:updated", task, comment);
+    return res.json({ comment: buildCommentPayload(comment) });
+  } catch (error) {
+    return res.status(400).json({
+      error: error instanceof Error && error.message ? error.message : "Failed to update reaction.",
+    });
+  }
+});
+
 router.post("/:id/comments/seen", ensureTaskAccess, async (req, res) => {
   try {
     const role = normalizeTaskRole(req.user?.role);
-    const validRoles = ["staff", "treasurer", "designer", "admin"];
-    if (!validRoles.includes(role)) {
+    if (!VALID_COMMENT_ROLES.includes(role)) {
       return res.status(400).json({ error: "Invalid role." });
     }
     const task = req.task;
 
     let updated = false;
     const now = new Date();
+    const actorId = String(getUserId(req) || "").trim();
+    const actorName = req.user?.name || "";
+    const updatedComments = [];
     task.comments = task.comments.map((comment) => {
       const receivers =
         Array.isArray(comment.receiverRoles) && comment.receiverRoles.length > 0
           ? comment.receiverRoles
           : comment.userRole
-            ? validRoles.filter((validRole) => validRole !== comment.userRole)
-            : validRoles;
+            ? VALID_COMMENT_ROLES.filter((validRole) => validRole !== comment.userRole)
+            : VALID_COMMENT_ROLES;
       if (!receivers.includes(role)) {
         return comment;
       }
       const seenBy = Array.isArray(comment.seenBy) ? comment.seenBy : [];
-      if (seenBy.some((entry) => entry.role === role)) {
+      if (
+        (actorId && seenBy.some((entry) => String(entry?.userId || "").trim() === actorId)) ||
+        (!actorId && seenBy.some((entry) => entry.role === role))
+      ) {
         return comment;
       }
-      comment.seenBy = [...seenBy, { role, seenAt: now }];
+      comment.seenBy = [...seenBy, { role, userId: actorId, userName: actorName, seenAt: now }];
       updated = true;
+      updatedComments.push(comment);
       return comment;
     });
 
     if (updated) {
       task.markModified("comments");
       await task.save();
+      emitCommentsSeenSocketEvent(task, updatedComments);
     }
 
     res.json(task);
