@@ -373,7 +373,7 @@ export default function Approvals() {
                     >
                       <Link
                         to={`/task/${task.id}`}
-                        state={{ task }}
+                        state={{ task, focusSection: 'change-history' }}
                         className="inline-flex items-center gap-2 font-medium"
                       >
                         <Eye className="h-4 w-4" />

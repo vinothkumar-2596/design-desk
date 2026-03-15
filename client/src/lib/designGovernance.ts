@@ -8,7 +8,7 @@ export const DESIGN_GOVERNANCE_NOTICE_COMPACT =
   'For approved designs, official design guidelines and standardized language protocols must be maintained. Perspective-based changes are not permitted. Additional revisions require Treasurer authorization.';
 
 export const DESIGN_GOVERNANCE_NOTICE_MINIMAL =
-  'Approved designs must follow official guidelines and standard language. Perspective-based changes are not allowed. Extra revisions need Treasurer approval.';
+  'All designs must comply with the official design guidelines and standardized language framework. Individual perspective-based modifications are restricted. Further revisions require Treasurer authorization.';
 
 export const DESIGN_GOVERNANCE_EMAIL_LINES = [
   'Approved designs must remain aligned with officially approved design guidelines.',

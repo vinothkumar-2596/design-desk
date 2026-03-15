@@ -28,7 +28,9 @@ export const legalPageStyles = {
   sectionTitle: 'text-lg font-semibold text-[#1E2A5A] dark:text-foreground',
   sectionBody: 'mt-2 text-sm leading-6 text-[#5C6E95] dark:text-muted-foreground',
   sectionList: 'mt-5 space-y-3 text-sm leading-6 text-[#40557F] dark:text-slate-300',
-  sectionDot: 'mt-2 h-2 w-2 shrink-0 rounded-full bg-[#5F7CFF] dark:bg-[#9EB2FF]',
+  sectionListItem: 'grid grid-cols-[0.55rem_minmax(0,1fr)] items-start gap-3',
+  sectionListText: 'min-w-0 leading-6',
+  sectionDot: 'mt-[0.6rem] h-2 w-2 rounded-full bg-[#5F7CFF] dark:bg-[#9EB2FF]',
   contactSection:
     'mt-6 rounded-[26px] border border-[#D7E0F8] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(239,244,255,0.92))] p-6 dark:border-border dark:bg-background/45 dark:bg-none',
   contactCard:

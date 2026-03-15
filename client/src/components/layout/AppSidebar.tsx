@@ -65,6 +65,7 @@ const PORTAL_SHARE_TEXT = 'Open the DesignDesk portal';
 const PORTAL_QR_LIGHT_IMAGE_SRC = '/portal-qr-light.svg';
 const PORTAL_QR_DARK_IMAGE_SRC = '/portal-qr-dark.svg';
 const APP_VERSION_LABEL = `v${String(__APP_VERSION__ || '0.0.0').replace(/^v/i, '')}`;
+const APP_BUILD_LABEL = `Build ${String(__APP_BUILD_ID__ || '').trim() || 'local'}`;
 const decodeValue = (value: string) => {
   try {
     return decodeURIComponent(value || '');
@@ -855,7 +856,7 @@ export function AppSidebar() {
               </span>
             </div>
             <p className="mt-0.5 text-[11px] leading-[1.15rem] text-[#6B7A99] dark:text-muted-foreground">
-              DesignDesk client release
+              {APP_BUILD_LABEL}
             </p>
           </div>
         ) : null}

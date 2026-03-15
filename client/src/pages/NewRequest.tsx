@@ -55,7 +55,7 @@ import {
   AlertTriangle,
   Check,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/sonner';
 import { Task, TaskCategory, TaskChange, TaskUrgency } from '@/types';
 import {
   addDays,
@@ -1165,6 +1165,10 @@ export default function NewRequest() {
     'relative overflow-hidden rounded-[22px] border border-[#CBD9FF]/60 bg-gradient-to-br from-white/92 via-[#F8FBFF]/84 to-[#E8F1FF]/86 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-[#F8FBFF]/62 supports-[backdrop-filter]:to-[#E8F1FF]/64 backdrop-blur-2xl shadow-none ring-1 ring-white/60 dark:border-border dark:bg-card/78 dark:bg-none dark:ring-0';
   const queueActionButtonClass =
     'inline-flex h-8 items-center rounded-full border border-[#D3E1FF] bg-gradient-to-r from-white/88 via-[#F3F7FF]/80 to-[#EAF2FF]/86 px-3 text-xs font-semibold text-[#223467] shadow-none transition-all duration-150 hover:border-[#C4D6FF] hover:bg-[#EEF4FF] dark:border-slate-700/60 dark:bg-slate-900/72 dark:text-slate-200 dark:hover:bg-slate-900/82';
+  const policyPillClass =
+    'inline-flex items-center rounded-full border border-[#C7D8FF]/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.2),rgba(74,118,255,0.14),rgba(99,102,241,0.18))] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5A6887] shadow-none dark:border-[#5474B6]/45 dark:bg-[linear-gradient(135deg,rgba(48,67,116,0.92),rgba(67,94,167,0.78),rgba(76,92,176,0.74))] dark:text-white';
+  const policyStatusPillClass =
+    'inline-flex items-center rounded-full border border-[#C9D7FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(238,244,255,0.84))] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#5A6986] shadow-none dark:border-[#4A66A3]/70 dark:bg-[linear-gradient(135deg,rgba(28,45,84,0.96),rgba(35,53,94,0.92))] dark:text-[#E3ECFF]';
   const queueDangerButtonClass =
     'inline-flex h-8 items-center rounded-full border border-[#D3E1FF] bg-gradient-to-r from-white/88 via-[#F3F7FF]/80 to-[#EAF2FF]/86 px-3 text-xs font-semibold text-[#223467] shadow-none transition-all duration-150 hover:border-[#C4D6FF] hover:bg-[#EEF4FF] dark:border-slate-700/60 dark:bg-slate-900/72 dark:text-slate-200 dark:hover:bg-slate-900/82';
   const queueFileRowClass =
@@ -1172,7 +1176,7 @@ export default function NewRequest() {
   const queueIconButtonClass =
     'shrink-0 rounded-full border border-[#D8E4FF] bg-white/60 p-1.5 text-[#6D7FA8] shadow-none transition-colors hover:border-[#C4D6FF] hover:bg-[#F1F6FF] hover:text-[#223467] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground';
   const queuePanelRowClass =
-    'rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2.5 dark:border-border dark:bg-slate-900/70';
+    'rounded-xl border border-[#CFE0FF] bg-white/95 px-3 py-2.5 shadow-none dark:border-border dark:bg-slate-900/70';
   const queueCollapseButtonClass =
     'inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted';
 
@@ -2096,63 +2100,89 @@ export default function NewRequest() {
         </div>
         {!hasAcceptedSubmissionPolicy ? (
           <div ref={submissionPolicyCardRef} className="animate-slide-up">
-            <div className="relative overflow-hidden rounded-[22px] border border-[#D7E0F8] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(239,244,255,0.94))] shadow-none">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(217,230,255,0.72),_transparent_58%)]" />
-              <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:p-6">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#D9E6FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(230,238,255,0.84))] text-[#35429A] backdrop-blur-xl">
+            <div
+              className={cn(
+                glassPanelClass,
+                'relative overflow-hidden rounded-[22px] border border-[#CFE0FF]/40 ring-0 p-5 sm:p-6 dark:border-[#314A82]/36'
+              )}
+            >
+              <div className="relative flex flex-col gap-4 sm:flex-row">
+                <div
+                  className={cn(
+                    queueIconButtonClass,
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl p-0 text-primary dark:text-slate-100'
+                  )}
+                >
                   <Info className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center rounded-full border border-[#D7E0F8] bg-white/80 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#35429A]">
+                    <span
+                      className={policyPillClass}
+                    >
                       Submission Policy
                     </span>
-                    <span className="text-[11px] font-medium text-[#6B7A99]">
+                    <span className="text-[11px] font-medium text-muted-foreground">
                       One-time acceptance required before the first request
                     </span>
                   </div>
-                  <h3 className="mt-3 text-[17px] font-semibold text-[#162858]">
+                  <h3 className="mt-3 text-[17px] font-semibold text-foreground">
                     Accept submission guidelines to continue
                   </h3>
-                  <p className="mt-1 text-[12.5px] leading-6 text-[#5C6E95]">
+                  <p className="mt-1 text-[12.5px] leading-6 text-muted-foreground">
                     New users must review and accept this policy before creating a design request.
                   </p>
 
-                  <div className="mt-4 rounded-[22px] border border-[#D7E0F8] bg-white/80 p-4">
-                    <ul className="space-y-3 text-[12.5px] text-[#425678]">
+                  <div
+                    className={cn(
+                      queuePanelRowClass,
+                      'mt-4 rounded-[22px] p-4 supports-[backdrop-filter]:bg-white/56 backdrop-blur-xl dark:bg-[linear-gradient(135deg,rgba(11,21,44,0.76),rgba(15,28,58,0.72),rgba(18,37,76,0.68))] dark:supports-[backdrop-filter]:bg-slate-900/58'
+                    )}
+                  >
+                    <ul className="space-y-3 text-[12.5px] text-muted-foreground">
                       <li className="flex items-start gap-2.5">
-                        <span className="material-symbols-outlined mt-0.5 text-base text-[#6B7A99]">
+                        <span className="material-symbols-outlined mt-0.5 text-base text-muted-foreground">
                           database
                         </span>
                         <span>
-                          <strong className="font-semibold text-[#1F2E5A]">Data Requirements:</strong>{' '}
+                          <strong className="font-semibold text-foreground">Data Requirements:</strong>{' '}
                           Include all text content, images, logos, and associated files.
                         </span>
                       </li>
                       <li className="flex items-start gap-2.5">
-                        <span className="material-symbols-outlined mt-0.5 text-base text-[#6B7A99]">
+                        <span className="material-symbols-outlined mt-0.5 text-base text-muted-foreground">
                           schedule
                         </span>
                         <span>
-                          <strong className="font-semibold text-[#1F2E5A]">Timeline:</strong>{' '}
+                          <strong className="font-semibold text-foreground">Timeline:</strong>{' '}
                           Minimum 3 working days for standard requests. Urgent requests require justification.
                         </span>
                       </li>
                     </ul>
 
-                    <div className="mt-4 rounded-[20px] border border-[#D7E0F8] bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(243,247,255,0.88))] p-4">
+                    <div
+                      className={cn(
+                        queuePanelRowClass,
+                        'mt-4 rounded-[20px] p-4 supports-[backdrop-filter]:bg-white/48 backdrop-blur-xl dark:bg-[linear-gradient(135deg,rgba(11,25,57,0.92),rgba(17,37,77,0.9),rgba(20,45,90,0.82))] dark:supports-[backdrop-filter]:bg-slate-900/72'
+                      )}
+                    >
                       <div className="flex items-start gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#D9E6FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(230,238,255,0.84))] text-[#35429A]">
+                        <div
+                          className={cn(
+                            queueIconButtonClass,
+                            'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl p-0 text-primary dark:text-slate-100'
+                          )}
+                        >
                           <AlertTriangle className="h-4.5 w-4.5" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6B7A99]">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                             Important Notice
                           </p>
-                          <h4 className="mt-1 text-[13.5px] font-semibold text-[#162858]">
+                          <h4 className="mt-1 text-[13.5px] font-semibold text-foreground">
                             Submission standards
                           </h4>
-                          <p className="mt-2 text-[12.5px] leading-6 text-[#425678]">
+                          <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">
                             {DESIGN_GOVERNANCE_NOTICE_MINIMAL}
                           </p>
                         </div>
@@ -2163,10 +2193,11 @@ export default function NewRequest() {
                   <label
                     htmlFor="submission-policy-acceptance"
                     className={cn(
-                      'mt-4 flex cursor-pointer items-start gap-3 rounded-[18px] px-4 py-3 transition-all duration-200',
+                      queuePanelRowClass,
+                      'mt-4 flex cursor-pointer items-start gap-3 rounded-[18px] px-4 py-3 transition-all duration-200 supports-[backdrop-filter]:bg-white/52 backdrop-blur-xl dark:supports-[backdrop-filter]:bg-slate-900/68',
                       isSubmissionPolicyChecked
-                        ? 'border border-[#D7E0F8] bg-white/72'
-                        : 'border border-[#BFD2FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(244,248,255,0.96))] ring-1 ring-[#D8E4FF] shadow-[0_18px_34px_-28px_rgba(53,66,154,0.42)]'
+                        ? 'dark:bg-[linear-gradient(135deg,rgba(11,21,44,0.76),rgba(15,28,58,0.72),rgba(18,37,76,0.68))]'
+                        : 'ring-1 ring-[#D8E4FF] shadow-[0_18px_34px_-28px_rgba(53,66,154,0.42)] dark:bg-[linear-gradient(135deg,rgba(11,21,44,0.82),rgba(15,28,58,0.78),rgba(18,37,76,0.74))] dark:ring-white/10 dark:shadow-[0_24px_40px_-32px_rgba(8,18,45,0.9)]'
                     )}
                   >
                     <Checkbox
@@ -2174,29 +2205,24 @@ export default function NewRequest() {
                       checked={isSubmissionPolicyChecked}
                       onCheckedChange={(checked) => setIsSubmissionPolicyChecked(checked === true)}
                       className={cn(
-                        'mt-0.5 border-[#C9D7FF] transition-colors data-[state=checked]:border-[#35429A] data-[state=checked]:bg-[#35429A] data-[state=checked]:text-white',
-                        !isSubmissionPolicyChecked && 'border-[#8CA9E8] bg-white shadow-[0_0_0_4px_rgba(217,230,255,0.6)]'
+                        'mt-0.5 border-[#C9D7FF] transition-colors data-[state=checked]:border-[#35429A] data-[state=checked]:bg-[#35429A] data-[state=checked]:text-white dark:border-[#6381C2] dark:data-[state=checked]:border-[#87A8FF] dark:data-[state=checked]:bg-[#4E6FD0]',
+                        !isSubmissionPolicyChecked && 'border-[#8CA9E8] bg-white shadow-[0_0_0_4px_rgba(217,230,255,0.6)] dark:border-[#6A89CB] dark:bg-[#0F1D42] dark:shadow-[0_0_0_4px_rgba(42,72,138,0.38)]'
                       )}
                     />
                     <span className="min-w-0 flex-1 space-y-1">
                       <span className="flex flex-wrap items-center gap-2">
                         <span
-                          className={cn(
-                            'inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
-                            isSubmissionPolicyChecked
-                              ? 'border border-[#D7E0F8] bg-white/85 text-[#35429A]'
-                              : 'border border-[#C7D8FF] bg-[#EEF4FF] text-[#2F3C8A]'
-                          )}
+                          className={policyStatusPillClass}
                         >
                           {isSubmissionPolicyChecked ? 'Acknowledged' : 'Action Required'}
                         </span>
-                        <span className="text-[11px] font-medium text-[#6B7A99]">
+                        <span className="text-[11px] font-medium text-muted-foreground">
                           {isSubmissionPolicyChecked
                             ? 'Continue is enabled below.'
                             : 'Tick this checkbox to enable Continue.'}
                         </span>
                       </span>
-                      <span className="block text-[12.5px] leading-6 text-[#425678]">
+                      <span className="block text-[12.5px] leading-6 text-muted-foreground">
                         I have reviewed these submission guidelines and understand that further changes must follow the approved governance process.
                       </span>
                     </span>
@@ -2204,21 +2230,21 @@ export default function NewRequest() {
 
                   <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-1">
-                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#6B7A99]">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                         Stored once per account
                       </p>
-                      <p className="text-[11px] leading-5 text-[#6B7A99]">
+                      <p className="text-[11px] leading-5 text-muted-foreground">
                         By continuing, you acknowledge the{' '}
                         <Link
                           to="/privacy-policy"
-                          className="font-semibold text-[#35429A] underline-offset-4 hover:text-[#2F3C8A] hover:underline"
+                          className="font-semibold text-primary underline-offset-4 hover:underline dark:text-slate-100"
                         >
                           Privacy Policy
                         </Link>{' '}
                         and{' '}
                         <Link
                           to="/terms-service"
-                          className="font-semibold text-[#35429A] underline-offset-4 hover:text-[#2F3C8A] hover:underline"
+                          className="font-semibold text-primary underline-offset-4 hover:underline dark:text-slate-100"
                         >
                           Terms of Service
                         </Link>
@@ -2230,10 +2256,10 @@ export default function NewRequest() {
                       onClick={handleAcceptSubmissionPolicy}
                       disabled={!isSubmissionPolicyChecked}
                       className={cn(
-                        'h-10 rounded-full px-5 text-[12.5px] font-semibold shadow-none transition-colors',
+                        'h-10 rounded-full px-5 text-[12.5px] font-semibold transition-all duration-200',
                         isSubmissionPolicyChecked
-                          ? 'border border-[#35429A] bg-[#35429A] text-white hover:bg-[#2F3C8A]'
-                          : 'border border-[#D7E0F8] bg-white/90 text-[#223467] disabled:cursor-not-allowed disabled:opacity-60'
+                          ? 'border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] dark:border-transparent'
+                          : 'border border-[#D7E0F8] bg-white/90 text-[#223467] shadow-none disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#36528D]/70 dark:bg-[#102047]/85 dark:text-[#D7E4FF]'
                       )}
                     >
                       <CheckCircle2 className="mr-2 h-4 w-4" />

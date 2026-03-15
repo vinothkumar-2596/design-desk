@@ -388,19 +388,34 @@ const shouldPromptDriveReconnect = (errorMessage?: string) => {
 };
 
 function AttachmentThumbnail({
-  previewUrl,
+  previewUrls,
   name,
 }: {
-  previewUrl?: string;
+  previewUrls?: string[];
   name: string;
 }) {
-  const [hasError, setHasError] = useState(!previewUrl);
+  const normalizedPreviewUrls = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (previewUrls || [])
+            .map((value) => String(value || '').trim())
+            .filter(Boolean)
+        )
+      ),
+    [previewUrls]
+  );
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  const activePreviewUrl =
+    activePreviewIndex < normalizedPreviewUrls.length
+      ? normalizedPreviewUrls[activePreviewIndex]
+      : '';
 
   useEffect(() => {
-    setHasError(!previewUrl);
-  }, [previewUrl]);
+    setActivePreviewIndex(0);
+  }, [normalizedPreviewUrls]);
 
-  if (!previewUrl || hasError) {
+  if (!activePreviewUrl) {
     return (
       <span className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.5),_transparent_58%),linear-gradient(160deg,_rgba(245,248,255,0.95),_rgba(224,234,255,0.75))] text-[10px] font-semibold uppercase tracking-[0.14em] text-[#5B6E96] dark:bg-[linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.75))] dark:text-slate-200">
         {getAttachmentThumbnailLabel(name)}
@@ -410,11 +425,16 @@ function AttachmentThumbnail({
 
   return (
     <img
-      src={previewUrl}
+      src={activePreviewUrl}
       alt=""
       className="block h-full w-full object-cover"
       loading="lazy"
-      onError={() => setHasError(true)}
+      onError={() =>
+        setActivePreviewIndex((current) => {
+          const nextIndex = current + 1;
+          return nextIndex <= normalizedPreviewUrls.length ? nextIndex : current;
+        })
+      }
     />
   );
 }
@@ -424,12 +444,17 @@ export default function TaskDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as
-    | { task?: typeof mockTasks[number]; highlightChangeId?: string }
+    | {
+        task?: typeof mockTasks[number];
+        highlightChangeId?: string;
+        focusSection?: 'change-history';
+      }
     | null;
   const { user } = useAuth();
   const apiUrl = API_URL;
   const stateTask = locationState?.task;
   const highlightChangeId = locationState?.highlightChangeId;
+  const focusSection = locationState?.focusSection;
   const localTask = id ? loadLocalTaskById(id) : undefined;
   const initialTask = stateTask || localTask || mockTasks.find((t) => t.id === id);
   const [taskState, setTaskState] = useState<typeof mockTasks[number] | undefined>(initialTask);
@@ -550,6 +575,9 @@ export default function TaskDetail() {
   const [compareRightId, setCompareRightId] = useState('');
   const [focusedChangeId, setFocusedChangeId] = useState(highlightChangeId || '');
   const [highlightedChangeId, setHighlightedChangeId] = useState(highlightChangeId || '');
+  const [isChangeHistoryPanelHighlighted, setIsChangeHistoryPanelHighlighted] = useState(
+    focusSection === 'change-history'
+  );
   const [designerHistoryJumpId, setDesignerHistoryJumpId] = useState('');
   const storageKey = id ? `designhub.task.${id}` : '';
   const commentDraftKey = useMemo(() => {
@@ -668,21 +696,23 @@ export default function TaskDetail() {
     treasurerApprovalCycleChanges,
     editTaskChangeHistory,
   ]);
+  const isTreasurerReviewMode = user?.role === 'treasurer' && approvalStatus === 'pending';
   const changeHistorySelectOptions = useMemo(
     () =>
       changeHistoryForDisplay.map((entry, index) => ({
         id: entry.id,
-        shortLabel: `V${index + 1} - ${format(new Date(entry.createdAt), 'MMM d, h:mm a')}`,
-        longLabel: `Update V${index + 1}`,
+        shortLabel: isTreasurerReviewMode
+          ? `V${index + 1} - ${format(new Date(entry.createdAt), 'MMM d, h:mm a')}`
+          : `V${index + 1} - ${format(new Date(entry.createdAt), 'MMM d, h:mm a')}`,
+        longLabel: isTreasurerReviewMode ? `Change V${index + 1}` : `Update V${index + 1}`,
         timeLabel: format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a'),
       })),
-    [changeHistoryForDisplay]
+    [changeHistoryForDisplay, isTreasurerReviewMode]
   );
   const selectedHistoryOption = useMemo(
     () => changeHistorySelectOptions.find((option) => option.id === designerHistoryJumpId) ?? null,
     [changeHistorySelectOptions, designerHistoryJumpId]
   );
-  const isTreasurerReviewMode = user?.role === 'treasurer' && approvalStatus === 'pending';
   const designVersions = taskState?.designVersions ?? [];
   const activeDesignVersionId =
     taskState?.activeDesignVersionId || designVersions[designVersions.length - 1]?.id;
@@ -721,6 +751,29 @@ export default function TaskDetail() {
       setHighlightedChangeId(highlightChangeId);
     }
   }, [highlightChangeId]);
+
+  useEffect(() => {
+    if (focusSection !== 'change-history') return;
+    setIsChangeHistoryPanelHighlighted(true);
+
+    let frameId = 0;
+    let timeoutId: ReturnType<typeof window.setTimeout> | null = null;
+    frameId = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(() => {
+        changeHistoryPanelRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }, 80);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [focusSection, changeHistoryForDisplay.length]);
 
   useEffect(() => {
     if (!focusedChangeId || typeof document === 'undefined') return;
@@ -783,6 +836,14 @@ export default function TaskDetail() {
       document.removeEventListener('touchstart', handlePointerDown);
     };
   }, [highlightedChangeId]);
+
+  useEffect(() => {
+    if (!isChangeHistoryPanelHighlighted) return;
+    const timeoutId = window.setTimeout(() => {
+      setIsChangeHistoryPanelHighlighted(false);
+    }, 10000);
+    return () => window.clearTimeout(timeoutId);
+  }, [isChangeHistoryPanelHighlighted]);
 
   useEffect(() => {
     if (!designerHistoryJumpId) return;
@@ -1614,7 +1675,7 @@ export default function TaskDetail() {
     return (
       <div className="flex flex-wrap gap-2">
         {attachments.map((attachment) => {
-          const previewUrl = getPreviewUrl(attachment);
+          const previewUrls = getAttachmentThumbnailPreviewUrls(attachment);
           const sizeLabel = formatFileSize(attachment.size) || 'Attachment';
           return (
             <div
@@ -1632,7 +1693,7 @@ export default function TaskDetail() {
                   void handleFileAction(attachment);
                 }}
               >
-                <AttachmentThumbnail previewUrl={previewUrl} name={attachment.name} />
+                <AttachmentThumbnail previewUrls={previewUrls} name={attachment.name} />
               </button>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
@@ -1659,7 +1720,7 @@ export default function TaskDetail() {
     return (
       <div className="mt-3 space-y-2">
         {attachments.map((attachment) => {
-          const previewUrl = getPreviewUrl(attachment);
+          const previewUrls = getAttachmentThumbnailPreviewUrls(attachment);
           const sizeLabel = formatFileSize(attachment.size) || 'Attachment';
           return (
             <div
@@ -1677,7 +1738,7 @@ export default function TaskDetail() {
                   void handleFileAction(attachment);
                 }}
               >
-                <AttachmentThumbnail previewUrl={previewUrl} name={attachment.name} />
+                <AttachmentThumbnail previewUrls={previewUrls} name={attachment.name} />
               </button>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
@@ -1731,6 +1792,58 @@ export default function TaskDetail() {
 
   const normalizedCommentSearch = commentSearch.trim().toLowerCase();
   const currentUserId = String(user?.id || '').trim();
+  const canViewCommentReceipts = user?.role !== 'staff';
+  const currentUserEmail = normalizeEmail(user?.email);
+  const normalizedCurrentUserName = String(user?.name || '').trim().toLowerCase();
+  const commentAssignedToId = taskState ? resolveTaskAssignedId(taskState) : '';
+  const assignedDesignerName = String(taskState?.assignedToName || '').trim().toLowerCase();
+  const assignedDesignerEmail = normalizeEmail(
+    taskState?.assignedDesignerEmail ||
+      (looksLikeEmail(commentAssignedToId) ? commentAssignedToId : '')
+  );
+  const assignedDesignerIsMain = isMainDesigner({
+    role: 'designer',
+    email: assignedDesignerEmail || undefined,
+  });
+
+  const isCommentFromMainDesigner = (
+    comment: Pick<TaskComment, 'userRole' | 'userId' | 'userName'>
+  ) => {
+    if (comment.userRole !== 'designer') return false;
+
+    const commentUserId = String(comment.userId || '').trim();
+    const commentUserEmail = normalizeEmail(looksLikeEmail(commentUserId) ? commentUserId : '');
+    const commentUserName = String(comment.userName || '').trim().toLowerCase();
+
+    if (
+      isMainDesignerUser &&
+      (
+        (commentUserId && currentUserId && commentUserId === currentUserId) ||
+        (commentUserEmail && currentUserEmail && commentUserEmail === currentUserEmail) ||
+        (commentUserName && normalizedCurrentUserName && commentUserName === normalizedCurrentUserName)
+      )
+    ) {
+      return true;
+    }
+
+    if (!assignedDesignerIsMain) return false;
+
+    return Boolean(
+      (commentUserId && commentAssignedToId && commentUserId === commentAssignedToId) ||
+      (commentUserEmail && assignedDesignerEmail && commentUserEmail === assignedDesignerEmail) ||
+      (commentUserName && assignedDesignerName && commentUserName === assignedDesignerName)
+    );
+  };
+
+  const getCommentRoleLabel = (
+    comment: Pick<TaskComment, 'userRole' | 'userId' | 'userName'>
+  ) => {
+    if (!comment.userRole) return '';
+    if (comment.userRole === 'designer' && isCommentFromMainDesigner(comment)) {
+      return 'Design Lead';
+    }
+    return roleLabels[comment.userRole] ?? comment.userRole;
+  };
 
   useEffect(() => {
     if (!isCommentSearchVisible) return;
@@ -1743,7 +1856,7 @@ export default function TaskDetail() {
     if (!normalizedCommentSearch) return true;
     const searchableText = [
       comment.userName,
-      comment.userRole ? roleLabels[comment.userRole] : '',
+      getCommentRoleLabel(comment),
       comment.content,
       ...(comment.attachments ?? []).map((attachment) => attachment.name),
     ]
@@ -2626,6 +2739,41 @@ export default function TaskDetail() {
     }
     if (isImageFile(file.name)) return resolvedUrl;
     return '';
+  };
+  const getAttachmentThumbnailPreviewUrls = (file: FileActionTarget) => {
+    const driveId = getResolvedDriveId(file);
+    const driveMeta = getResolvedDriveMeta(file);
+    const thumbnailUrl = String(file.thumbnailUrl || '').trim();
+    const webContentLink = String(file.webContentLink || '').trim();
+    const rawUrl = String(file.url || '').trim();
+    const resolvedUrl = resolveStoredFileUrl(file);
+    const generatedDriveThumbnail = driveId
+      ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveId)}&sz=w400`
+      : '';
+
+    if (isImageFile(file.name)) {
+      return Array.from(
+        new Set(
+          [
+            webContentLink,
+            !driveMeta.isGoogleDrive ? rawUrl : '',
+            thumbnailUrl,
+            generatedDriveThumbnail,
+            !driveMeta.isGoogleDrive ? resolvedUrl : '',
+          ]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean)
+        )
+      );
+    }
+
+    return Array.from(
+      new Set(
+        [thumbnailUrl, generatedDriveThumbnail]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      )
+    );
   };
   const isDownloadableExtension = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -5678,7 +5826,8 @@ export default function TaskDetail() {
     const currentUserReactions = new Set(
       groupedReactions.filter((reaction) => reaction.reactedByCurrentUser).map((reaction) => reaction.emoji)
     );
-    const receiptSummary = isOwnComment ? getCommentReceiptSummary(comment, seenEntries) : null;
+    const receiptSummary =
+      isOwnComment && canViewCommentReceipts ? getCommentReceiptSummary(comment, seenEntries) : null;
 
     if (normalizedCommentSearch && !matchesSearch && replies.length === 0) {
       return null;
@@ -5703,7 +5852,7 @@ export default function TaskDetail() {
               <span className="truncate font-medium text-sm text-foreground">{comment.userName}</span>
               {comment.userRole && (
                 <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                  {roleLabels[comment.userRole] ?? comment.userRole}
+                  {getCommentRoleLabel(comment)}
                 </span>
               )}
               {normalizedCommentSearch && !matchesSearch && replies.length > 0 && (
@@ -6015,7 +6164,15 @@ export default function TaskDetail() {
   };
 
   const renderChangeHistoryPanel = () => (
-    <div ref={changeHistoryPanelRef} className={`${glassPanelClass} p-5 animate-slide-up`}>
+    <div
+      ref={changeHistoryPanelRef}
+      className={cn(
+        glassPanelClass,
+        'p-5 animate-slide-up',
+        isChangeHistoryPanelHighlighted &&
+          'change-history-highlight border-transparent bg-white/90 dark:bg-[#101C39]/90'
+      )}
+    >
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="font-semibold text-foreground">Change History</h2>
@@ -6035,10 +6192,10 @@ export default function TaskDetail() {
           <History className="h-4 w-4 text-muted-foreground" />
         </div>
       </div>
-      {user?.role === 'designer' && changeHistorySelectOptions.length > 0 && (
+      {(user?.role === 'designer' || isTreasurerReviewMode) && changeHistorySelectOptions.length > 0 && (
         <div className="mb-4">
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Jump to update version
+            {isTreasurerReviewMode ? 'Jump to change' : 'Jump to update version'}
           </p>
           <Select
             value={designerHistoryJumpId || undefined}
@@ -6049,7 +6206,7 @@ export default function TaskDetail() {
           >
             <SelectTrigger className="h-10 w-full rounded-xl border-[#D9E6FF] bg-white/85 text-left text-sm text-foreground shadow-none dark:border-border dark:bg-card/90">
               <span className="block truncate font-medium">
-                {selectedHistoryOption?.shortLabel || 'Select update version'}
+                {selectedHistoryOption?.shortLabel || (isTreasurerReviewMode ? 'Version history details' : 'Select update version')}
               </span>
             </SelectTrigger>
             <SelectContent>
@@ -6097,7 +6254,7 @@ export default function TaskDetail() {
                 <div
                   className={cn(
                     changeHistoryCardClass,
-                    'rounded-xl border border-[#BFD1F4]/70 bg-gradient-to-br from-white/88 via-[#F4F8FF]/78 to-[#E8F1FF]/70 supports-[backdrop-filter]:bg-[#F4F8FF]/60 backdrop-blur-xl p-3 transition-colors dark:border-border/70 dark:bg-slate-900/55 dark:backdrop-blur-none',
+                    'rounded-xl border border-[#BFD1F4]/82 bg-gradient-to-br from-white/88 via-[#F4F8FF]/78 to-[#E8F1FF]/70 supports-[backdrop-filter]:bg-[#F4F8FF]/60 backdrop-blur-xl p-3 transition-colors dark:border-border/70 dark:bg-slate-900/55 dark:backdrop-blur-none',
                     entry.id === highlightedChangeId &&
                       'change-history-highlight border-transparent bg-white/90 ring-0 dark:bg-[#101C39]/90'
                   )}
@@ -7657,7 +7814,7 @@ export default function TaskDetail() {
                         commentAttachments.length === 0 && (
                         <div className="pointer-events-none absolute inset-x-0 top-0 flex min-h-[72px] items-start">
                           <div className="chat-composer-placeholder pt-0.5">
-                            <MessageSquare className="chat-composer-placeholder-icon h-4 w-4" />
+                            <MessageSquare className="chat-composer-placeholder-icon h-[1.05rem] w-[1.05rem]" />
                             <span className="chat-composer-placeholder-static">Message</span>
                             <span className="chat-composer-placeholder-words">
                               <span className="chat-composer-placeholder-wordlist">

@@ -34,7 +34,7 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useTheme } from 'next-themes';
 
 import { API_URL, authFetch, getAuthToken } from '@/lib/api';
-import { isMainDesigner } from '@/lib/designerAccess';
+import { getPreferredDesignerDisplayName, isMainDesigner } from '@/lib/designerAccess';
 import { DESIGN_GOVERNANCE_NOTICE_COMPACT } from '@/lib/designGovernance';
 import { createSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
@@ -121,6 +121,8 @@ export function DashboardLayout({
   const navigate = useNavigate();
   const userId = user?.id || (user as { _id?: string } | null)?._id || '';
   const userEmail = String(user?.email || '').trim().toLowerCase();
+  const isStaffUser = user?.role === 'staff';
+  const isMainDesignerUser = isMainDesigner(user);
   const useServerNotifications = Boolean(apiUrl);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -135,6 +137,56 @@ export function DashboardLayout({
       return false;
     },
     [userEmail, userId]
+  );
+
+  const getViewerRoleLabel = useCallback(
+    (viewer?: GlobalViewer | null) => {
+      const normalizedRole = String(viewer?.userRole || '').trim().toLowerCase();
+      if (!normalizedRole) return 'User';
+      if (normalizedRole !== 'designer') {
+        return normalizedRole.charAt(0).toUpperCase() + normalizedRole.slice(1);
+      }
+
+      const viewerId = String(viewer?.userId || '').trim();
+      const viewerEmail = String(viewer?.userEmail || '').trim().toLowerCase();
+      const isSelf = Boolean(
+        (userId && viewerId === userId) ||
+        (userEmail && viewerEmail && viewerEmail === userEmail) ||
+        (userEmail && viewerId && viewerId.toLowerCase() === userEmail)
+      );
+
+      if (
+        isSelf
+          ? isMainDesignerUser
+          : isMainDesigner({
+              role: 'designer',
+              email: viewerEmail || undefined,
+            })
+      ) {
+        return 'Design Lead';
+      }
+
+      return 'Designer';
+    },
+    [isMainDesignerUser, userEmail, userId]
+  );
+
+  const getViewerDisplayName = useCallback(
+    (viewer?: GlobalViewer | null) => {
+      const fallbackName = String(viewer?.userName || '').trim() || 'Someone';
+      if (!viewer) return fallbackName;
+
+      const isSelf = isCurrentUserViewer(viewer);
+      return (
+        getPreferredDesignerDisplayName({
+          role: isSelf ? user?.role : viewer.userRole,
+          email: isSelf ? user?.email : viewer.userEmail,
+          designerScope: isSelf ? user?.designerScope : undefined,
+          name: isSelf ? user?.name || viewer.userName : viewer.userName,
+        }) || fallbackName
+      );
+    },
+    [isCurrentUserViewer, user]
   );
 
 
@@ -987,17 +1039,15 @@ export function DashboardLayout({
   const headerPresenceAction = useMemo(() => {
     if (!user) return null;
     const isTyping = globalTypingSummary.total > 0 || localSelfTyping;
-    const avatars =
-      isTyping && globalTypingSummary.visible.length > 0
-        ? globalTypingSummary.visible
-        : globalPresenceSummary.visible;
+    if (isStaffUser && !isTyping) return null;
+    const avatars = isTyping ? globalTypingSummary.visible : globalPresenceSummary.visible;
     if (avatars.length === 0) return null;
     const extraCount = isTyping ? globalTypingSummary.extraCount : globalPresenceSummary.extraCount;
     const label = isTyping
-      ? (() => {
+        ? (() => {
         const selfTyping = globalTypingList.some((viewer) => isCurrentUserViewer(viewer));
         const others = globalTypingList.filter((viewer) => !isCurrentUserViewer(viewer));
-        const firstOtherName = (others[0]?.userName || 'Someone').trim() || 'Someone';
+        const firstOtherName = getViewerDisplayName(others[0]);
 
         if (selfTyping && others.length === 0) {
           return 'You are typing...';
@@ -1041,10 +1091,8 @@ export function DashboardLayout({
           {avatars.map((viewer) => {
             const isSelf = isCurrentUserViewer(viewer);
             const avatarSrc = isSelf ? user?.avatar || viewer.avatar : viewer.avatar;
-            const labelRole =
-              viewer.userRole
-                ? viewer.userRole.charAt(0).toUpperCase() + viewer.userRole.slice(1)
-                : 'User';
+            const labelRole = getViewerRoleLabel(viewer);
+            const displayName = getViewerDisplayName(viewer);
             const isOnline = Boolean(viewer.isOnline);
             const lastSeenText = isOnline
               ? 'Available now'
@@ -1060,7 +1108,7 @@ export function DashboardLayout({
                     )}
                   >
                     <UserAvatar
-                      name={viewer.userName}
+                      name={displayName}
                       avatar={avatarSrc}
                       className={cn(
                         'h-6 w-6 border-2 border-white shadow-sm bg-white/90 dark:border-white/10 dark:bg-slate-900/80',
@@ -1073,20 +1121,24 @@ export function DashboardLayout({
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="end">
                   <div className="text-xs font-semibold">
-                    {viewer.userName}
+                    {displayName}
                     {isSelf ? ' (you)' : ''}
                   </div>
                   <div className="text-[11px] text-muted-foreground">{labelRole}</div>
-                  <div
-                    className={cn(
-                      'text-[11px] font-medium',
-                      isOnline ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
-                    )}
-                  >
-                    {lastSeenText}
-                  </div>
-                  {!isOnline && lastSeenExact && (
-                    <div className="text-[10px] text-muted-foreground/80">{lastSeenExact}</div>
+                  {!isStaffUser && (
+                    <>
+                      <div
+                        className={cn(
+                          'text-[11px] font-medium',
+                          isOnline ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
+                        )}
+                      >
+                        {lastSeenText}
+                      </div>
+                      {!isOnline && lastSeenExact && (
+                        <div className="text-[10px] text-muted-foreground/80">{lastSeenExact}</div>
+                      )}
+                    </>
                   )}
                   {viewer.userEmail && (
                     <div className="text-[11px] text-muted-foreground">{viewer.userEmail}</div>
@@ -1107,7 +1159,10 @@ export function DashboardLayout({
     globalPresenceSummary,
     globalTypingList,
     globalTypingSummary,
+    getViewerDisplayName,
+    getViewerRoleLabel,
     isCurrentUserViewer,
+    isStaffUser,
     localSelfTyping,
     user,
     userId,

@@ -172,9 +172,9 @@ const PrivacyPolicy = () => {
 
                   <ul className={legalPageStyles.sectionList}>
                     {section.points.map((point) => (
-                      <li key={point} className="flex gap-3">
+                      <li key={point} className={legalPageStyles.sectionListItem}>
                         <span className={legalPageStyles.sectionDot} />
-                        <span>{point}</span>
+                        <span className={legalPageStyles.sectionListText}>{point}</span>
                       </li>
                     ))}
                   </ul>

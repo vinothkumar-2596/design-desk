@@ -8,6 +8,29 @@ const packageJson = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf-8")
 );
 
+const padTwo = (value: number) => String(value).padStart(2, "0");
+
+const buildTimestampLabel = (() => {
+  const now = new Date();
+  const year = String(now.getFullYear()).slice(-2);
+  const month = padTwo(now.getMonth() + 1);
+  const day = padTwo(now.getDate());
+  const hours = padTwo(now.getHours());
+  const minutes = padTwo(now.getMinutes());
+  return `${year}${month}${day}.${hours}${minutes}`;
+})();
+
+const buildIdSource =
+  process.env.APP_BUILD_ID ||
+  process.env.VERCEL_DEPLOYMENT_ID ||
+  process.env.VERCEL_GIT_COMMIT_SHA ||
+  buildTimestampLabel;
+
+const normalizedBuildId = String(buildIdSource || "")
+  .trim()
+  .replace(/[^a-zA-Z0-9.-]+/g, "")
+  .slice(0, 12) || buildTimestampLabel;
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
@@ -35,5 +58,6 @@ export default defineConfig(({ mode }) => ({
   },
   define: {
     __APP_VERSION__: JSON.stringify(packageJson.version || "0.0.0"),
+    __APP_BUILD_ID__: JSON.stringify(normalizedBuildId),
   },
 }));

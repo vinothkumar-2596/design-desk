@@ -18,6 +18,8 @@ const configuredMainDesignerEmails = Array.from(
     ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAILS),
   ])
 );
+const configuredMainDesignerDisplayName = String(import.meta.env.VITE_MAIN_DESIGNER_NAME || '').trim();
+const defaultMainDesignerDisplayName = 'Vinothkumar S';
 
 const hasMainDesignerConfig = configuredMainDesignerEmails.length > 0;
 
@@ -79,4 +81,33 @@ export const getDesignerScopeLabel = (scope?: string | null) => {
   if (normalized === 'main') return 'DesignLead';
   if (normalized === 'junior') return 'Junior Designer';
   return 'Designer';
+};
+
+export const getPreferredDesignerDisplayName = (
+  user?:
+    | Pick<User, 'role' | 'email' | 'designerScope' | 'name'>
+    | {
+        role?: string | null;
+        email?: string | null;
+        designerScope?: string | null;
+        name?: string | null;
+      }
+    | null
+) => {
+  const rawName = String(user?.name || '').trim();
+  if (!user || normalizeValue(user.role) !== 'designer') {
+    return rawName;
+  }
+
+  const scope = normalizeDesignerScope(user.designerScope);
+  if (scope === 'main') {
+    return configuredMainDesignerDisplayName || defaultMainDesignerDisplayName;
+  }
+
+  const email = normalizeValue(user.email);
+  if (email && configuredMainDesignerEmails.includes(email)) {
+    return configuredMainDesignerDisplayName || defaultMainDesignerDisplayName;
+  }
+
+  return rawName;
 };
