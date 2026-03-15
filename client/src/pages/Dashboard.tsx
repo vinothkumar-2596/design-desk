@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { mockTasks, calculateStats } from '@/data/mockTasks';
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter';
 import { DateRangeOption, getDateRange, isWithinRange } from '@/lib/dateRange';
+import { DESIGN_GOVERNANCE_NOTICE_MINIMAL } from '@/lib/designGovernance';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1038,9 +1039,8 @@ export default function Dashboard() {
                   Important Notice
                 </p>
                 <h3 className="text-base font-semibold text-foreground premium-heading">Submission standards</h3>
-                <p className="text-sm leading-6 text-muted-foreground premium-body">
-                  All design requests must include complete data and associated files. Minimum deadline is 3 working days.
-                  Modifications require Treasurer approval.
+                <p className="text-[12.5px] leading-6 text-muted-foreground premium-body">
+                  All design requests must include complete data and associated files. {DESIGN_GOVERNANCE_NOTICE_MINIMAL}
                 </p>
               </div>
             </div>

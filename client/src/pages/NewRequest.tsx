@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import {
   DropdownMenu,
@@ -101,6 +102,10 @@ import { GeminiBlink } from '@/components/common/GeminiBlink';
 import { AttachmentPreviewDialog } from '@/components/tasks/AttachmentPreviewDialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { TaskDraft } from '@/lib/ai';
+import {
+  DESIGN_GOVERNANCE_EMAIL_LINES,
+  DESIGN_GOVERNANCE_NOTICE_MINIMAL,
+} from '@/lib/designGovernance';
 import { cn } from '@/lib/utils';
 
 type DeadlineCalendarDayProps = PickersDayProps & {
@@ -125,6 +130,46 @@ function DeadlineCalendarDay({ tooltipLabel, ...props }: DeadlineCalendarDayProp
     </Tooltip>
   );
 }
+
+const SUBMISSION_POLICY_ACCEPTANCE_VERSION = '2026-03-15';
+
+const getSubmissionPolicyAcceptanceKey = (
+  userId?: string | null,
+  userEmail?: string | null
+) => {
+  const identity = [String(userId || '').trim(), String(userEmail || '').trim().toLowerCase()]
+    .filter(Boolean)
+    .join(':');
+
+  return `designhub:submission-policy:${SUBMISSION_POLICY_ACCEPTANCE_VERSION}:${identity || 'anonymous'}`;
+};
+
+const readStoredSubmissionPolicyAcceptance = (storageKey: string) => {
+  if (typeof window === 'undefined') return false;
+
+  const stored = window.localStorage.getItem(storageKey);
+  if (!stored) return false;
+
+  try {
+    const parsed = JSON.parse(stored);
+    return parsed?.accepted === true;
+  } catch {
+    return stored === 'true';
+  }
+};
+
+const persistSubmissionPolicyAcceptance = (storageKey: string) => {
+  if (typeof window === 'undefined') return;
+
+  window.localStorage.setItem(
+    storageKey,
+    JSON.stringify({
+      accepted: true,
+      acceptedAt: new Date().toISOString(),
+      version: SUBMISSION_POLICY_ACCEPTANCE_VERSION,
+    })
+  );
+};
 
 interface UploadedFile {
   id: string;
@@ -555,8 +600,17 @@ export default function NewRequest() {
   const apiUrl = API_URL;
   const defaultRequesterPhone = formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || '');
   const draftStorageKey = getRequestDraftStorageKey(user);
+  const submissionPolicyStorageKey = useMemo(
+    () => getSubmissionPolicyAcceptanceKey(user?.id, user?.email),
+    [user?.email, user?.id]
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showGuidelines, setShowGuidelines] = useState(true);
+  const [hasAcceptedSubmissionPolicy, setHasAcceptedSubmissionPolicy] = useState(() =>
+    readStoredSubmissionPolicyAcceptance(submissionPolicyStorageKey)
+  );
+  const [isSubmissionPolicyChecked, setIsSubmissionPolicyChecked] = useState(() =>
+    readStoredSubmissionPolicyAcceptance(submissionPolicyStorageKey)
+  );
   const [showThankYou, setShowThankYou] = useState(false);
   const [showCancelDraftDialog, setShowCancelDraftDialog] = useState(false);
   const [thankYouAnimation, setThankYouAnimation] = useState<object | null>(null);
@@ -588,6 +642,7 @@ export default function NewRequest() {
   const latestFilesRef = useRef<UploadedFile[]>([]);
   const attachmentPreviewViewportRef = useRef<HTMLDivElement | null>(null);
   const attachmentPreviewObjectUrlRef = useRef<string | null>(null);
+  const submissionPolicyCardRef = useRef<HTMLDivElement | null>(null);
   const attachmentPreviewDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -1092,13 +1147,20 @@ export default function NewRequest() {
 
   useEffect(() => {
     if (!locationState?.openTaskBuddy) return;
+    if (!hasAcceptedSubmissionPolicy) return;
     setIsTaskBuddyOpen(true);
-  }, [locationState?.openTaskBuddy]);
+  }, [hasAcceptedSubmissionPolicy, locationState?.openTaskBuddy]);
+
+  useEffect(() => {
+    const accepted = readStoredSubmissionPolicyAcceptance(submissionPolicyStorageKey);
+    setHasAcceptedSubmissionPolicy(accepted);
+    setIsSubmissionPolicyChecked(accepted);
+  }, [submissionPolicyStorageKey]);
 
   const glassPanelClass =
     'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border-0 ring-1 ring-black/5 rounded-2xl shadow-none dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:ring-white/5';
   const glassInputClass =
-    'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF] dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus-visible:ring-primary/40 dark:focus-visible:border-slate-500/60';
+    'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg text-[12.5px] font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF] dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus-visible:ring-primary/40 dark:focus-visible:border-slate-500/60';
   const queueGlassCardClass =
     'relative overflow-hidden rounded-[22px] border border-[#CBD9FF]/60 bg-gradient-to-br from-white/92 via-[#F8FBFF]/84 to-[#E8F1FF]/86 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-[#F8FBFF]/62 supports-[backdrop-filter]:to-[#E8F1FF]/64 backdrop-blur-2xl shadow-none ring-1 ring-white/60 dark:border-border dark:bg-card/78 dark:bg-none dark:ring-0';
   const queueActionButtonClass =
@@ -1628,12 +1690,43 @@ export default function NewRequest() {
     }
   };
 
+  const scrollToSubmissionPolicyCard = () => {
+    submissionPolicyCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleOpenTaskBuddy = () => {
+    if (!hasAcceptedSubmissionPolicy) {
+      toast.error('Accept the submission policy first', {
+        description: 'Review and accept the one-time submission guidelines before creating a request.',
+      });
+      scrollToSubmissionPolicyCard();
+      return;
+    }
+
+    setIsTaskBuddyOpen(true);
+  };
+
+  const handleAcceptSubmissionPolicy = () => {
+    if (!isSubmissionPolicyChecked) {
+      toast.error('Confirmation required', {
+        description: 'Tick the acceptance checkbox to continue to the request form.',
+      });
+      scrollToSubmissionPolicyCard();
+      return;
+    }
+
+    persistSubmissionPolicyAcceptance(submissionPolicyStorageKey);
+    setHasAcceptedSubmissionPolicy(true);
+    toast.success('Submission policy accepted.');
+  };
+
   const descriptionWordCount = countWords(description);
   const hasMinimumDescriptionWords = descriptionWordCount >= MIN_DESCRIPTION_WORDS;
 
   const isFormValid = () => {
     const hasUploadsInProgress = files.some((file) => file.uploading);
     const hasUploadErrors = files.some((file) => file.error);
+    const hasReadyAttachments = readyAttachments.length > 0;
     const normalizedDeadline = deadline ? startOfDay(deadline) : null;
     const deadlineValid = Boolean(
       normalizedDeadline &&
@@ -1642,10 +1735,12 @@ export default function NewRequest() {
       !isDateBlocked(normalizedDeadline)
     );
     return (
+      hasAcceptedSubmissionPolicy &&
       title.trim() &&
       description.trim() &&
       hasMinimumDescriptionWords &&
       category &&
+      hasReadyAttachments &&
       deadlineValid &&
       !hasUploadsInProgress &&
       !hasUploadErrors
@@ -1655,9 +1750,24 @@ export default function NewRequest() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!hasAcceptedSubmissionPolicy) {
+      toast.error('Accept the submission policy first', {
+        description: 'Review and accept the one-time submission guidelines before creating a request.',
+      });
+      scrollToSubmissionPolicyCard();
+      return;
+    }
+
     if (!hasMinimumDescriptionWords) {
       toast.error('Description is too short', {
         description: `Please provide at least ${MIN_DESCRIPTION_WORDS} words for the designer brief.`,
+      });
+      return;
+    }
+
+    if (readyAttachments.length === 0) {
+      toast.error('Attachments are required', {
+        description: 'Upload at least one attachment before submitting the request.',
       });
       return;
     }
@@ -1856,8 +1966,8 @@ export default function NewRequest() {
       '- Minimum 3 working days for standard requests',
       '- Urgent requests require proper justification',
       '',
-      'Modifications',
-      '- Any changes after design approval require Treasurer approval',
+      'Design Governance',
+      ...DESIGN_GOVERNANCE_EMAIL_LINES.map((line) => `- ${line}`),
       '',
       'Attachments Required',
       '- Screenshot of the requirement screen (MANDATORY)',
@@ -1978,119 +2088,228 @@ export default function NewRequest() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <GeminiBlink onClick={() => setIsTaskBuddyOpen(true)} />
+            <GeminiBlink
+              onClick={handleOpenTaskBuddy}
+              className={!hasAcceptedSubmissionPolicy ? 'opacity-55 saturate-75' : ''}
+            />
           </div>
         </div>
-        <div className="flex justify-end items-center gap-2">
-          <button
-            type="button"
-            onClick={handleEmailDesignRequest}
-            aria-label="Email Design Request"
-            className="group flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
-            title="Email Design Request"
-          >
-            <Mail className="h-4 w-4" />
-          </button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => setShowEmailPreview((prev) => !prev)}
-            className="h-8 rounded-full bg-primary/5 px-3 text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-foreground"
-          >
-            Preview Email
-            {showEmailPreview ? (
-              <ChevronUp className="ml-1 h-3.5 w-3.5" />
-            ) : (
-              <ChevronDown className="ml-1 h-3.5 w-3.5" />
-            )}
-          </Button>
-        </div>
-        {showEmailPreview && (
-          <div className={`${glassPanelClass} p-4 animate-fade-in space-y-3`}>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Subject
-              </p>
-              <p className="mt-1 text-sm font-medium text-foreground break-words">
-                {emailPreviewDraft.subject}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Body
-              </p>
-              <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-[#D9E6FF] bg-white/70 p-3 text-xs leading-relaxed text-foreground/90 dark:border-slate-700/60 dark:bg-slate-900/60">
-                {emailPreviewDraft.body}
-              </pre>
-            </div>
-          </div>
-        )}
+        {!hasAcceptedSubmissionPolicy ? (
+          <div ref={submissionPolicyCardRef} className="animate-slide-up">
+            <div className="relative overflow-hidden rounded-[22px] border border-[#D7E0F8] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(239,244,255,0.94))] shadow-none">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(217,230,255,0.72),_transparent_58%)]" />
+              <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:p-6">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#D9E6FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(230,238,255,0.84))] text-[#35429A] backdrop-blur-xl">
+                  <Info className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center rounded-full border border-[#D7E0F8] bg-white/80 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#35429A]">
+                      Submission Policy
+                    </span>
+                    <span className="text-[11px] font-medium text-[#6B7A99]">
+                      One-time acceptance required before the first request
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-[17px] font-semibold text-[#162858]">
+                    Accept submission guidelines to continue
+                  </h3>
+                  <p className="mt-1 text-[12.5px] leading-6 text-[#5C6E95]">
+                    New users must review and accept this policy before creating a design request.
+                  </p>
 
-        {/* Guidelines Banner */}
-        {showGuidelines && (
-          <div className={`${glassPanelClass} p-5 animate-slide-up relative text-foreground`}>
-            <button
-              onClick={() => setShowGuidelines(false)}
-              className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <div className="flex items-start gap-3">
-              <Info className="h-5 w-5 text-accent flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">
-                  Submission Guidelines
-                </h3>
-                <ul className="space-y-2 text-sm text-foreground/80">
-                  <li className="flex items-start gap-2">
-                    <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
-                      database
+                  <div className="mt-4 rounded-[22px] border border-[#D7E0F8] bg-white/80 p-4">
+                    <ul className="space-y-3 text-[12.5px] text-[#425678]">
+                      <li className="flex items-start gap-2.5">
+                        <span className="material-symbols-outlined mt-0.5 text-base text-[#6B7A99]">
+                          database
+                        </span>
+                        <span>
+                          <strong className="font-semibold text-[#1F2E5A]">Data Requirements:</strong>{' '}
+                          Include all text content, images, logos, and associated files.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="material-symbols-outlined mt-0.5 text-base text-[#6B7A99]">
+                          schedule
+                        </span>
+                        <span>
+                          <strong className="font-semibold text-[#1F2E5A]">Timeline:</strong>{' '}
+                          Minimum 3 working days for standard requests. Urgent requests require justification.
+                        </span>
+                      </li>
+                    </ul>
+
+                    <div className="mt-4 rounded-[20px] border border-[#D7E0F8] bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(243,247,255,0.88))] p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#D9E6FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(230,238,255,0.84))] text-[#35429A]">
+                          <AlertTriangle className="h-4.5 w-4.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6B7A99]">
+                            Important Notice
+                          </p>
+                          <h4 className="mt-1 text-[13.5px] font-semibold text-[#162858]">
+                            Submission standards
+                          </h4>
+                          <p className="mt-2 text-[12.5px] leading-6 text-[#425678]">
+                            {DESIGN_GOVERNANCE_NOTICE_MINIMAL}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <label
+                    htmlFor="submission-policy-acceptance"
+                    className={cn(
+                      'mt-4 flex cursor-pointer items-start gap-3 rounded-[18px] px-4 py-3 transition-all duration-200',
+                      isSubmissionPolicyChecked
+                        ? 'border border-[#D7E0F8] bg-white/72'
+                        : 'border border-[#BFD2FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(244,248,255,0.96))] ring-1 ring-[#D8E4FF] shadow-[0_18px_34px_-28px_rgba(53,66,154,0.42)]'
+                    )}
+                  >
+                    <Checkbox
+                      id="submission-policy-acceptance"
+                      checked={isSubmissionPolicyChecked}
+                      onCheckedChange={(checked) => setIsSubmissionPolicyChecked(checked === true)}
+                      className={cn(
+                        'mt-0.5 border-[#C9D7FF] transition-colors data-[state=checked]:border-[#35429A] data-[state=checked]:bg-[#35429A] data-[state=checked]:text-white',
+                        !isSubmissionPolicyChecked && 'border-[#8CA9E8] bg-white shadow-[0_0_0_4px_rgba(217,230,255,0.6)]'
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 space-y-1">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={cn(
+                            'inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]',
+                            isSubmissionPolicyChecked
+                              ? 'border border-[#D7E0F8] bg-white/85 text-[#35429A]'
+                              : 'border border-[#C7D8FF] bg-[#EEF4FF] text-[#2F3C8A]'
+                          )}
+                        >
+                          {isSubmissionPolicyChecked ? 'Acknowledged' : 'Action Required'}
+                        </span>
+                        <span className="text-[11px] font-medium text-[#6B7A99]">
+                          {isSubmissionPolicyChecked
+                            ? 'Continue is enabled below.'
+                            : 'Tick this checkbox to enable Continue.'}
+                        </span>
+                      </span>
+                      <span className="block text-[12.5px] leading-6 text-[#425678]">
+                        I have reviewed these submission guidelines and understand that further changes must follow the approved governance process.
+                      </span>
                     </span>
-                    <span>
-                      <strong>Data Requirements:</strong> Include all text content,
-                      images, logos, and associated files
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
-                      schedule
-                    </span>
-                    <span>
-                      <strong>Timeline:</strong> Minimum 3 working days for standard
-                      requests. Urgent requests require justification.
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="material-symbols-outlined mt-1 text-base text-foreground/70 flex-shrink-0">
-                      edit
-                    </span>
-                    <span>
-                      <strong>Modifications:</strong> Changes to approved designs
-                      require Treasurer approval first
-                    </span>
-                  </li>
-                </ul>
+                  </label>
+
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#6B7A99]">
+                        Stored once per account
+                      </p>
+                      <p className="text-[11px] leading-5 text-[#6B7A99]">
+                        By continuing, you acknowledge the{' '}
+                        <Link
+                          to="/privacy-policy"
+                          className="font-semibold text-[#35429A] underline-offset-4 hover:text-[#2F3C8A] hover:underline"
+                        >
+                          Privacy Policy
+                        </Link>{' '}
+                        and{' '}
+                        <Link
+                          to="/terms-service"
+                          className="font-semibold text-[#35429A] underline-offset-4 hover:text-[#2F3C8A] hover:underline"
+                        >
+                          Terms of Service
+                        </Link>
+                        .
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={handleAcceptSubmissionPolicy}
+                      disabled={!isSubmissionPolicyChecked}
+                      className={cn(
+                        'h-10 rounded-full px-5 text-[12.5px] font-semibold shadow-none transition-colors',
+                        isSubmissionPolicyChecked
+                          ? 'border border-[#35429A] bg-[#35429A] text-white hover:bg-[#2F3C8A]'
+                          : 'border border-[#D7E0F8] bg-white/90 text-[#223467] disabled:cursor-not-allowed disabled:opacity-60'
+                      )}
+                    >
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Accept and Continue
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
+        ) : (
+          <>
+            <div className="flex justify-end items-center gap-2">
+              <button
+                type="button"
+                onClick={handleEmailDesignRequest}
+                aria-label="Email Design Request"
+                className="group flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                title="Email Design Request"
+              >
+                <Mail className="h-4 w-4" />
+              </button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowEmailPreview((prev) => !prev)}
+                className="h-8 rounded-full bg-primary/5 px-3 text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+              >
+                Preview Email
+                {showEmailPreview ? (
+                  <ChevronUp className="ml-1 h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+            {showEmailPreview && (
+              <div className={`${glassPanelClass} p-4 animate-fade-in space-y-3`}>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Subject
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-foreground break-words">
+                    {emailPreviewDraft.subject}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Body
+                  </p>
+                  <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-[#D9E6FF] bg-white/70 p-3 text-xs leading-relaxed text-foreground/90 dark:border-slate-700/60 dark:bg-slate-900/60">
+                    {emailPreviewDraft.body}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className={`${glassPanelClass} p-6 pb-8 min-h-[520px] space-y-5 animate-slide-up`}>
-            {/* Title */}
-            <div className="space-y-2">
-              <Label htmlFor="title">
-                Request Title <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="title"
-                placeholder="e.g., Annual Report Cover Design"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className={`h-11 ${glassInputClass}`}
-              />
-            </div>
+        {hasAcceptedSubmissionPolicy ? (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className={`${glassPanelClass} p-6 pb-8 min-h-[520px] space-y-5 animate-slide-up`}>
+              {/* Title */}
+              <div className="space-y-2">
+                <Label htmlFor="title">
+                  Request Title <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="title"
+                  placeholder="e.g., Annual Report Cover Design"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className={`h-11 ${glassInputClass}`}
+                />
+              </div>
 
             {/* Description */}
             <div className="space-y-2">
@@ -2103,7 +2322,7 @@ export default function NewRequest() {
                 rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className={`${glassInputClass} min-h-[120px] text-[13px] font-normal leading-7`}
+                className={`${glassInputClass} min-h-[120px] text-[13.5px] font-normal leading-7`}
               />
               <p
                 className={cn(
@@ -2360,10 +2579,10 @@ export default function NewRequest() {
           <div className={`${glassPanelClass} p-6 space-y-4 animate-slide-up`}>
             <div>
               <Label>
-                Attachments <span className="text-muted-foreground">(Optional)</span>
+                Attachments <span className="text-destructive">*</span>
               </Label>
               <p className="text-sm text-muted-foreground mt-1">
-                Upload any supporting content, associated files, and data
+                Upload at least one supporting file, screenshot, or reference before submitting
               </p>
             </div>
 
@@ -2645,6 +2864,7 @@ export default function NewRequest() {
             </Button>
           </div>
         </form>
+        ) : null}
       </div>
       <AttachmentPreviewDialog
         file={attachmentPreviewFile}

@@ -41,6 +41,7 @@ import { UserAvatar } from '@/components/common/UserAvatar';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { toast } from '@/components/ui/sonner';
 import { useTheme } from 'next-themes';
+import { DESIGN_GOVERNANCE_EMAIL_LINES } from '@/lib/designGovernance';
 import {
   REQUEST_DRAFT_UPDATED_EVENT,
   getRequestDraftStorageKey,
@@ -63,6 +64,7 @@ const PORTAL_DISPLAY_URL = 'designdesk.vercel.app';
 const PORTAL_SHARE_TEXT = 'Open the DesignDesk portal';
 const PORTAL_QR_LIGHT_IMAGE_SRC = '/portal-qr-light.svg';
 const PORTAL_QR_DARK_IMAGE_SRC = '/portal-qr-dark.svg';
+const APP_VERSION_LABEL = `v${String(__APP_VERSION__ || '0.0.0').replace(/^v/i, '')}`;
 const decodeValue = (value: string) => {
   try {
     return decodeURIComponent(value || '');
@@ -91,8 +93,8 @@ const getFallbackEmailDraft = () => {
     '- Minimum 3 working days for standard requests',
     '- Urgent requests require proper justification',
     '',
-    'Modifications',
-    '- Any changes after design approval require Treasurer approval',
+    'Design Governance',
+    ...DESIGN_GOVERNANCE_EMAIL_LINES.map((line) => `- ${line}`),
     '',
     'Attachments Required',
     '- Screenshot of the requirement screen (MANDATORY)',
@@ -417,7 +419,7 @@ export function AppSidebar() {
     <>
       <aside
         className={cn(
-          'group/sidebar z-[90] flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none transition-[width] duration-200 ease-out h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
+          'group/sidebar z-[90] flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
           collapsed ? 'w-16' : 'w-[14.95rem]'
         )}
       >
@@ -472,7 +474,7 @@ export function AppSidebar() {
         <Button
           variant="ghost"
           size="icon-sm"
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={() => setCollapsed((current) => !current)}
           className={cn(
             'text-[#6B7A99] dark:text-muted-foreground hover:bg-white/70 dark:hover:bg-muted hover:text-[#1E2A5A] dark:hover:text-foreground',
             collapsed
@@ -842,6 +844,21 @@ export function AppSidebar() {
             {!collapsed && <span className="text-[13px] font-medium">Logout</span>}
           </button>
         </div>
+        {!collapsed ? (
+          <div className="mt-2.5 rounded-[1rem] border border-[#D9E6FF] bg-white/72 dark:bg-card/78 dark:border-border px-3 py-2 shadow-none">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8A97B2] dark:text-muted-foreground">
+                Version
+              </p>
+              <span className="inline-flex items-center rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-muted dark:border-border px-2 py-[0.15rem] text-[10px] font-semibold text-[#23396F] dark:text-foreground">
+                {APP_VERSION_LABEL}
+              </span>
+            </div>
+            <p className="mt-0.5 text-[11px] leading-[1.15rem] text-[#6B7A99] dark:text-muted-foreground">
+              DesignDesk client release
+            </p>
+          </div>
+        ) : null}
       </div>
       </aside>
 

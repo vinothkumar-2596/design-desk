@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DESIGN_GOVERNANCE_NOTICE_POLICY } from '@/lib/designGovernance';
 import { legalPageStyles } from '@/lib/legalPageStyles';
 import {
   ArrowLeft,
@@ -68,6 +69,7 @@ const termsSections: TermsSection[] = [
       'Approval states, comments, and change requests are part of the official task record.',
       'Delivered outputs should be reviewed by the requesting team before publication or distribution.',
       'Deadlines are target dates and may be affected by incomplete inputs, revision cycles, or operational constraints.',
+      DESIGN_GOVERNANCE_NOTICE_POLICY,
       'DesignDesk may reject, pause, or return requests that lack required information or violate workflow standards.',
     ],
   },

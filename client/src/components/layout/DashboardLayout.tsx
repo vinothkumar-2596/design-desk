@@ -18,7 +18,6 @@ import {
   Sparkles,
   Database,
   Clock,
-  PenLine,
 } from 'lucide-react';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { Link, useLocation } from 'react-router-dom';
@@ -36,6 +35,7 @@ import { useTheme } from 'next-themes';
 
 import { API_URL, authFetch, getAuthToken } from '@/lib/api';
 import { isMainDesigner } from '@/lib/designerAccess';
+import { DESIGN_GOVERNANCE_NOTICE_COMPACT } from '@/lib/designGovernance';
 import { createSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
 import { GridSmallBackground } from '@/components/ui/background';
@@ -1313,26 +1313,32 @@ export function DashboardLayout({
               </div>
               <div className="px-8 pb-10">
                 <div className="grid gap-4 md:grid-cols-[1.2fr,0.8fr] items-center">
-                  <div className="rounded-2xl border border-[#D9E6FF] bg-white/70 text-sm text-[#4B5A78] divide-y divide-[#D9E6FF] dark:border-border dark:bg-slate-900/70 dark:text-muted-foreground dark:divide-border">
+                  <div className="rounded-2xl border border-[#D9E6FF] bg-white/70 text-[12.5px] leading-6 text-[#5C6E95] divide-y divide-[#D9E6FF] dark:border-border dark:bg-slate-900/70 dark:text-slate-300 dark:divide-border">
                     <div className="flex items-start gap-3 px-5 py-5">
-                      <Database className="mt-0.5 h-7 w-7 text-primary" />
-                      <span>
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center text-primary">
+                        <Database className="h-[18px] w-[18px]" />
+                      </span>
+                      <span className="leading-6">
                         <span className="font-semibold text-[#2F3A56] dark:text-foreground">Data Requirements:</span>{' '}
                         Include all text content, images, logos, and associated files.
                       </span>
                     </div>
                     <div className="flex items-start gap-3 px-5 py-5">
-                      <Clock className="mt-0.5 h-7 w-7 text-primary" />
-                      <span>
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center text-primary">
+                        <Clock className="h-[18px] w-[18px]" />
+                      </span>
+                      <span className="leading-6">
                         <span className="font-semibold text-[#2F3A56] dark:text-foreground">Timeline:</span>{' '}
                         Minimum 3 working days for standard requests. Urgent requests require justification.
                       </span>
                     </div>
                     <div className="flex items-start gap-3 px-5 py-5">
-                      <PenLine className="mt-0.5 h-7 w-7 text-primary" />
-                      <span>
-                        <span className="font-semibold text-[#2F3A56] dark:text-foreground">Modifications:</span>{' '}
-                        Changes to approved designs require Treasurer approval first.
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center text-primary">
+                        <FileText className="h-[18px] w-[18px]" />
+                      </span>
+                      <span className="leading-6">
+                        <span className="font-semibold text-[#2F3A56] dark:text-foreground">Design Governance:</span>{' '}
+                        {DESIGN_GOVERNANCE_NOTICE_COMPACT}
                       </span>
                     </div>
                   </div>
@@ -1729,7 +1735,7 @@ function DashboardShell({
       <div className="flex min-h-[calc(100vh-2rem)] gap-4 md:gap-6 relative z-10">
         <div
           className="relative flex-shrink-0"
-          style={{ width: 'var(--app-sidebar-width, 18rem)', transition: 'width 200ms ease-out' }}
+          style={{ width: 'var(--app-sidebar-width, 18rem)' }}
         >
           <div
             aria-hidden="true"

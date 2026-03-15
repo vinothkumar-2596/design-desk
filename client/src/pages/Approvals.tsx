@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
+import { DESIGN_GOVERNANCE_NOTICE_POLICY } from '@/lib/designGovernance';
 
 import { API_URL, authFetch } from '@/lib/api';
 
@@ -252,6 +253,9 @@ export default function Approvals() {
               <p className="text-sm text-muted-foreground mt-1">
                 Review incoming requests before approving to ensure the scope,
                 timeline, and assets align with brand and budget expectations.
+              </p>
+              <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">
+                {DESIGN_GOVERNANCE_NOTICE_POLICY}
               </p>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DESIGN_GOVERNANCE_NOTICE_FULL } from '@/lib/designGovernance';
 import {
   BookOpen,
   ClipboardList,
@@ -10,6 +11,7 @@ import {
   Bell,
   Settings,
   Users,
+  Shield,
   LifeBuoy,
   ChevronDown,
   Mail,
@@ -97,6 +99,18 @@ const helpItems: HelpItem[] = [
           <li>Comments thread for collaboration.</li>
           <li>View details link for full information.</li>
         </ul>
+      </>
+    ),
+  },
+  {
+    title: 'Design Governance And Revisions',
+    icon: Shield,
+    body: (
+      <>
+        <p>{DESIGN_GOVERNANCE_NOTICE_FULL}</p>
+        <p className="text-xs text-[#7B8CAD] dark:text-slate-400">
+          This applies when approved designs are reviewed for additional revision requests.
+        </p>
       </>
     ),
   },

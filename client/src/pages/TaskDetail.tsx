@@ -97,6 +97,7 @@ import {
 } from '@/components/tasks/AttachmentPreviewDialog';
 import { ImageAnnotationDialog } from '@/components/tasks/ImageAnnotationDialog';
 import { isMainDesigner } from '@/lib/designerAccess';
+import { DESIGN_GOVERNANCE_NOTICE_COMPACT } from '@/lib/designGovernance';
 import { UserAvatar } from '@/components/common/UserAvatar';
 
 type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
@@ -6285,6 +6286,14 @@ export default function TaskDetail() {
                       {editTaskActionTooltip}
                     </TooltipContent>
                   </Tooltip>
+                </div>
+                <div className="mb-4 rounded-xl border border-[#D8E4FF] bg-[#F6FAFF]/85 px-4 py-3 dark:border-slate-700/70 dark:bg-slate-900/55">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6D7FA8] dark:text-slate-400">
+                    Design Governance
+                  </p>
+                  <p className="mt-1 text-[12.5px] leading-6 text-muted-foreground">
+                    {DESIGN_GOVERNANCE_NOTICE_COMPACT}
+                  </p>
                 </div>
                 {isEditingTask ? (
                   <div className="space-y-4">
