@@ -535,6 +535,8 @@ export default function TaskDetail() {
   const [showFinalDeliverableList, setShowFinalDeliverableList] = useState(true);
   const [isEditAttachmentDragging, setIsEditAttachmentDragging] = useState(false);
   const [isWorkingUploadDragging, setIsWorkingUploadDragging] = useState(false);
+  const [isCommentComposerDragging, setIsCommentComposerDragging] = useState(false);
+  const [isReplyComposerDragging, setIsReplyComposerDragging] = useState(false);
   const [copiedFileKey, setCopiedFileKey] = useState('');
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
   const [approvalDecisionInFlight, setApprovalDecisionInFlight] = useState<ApprovalDecision | null>(null);
@@ -3892,6 +3894,48 @@ export default function TaskDetail() {
     await uploadCommentFiles(files, target);
   };
 
+  const setChatComposerDragging = (target: ComposerTarget, isDragging: boolean) => {
+    if (target === 'reply') {
+      setIsReplyComposerDragging(isDragging);
+      return;
+    }
+    setIsCommentComposerDragging(isDragging);
+  };
+
+  const handleChatComposerDragOver = (
+    event: React.DragEvent<HTMLDivElement>,
+    target: ComposerTarget
+  ) => {
+    event.preventDefault();
+    if (isUploadingCommentAttachments) return;
+    event.dataTransfer.dropEffect = 'copy';
+    setChatComposerDragging(target, true);
+  };
+
+  const handleChatComposerDragLeave = (
+    event: React.DragEvent<HTMLDivElement>,
+    target: ComposerTarget
+  ) => {
+    event.preventDefault();
+    const nextTarget = event.relatedTarget;
+    if (nextTarget && event.currentTarget.contains(nextTarget as Node)) {
+      return;
+    }
+    setChatComposerDragging(target, false);
+  };
+
+  const handleChatComposerDrop = async (
+    event: React.DragEvent<HTMLDivElement>,
+    target: ComposerTarget
+  ) => {
+    event.preventDefault();
+    setChatComposerDragging(target, false);
+    if (isUploadingCommentAttachments) return;
+    const files = Array.from(event.dataTransfer.files || []);
+    if (files.length === 0) return;
+    await uploadCommentFiles(files, target);
+  };
+
   const handleStatusChange = (status: TaskStatus) => {
     if (status === getStatusSelectValue(taskState?.status)) return;
     const isCompletion = status === 'completed';
@@ -6090,7 +6134,17 @@ export default function TaskDetail() {
           {canComment && replyToId === comment.id && !isDeleted && (
             <div className="mt-2.5 flex gap-2">
               <div className="relative flex-1">
-                <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-2.5 backdrop-blur-md transition-colors focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20 dark:border-border dark:bg-card/85">
+                <div
+                  className={cn(
+                    'rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-2.5 backdrop-blur-md transition-colors focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20 dark:border-border dark:bg-card/85',
+                    isReplyComposerDragging &&
+                      'border-primary/75 bg-[#F4F8FF] ring-1 ring-primary/25 dark:bg-card/95',
+                    isUploadingCommentAttachments && 'opacity-70'
+                  )}
+                  onDragOver={(event) => handleChatComposerDragOver(event, 'reply')}
+                  onDragLeave={(event) => handleChatComposerDragLeave(event, 'reply')}
+                  onDrop={(event) => void handleChatComposerDrop(event, 'reply')}
+                >
                   {replyAttachments.length > 0 && (
                     <div className="mb-2.5">{renderComposerAttachments(replyAttachments, 'reply')}</div>
                   )}
@@ -6129,6 +6183,9 @@ export default function TaskDetail() {
                       Uploading attachment
                       {commentAttachmentUploadProgress ? ` (${commentAttachmentUploadProgress}%)` : ''}...
                     </p>
+                  )}
+                  {isReplyComposerDragging && !isUploadingCommentAttachments && (
+                    <p className="mt-2 text-xs font-medium text-primary/80">Drop files to attach</p>
                   )}
                 </div>
                 {renderMentionSuggestions('reply')}
@@ -7830,7 +7887,17 @@ export default function TaskDetail() {
 
               <div className="flex gap-3">
                 <div className="relative flex-1">
-                  <div className="rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-2.5 backdrop-blur-md transition-colors focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20 dark:border-border dark:bg-card/85">
+                  <div
+                    className={cn(
+                      'rounded-2xl border border-[#D9E6FF] bg-white/85 px-3 py-2.5 backdrop-blur-md transition-colors focus-within:border-primary/45 focus-within:ring-1 focus-within:ring-primary/20 dark:border-border dark:bg-card/85',
+                      isCommentComposerDragging &&
+                        'border-primary/75 bg-[#F4F8FF] ring-1 ring-primary/25 dark:bg-card/95',
+                      isUploadingCommentAttachments && 'opacity-70'
+                    )}
+                    onDragOver={(event) => handleChatComposerDragOver(event, 'comment')}
+                    onDragLeave={(event) => handleChatComposerDragLeave(event, 'comment')}
+                    onDrop={(event) => void handleChatComposerDrop(event, 'comment')}
+                  >
                     {commentAttachments.length > 0 && (
                       <div className="mb-2.5">
                         {renderComposerAttachments(commentAttachments, 'comment')}
@@ -7899,6 +7966,9 @@ export default function TaskDetail() {
                           ? ` (${commentAttachmentUploadProgress}%)`
                           : ''}...
                       </p>
+                    )}
+                    {isCommentComposerDragging && !isUploadingCommentAttachments && (
+                      <p className="mt-2 text-xs font-medium text-primary/80">Drop files to attach</p>
                     )}
                   </div>
                   {renderMentionSuggestions('comment')}
