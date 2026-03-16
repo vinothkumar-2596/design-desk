@@ -538,6 +538,7 @@ export default function TaskDetail() {
   const [copiedFileKey, setCopiedFileKey] = useState('');
   const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
   const [approvalDecisionInFlight, setApprovalDecisionInFlight] = useState<ApprovalDecision | null>(null);
+  const [approvalRequestInFlight, setApprovalRequestInFlight] = useState(false);
   const [finalReviewDecisionInFlight, setFinalReviewDecisionInFlight] =
     useState<ApprovalDecision | null>(null);
   const [finalReviewNote, setFinalReviewNote] = useState('');
@@ -616,12 +617,18 @@ export default function TaskDetail() {
     };
   }, []);
   const displayedChangeCount = user?.role === 'staff' ? staffChangeCount : changeCount;
-  const approvalLockedForStaff = false;
+  const approvalLockedForStaff =
+    user?.role === 'staff' &&
+    (approvalStatus === 'pending' || approvalStatus === 'rejected');
   const staffChangeLabel = staffChangeCount === 1 ? '1 change updated' : `${staffChangeCount} changes updated`;
   const canSendForApproval =
     user?.role === 'staff' && staffChangeCount >= 3;
   const staffChangeLimitReached = user?.role === 'staff' && staffChangeCount >= 3;
   const editsRemainingBeforeTreasurerApproval = Math.max(0, 3 - staffChangeCount);
+  useEffect(() => {
+    if (!approvalLockedForStaff) return;
+    setIsEditingTask(false);
+  }, [approvalLockedForStaff]);
   const chronologicalChangeHistory = useMemo(
     () =>
       [...changeHistory].sort(
@@ -2166,7 +2173,9 @@ export default function TaskDetail() {
   const isStaffRole = user?.role === 'staff';
   const canEditTask = user?.role === 'staff' && !isViewOnlyTask;
   const editTaskActionTooltip = approvalLockedForStaff
-    ? 'Editing is temporarily locked while this request is under approval.'
+    ? approvalStatus === 'rejected'
+      ? 'Editing is locked. Treasurer approval is required to re-open this request.'
+      : 'Editing is temporarily locked while this request is under approval.'
     : staffChangeLimitReached
       ? 'You have reached 3 edits. Treasurer approval is required before further updates.'
     : isEditingTask
@@ -4181,24 +4190,33 @@ export default function TaskDetail() {
     }
   };
 
-  const handleRequestApproval = () => {
+  const handleRequestApproval = async () => {
+    if (approvalRequestInFlight) return;
     if (user?.role !== 'staff' || staffChangeCount < 3) {
       toast.message('Send for approval after 3 staff changes.');
       return;
     }
-    recordChanges(
-      [
-        {
-          type: 'status',
-          field: 'approval_status',
-          oldValue: approvalStatus ?? 'pending',
-          newValue: 'Pending',
-          note: `Approval requested - ${user?.name || 'Staff'}`,
-        },
-      ],
-      { approvalStatus: 'pending' }
-    );
-    toast.message('Approval request sent to treasurer.');
+    setApprovalRequestInFlight(true);
+    try {
+      const applied = await recordChanges(
+        [
+          {
+            type: 'status',
+            field: 'approval_status',
+            oldValue: approvalStatus ?? 'pending',
+            newValue: 'Pending',
+            note: `Approval requested - ${user?.name || 'Staff'}`,
+          },
+        ],
+        { approvalStatus: 'pending' },
+        { skipSuccessToast: true }
+      );
+      if (!applied) return;
+      setIsEditingTask(false);
+      toast.message('Approval request sent to treasurer.');
+    } finally {
+      setApprovalRequestInFlight(false);
+    }
   };
 
   const handleApprovalDecision = async (decision: ApprovalDecision) => {
@@ -4357,7 +4375,7 @@ export default function TaskDetail() {
 
   const handleSaveUpdates = () => {
     if (approvalLockedForStaff) {
-      toast.message('Approval pending. Changes are locked.');
+      toast.message('Changes are locked until Treasurer approval.');
       return;
     }
     if (staffChangeLimitReached) {
@@ -4423,7 +4441,7 @@ export default function TaskDetail() {
       return;
     }
     if (approvalLockedForStaff) {
-      toast.message('Approval pending. Changes are locked.');
+      toast.message('Changes are locked until Treasurer approval.');
       return;
     }
     if (staffChangeLimitReached) {
@@ -5725,7 +5743,7 @@ export default function TaskDetail() {
 
   const handleRequestDeadline = () => {
     if (approvalLockedForStaff) {
-      toast.message('Approval pending. Changes are locked.');
+      toast.message('Changes are locked until Treasurer approval.');
       return;
     }
     if (staffChangeLimitReached) {
@@ -6412,7 +6430,7 @@ export default function TaskDetail() {
             {/* Description */}
             <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-3">Description</h2>
-              <p className="whitespace-pre-wrap text-[14px] leading-7 text-muted-foreground">
+              <p className="max-h-[600px] overflow-y-auto whitespace-pre-wrap text-[14px] leading-7 text-muted-foreground">
                 {taskState.description}
               </p>
             </div>
@@ -6537,30 +6555,41 @@ export default function TaskDetail() {
                       {user?.role === 'staff' && (
                         <span className="text-sm font-semibold text-primary/80">{staffChangeLabel}</span>
                       )}
-                      <Button
-                        onClick={handleSaveUpdates}
-                        disabled={
-                          approvalLockedForStaff ||
-                          (user?.role === 'staff' && staffChangeLimitReached) ||
-                          isUploadingAttachment
-                        }
-                      >
-                        {isUploadingAttachment && staffChangeCount < 3 ? (
-                          <span className="inline-flex items-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            {`Saving... ${attachmentUploadProgress ?? 0}%`}
-                          </span>
-                        ) : (
-                          'Save Updates'
-                        )}
-                      </Button>
+                      {!canSendForApproval && (
+                        <Button
+                          onClick={handleSaveUpdates}
+                          disabled={
+                            approvalLockedForStaff ||
+                            (user?.role === 'staff' && staffChangeLimitReached) ||
+                            isUploadingAttachment
+                          }
+                        >
+                          {isUploadingAttachment && staffChangeCount < 3 ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              {`Saving... ${attachmentUploadProgress ?? 0}%`}
+                            </span>
+                          ) : (
+                           `${staffChangeCount < 2 ? 'save updates':'send to treasurer'}`
+                          )}
+                        </Button>
+                      )}
                       {canSendForApproval && (
                         <Button
                           variant="outline"
                           onClick={handleRequestApproval}
-                          disabled={isUploadingAttachment}
+                          disabled={
+                            isUploadingAttachment ||
+                            approvalLockedForStaff ||
+                            approvalRequestInFlight
+                          }
                         >
-                          {isUploadingAttachment ? (
+                          {approvalRequestInFlight ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Sending...
+                            </span>
+                          ) : isUploadingAttachment ? (
                             <span className="inline-flex items-center gap-2">
                               <Loader2 className="h-4 w-4 animate-spin" />
                               {`Sending... ${attachmentUploadProgress ?? 0}%`}
