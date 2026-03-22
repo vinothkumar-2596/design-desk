@@ -285,6 +285,300 @@ const normalizeTaskFileLinks = (file) => {
 const normalizeTaskFileCollection = (files) =>
   Array.isArray(files) ? files.map((file) => normalizeTaskFileLinks(file)) : [];
 
+const COLLATERAL_STATUS_ORDER = {
+  pending: "pending",
+  in_progress: "in_progress",
+  submitted_for_review: "submitted_for_review",
+  approved: "approved",
+  rework: "rework",
+  completed: "completed",
+};
+const COLLATERAL_PRIORITY_ORDER = {
+  low: "low",
+  normal: "normal",
+  high: "high",
+  critical: "critical",
+};
+const COLLATERAL_ORIENTATION_ORDER = {
+  portrait: "portrait",
+  landscape: "landscape",
+  square: "square",
+  custom: "custom",
+};
+const COLLATERAL_UNIT_ORDER = {
+  px: "px",
+  mm: "mm",
+  cm: "cm",
+  in: "in",
+  ft: "ft",
+};
+const COLLATERAL_SIZE_MODE_ORDER = {
+  preset: "preset",
+  custom: "custom",
+};
+const COLLATERAL_PRIORITY_WEIGHT = {
+  low: 0,
+  normal: 1,
+  high: 2,
+  critical: 3,
+};
+
+const normalizeCollateralStatus = (value) => {
+  const normalized = normalizeValue(value).replace(/[\s-]+/g, "_");
+  return COLLATERAL_STATUS_ORDER[normalized] || "pending";
+};
+
+const normalizeCollateralPriority = (value) => {
+  const normalized = normalizeValue(value).replace(/[\s-]+/g, "_");
+  return COLLATERAL_PRIORITY_ORDER[normalized] || "normal";
+};
+
+const normalizeCollateralOrientation = (value, width, height) => {
+  const normalized = normalizeValue(value).replace(/[\s-]+/g, "_");
+  if (COLLATERAL_ORIENTATION_ORDER[normalized]) {
+    return COLLATERAL_ORIENTATION_ORDER[normalized];
+  }
+  if (width && height) {
+    if (width === height) return "square";
+    return width > height ? "landscape" : "portrait";
+  }
+  return "custom";
+};
+
+const normalizeCollateralUnit = (value) => {
+  const normalized = normalizeValue(value);
+  return COLLATERAL_UNIT_ORDER[normalized] || "px";
+};
+
+const normalizeCollateralSizeMode = (value) => {
+  const normalized = normalizeValue(value);
+  return COLLATERAL_SIZE_MODE_ORDER[normalized] || "preset";
+};
+
+const normalizeCampaignDeadlineMode = (value) => {
+  const normalized = normalizeValue(value);
+  return normalized === "itemized" ? "itemized" : "common";
+};
+
+const parseOptionalDate = (value) => {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+};
+
+const deriveTaskUrgencyFromCollaterals = (collaterals = []) => {
+  const highest = collaterals.reduce((current, collateral) => {
+    const priority = normalizeCollateralPriority(collateral?.priority);
+    return COLLATERAL_PRIORITY_WEIGHT[priority] > COLLATERAL_PRIORITY_WEIGHT[current]
+      ? priority
+      : current;
+  }, "low");
+
+  if (highest === "critical") return "urgent";
+  if (highest === "high") return "intermediate";
+  if (highest === "normal") return "normal";
+  return "low";
+};
+
+const inferTaskCategoryFromCollateralType = (value) => {
+  const normalized = normalizeValue(value);
+  if (!normalized) return "campaign_or_others";
+  if (["standee", "banner", "arch", "backdrop"].some((keyword) => normalized.includes(keyword))) {
+    return normalized.includes("led") ? "led_backdrop" : "banner";
+  }
+  if (
+    ["instagram", "facebook", "youtube", "whatsapp", "social", "story", "poster"].some((keyword) =>
+      normalized.includes(keyword)
+    )
+  ) {
+    return "social_media_creative";
+  }
+  if (normalized.includes("brochure")) return "brochure";
+  if (normalized.includes("flyer")) return "flyer";
+  return "campaign_or_others";
+};
+
+const deriveTaskCategoryFromCollaterals = (collaterals = []) => {
+  if (!Array.isArray(collaterals) || collaterals.length === 0) {
+    return "campaign_or_others";
+  }
+
+  const counts = new Map();
+  collaterals.forEach((collateral) => {
+    const category = inferTaskCategoryFromCollateralType(
+      collateral?.collateralType || collateral?.platform || collateral?.usageType
+    );
+    counts.set(category, (counts.get(category) || 0) + 1);
+  });
+
+  let winner = "campaign_or_others";
+  let highest = -1;
+  counts.forEach((count, category) => {
+    if (count > highest) {
+      highest = count;
+      winner = category;
+    }
+  });
+
+  return winner;
+};
+
+const deriveTaskStatusFromCollaterals = (collaterals = [], fallback = "pending") => {
+  if (!Array.isArray(collaterals) || collaterals.length === 0) return fallback;
+  const statuses = collaterals.map((collateral) => normalizeCollateralStatus(collateral?.status));
+
+  if (statuses.every((status) => status === "completed")) return "completed";
+  if (statuses.some((status) => status === "rework")) return "clarification_required";
+  if (statuses.some((status) => status === "in_progress" || status === "approved")) {
+    return "in_progress";
+  }
+  if (statuses.some((status) => status === "submitted_for_review")) return "under_review";
+  if (statuses.every((status) => status === "pending")) return "pending";
+  return fallback;
+};
+
+const deriveTaskDeadlineFromCollaterals = (collaterals = [], campaign = {}) => {
+  if (normalizeCampaignDeadlineMode(campaign?.deadlineMode) === "common" && campaign?.commonDeadline) {
+    return parseOptionalDate(campaign.commonDeadline);
+  }
+
+  const deadlines = collaterals
+    .map((collateral) => parseOptionalDate(collateral?.deadline))
+    .filter(Boolean)
+    .sort((left, right) => left.getTime() - right.getTime());
+
+  return deadlines[0];
+};
+
+const buildCampaignDescription = (brief = "", collaterals = []) => {
+  const normalizedBrief = String(brief || "").trim();
+  const collateralLines = collaterals.map((collateral, index) => {
+    const parts = [
+      collateral?.title || collateral?.presetLabel || collateral?.collateralType || `Collateral ${index + 1}`,
+      collateral?.platform || collateral?.usageType,
+      collateral?.customSizeLabel || collateral?.sizeLabel,
+      collateral?.brief,
+    ]
+      .map((part) => String(part || "").trim())
+      .filter(Boolean);
+    return `${index + 1}. ${parts.join(" | ")}`;
+  });
+
+  const lines = [];
+  if (normalizedBrief) {
+    lines.push(normalizedBrief, "");
+  }
+  lines.push("Collateral Scope", ...collateralLines);
+  return lines.join("\n");
+};
+
+const normalizeCampaignPayload = (campaign = {}, fallbacks = {}) => {
+  const requestName = String(
+    campaign?.requestName || fallbacks?.requestName || fallbacks?.title || ""
+  ).trim();
+  const brief = String(campaign?.brief || fallbacks?.brief || fallbacks?.description || "").trim();
+  const deadlineMode = normalizeCampaignDeadlineMode(campaign?.deadlineMode);
+  const commonDeadline = parseOptionalDate(campaign?.commonDeadline || fallbacks?.commonDeadline);
+
+  return {
+    requestName,
+    brief,
+    deadlineMode,
+    commonDeadline,
+  };
+};
+
+const normalizeCollateralInput = (input, options = {}) => {
+  const now = options?.now || new Date();
+  const defaultDeadline = parseOptionalDate(options?.defaultDeadline);
+  const source = input || {};
+  const width = toFiniteNumber(source?.width);
+  const height = toFiniteNumber(source?.height);
+  const referenceFiles = normalizeTaskFileCollection(
+    source?.referenceFiles || source?.references || source?.files
+  );
+
+  const deadline = parseOptionalDate(source?.deadline) || defaultDeadline;
+  const sizeMode = normalizeCollateralSizeMode(source?.sizeMode);
+  const normalized = {
+    id: String(source?.id || new mongoose.Types.ObjectId().toString()).trim(),
+    title: String(source?.title || "").trim(),
+    collateralType: String(source?.collateralType || source?.type || "").trim(),
+    presetCategory: String(source?.presetCategory || "").trim(),
+    presetKey: String(source?.presetKey || "").trim(),
+    presetLabel: String(source?.presetLabel || "").trim(),
+    sizeMode,
+    width,
+    height,
+    unit: normalizeCollateralUnit(source?.unit),
+    sizeLabel: String(source?.sizeLabel || "").trim(),
+    ratioLabel: String(source?.ratioLabel || "").trim(),
+    customSizeLabel: String(source?.customSizeLabel || "").trim(),
+    orientation: normalizeCollateralOrientation(source?.orientation, width, height),
+    platform: String(source?.platform || "").trim(),
+    usageType: String(source?.usageType || "").trim(),
+    brief: String(source?.brief || source?.contentBrief || "").trim(),
+    deadline,
+    priority: normalizeCollateralPriority(source?.priority),
+    status: normalizeCollateralStatus(source?.status),
+    referenceFiles,
+    assignedToId: normalizeId(source?.assignedToId),
+    assignedToName: String(source?.assignedToName || "").trim(),
+    createdAt: parseOptionalDate(source?.createdAt) || now,
+    updatedAt: now,
+  };
+
+  if (!normalized.collateralType) {
+    throw new Error("Collateral type is required.");
+  }
+  if (!normalized.brief) {
+    throw new Error(`Brief is required for ${normalized.collateralType}.`);
+  }
+  if (!normalized.deadline) {
+    throw new Error(`Deadline is required for ${normalized.collateralType}.`);
+  }
+  if (sizeMode === "custom" && !normalized.customSizeLabel && !(width && height)) {
+    throw new Error(`Custom size is required for ${normalized.collateralType}.`);
+  }
+
+  return normalized;
+};
+
+const normalizeCollateralCollection = (collaterals, options = {}) => {
+  if (!Array.isArray(collaterals)) return [];
+  return collaterals.map((collateral) => normalizeCollateralInput(collateral, options));
+};
+
+const syncTaskFromCampaignData = (task) => {
+  const collaterals = Array.isArray(task?.collaterals) ? task.collaterals : [];
+  if (collaterals.length === 0) {
+    task.requestType = task.requestType || "single_task";
+    return task;
+  }
+
+  const normalizedCampaign = normalizeCampaignPayload(task?.campaign, {
+    title: task?.title,
+    description: task?.campaign?.brief || task?.description,
+    commonDeadline: task?.campaign?.commonDeadline || task?.deadline,
+  });
+  const effectiveDeadline = deriveTaskDeadlineFromCollaterals(collaterals, normalizedCampaign);
+
+  task.requestType = "campaign_request";
+  task.campaign = {
+    ...normalizedCampaign,
+    requestName: normalizedCampaign.requestName || String(task?.title || "").trim(),
+    brief: normalizedCampaign.brief || String(task?.description || "").trim(),
+  };
+  task.description = buildCampaignDescription(task.campaign.brief, collaterals);
+  task.category = deriveTaskCategoryFromCollaterals(collaterals);
+  task.urgency = deriveTaskUrgencyFromCollaterals(collaterals);
+  task.status = deriveTaskStatusFromCollaterals(collaterals, task?.status || "pending");
+  if (effectiveDeadline) {
+    task.deadline = effectiveDeadline;
+  }
+  return task;
+};
+
 const normalizeFileNameKey = (value) =>
   String(value || "")
     .trim()
@@ -939,6 +1233,20 @@ const buildTaskPayloadForViewer = (task, viewer) => {
   const payload = typeof task?.toJSON === "function" ? task.toJSON() : { ...(task || {}) };
   payload.files = Array.isArray(payload.files)
     ? payload.files.map((file) => normalizeTaskFileLinks(file))
+    : [];
+  payload.campaign = payload.campaign
+    ? {
+        ...payload.campaign,
+        commonDeadline: payload.campaign.commonDeadline || undefined,
+      }
+    : undefined;
+  payload.collaterals = Array.isArray(payload.collaterals)
+    ? payload.collaterals.map((collateral) => ({
+        ...(typeof collateral?.toObject === "function" ? collateral.toObject() : { ...(collateral || {}) }),
+        referenceFiles: Array.isArray(collateral?.referenceFiles)
+          ? collateral.referenceFiles.map((file) => normalizeTaskFileLinks(file))
+          : [],
+      }))
     : [];
   const normalizedOutputFiles = payload.files.filter(
     (file) => normalizeValue(file?.type) === "output"
@@ -1954,6 +2262,44 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
       files: normalizeTaskFileCollection(req.body?.files),
       changeHistory: [createdEntry, ...(Array.isArray(req.body.changeHistory) ? req.body.changeHistory : [])]
     };
+    const normalizedCampaign = normalizeCampaignPayload(req.body?.campaign, {
+      title: req.body?.title,
+      description: req.body?.description,
+      commonDeadline: req.body?.deadline,
+    });
+    const incomingCollaterals = normalizeCollateralCollection(req.body?.collaterals, {
+      defaultDeadline: normalizedCampaign.commonDeadline || req.body?.deadline,
+      now,
+    });
+    const isCampaignRequest =
+      normalizeValue(req.body?.requestType) === "campaign_request" || incomingCollaterals.length > 0;
+
+    if (isCampaignRequest && incomingCollaterals.length === 0) {
+      return res.status(400).json({ error: "At least one collateral is required." });
+    }
+
+    payload.requestType = isCampaignRequest ? "campaign_request" : "single_task";
+    if (isCampaignRequest) {
+      payload.collaterals = incomingCollaterals;
+      payload.campaign = {
+        ...normalizedCampaign,
+        requestName: normalizedCampaign.requestName || String(req.body?.title || "").trim(),
+        brief: normalizedCampaign.brief || String(req.body?.description || "").trim(),
+      };
+      payload.title = payload.campaign.requestName || String(req.body?.title || "").trim();
+      payload.description = buildCampaignDescription(payload.campaign.brief, incomingCollaterals);
+      payload.category = deriveTaskCategoryFromCollaterals(incomingCollaterals);
+      payload.urgency = deriveTaskUrgencyFromCollaterals(incomingCollaterals);
+      payload.status = deriveTaskStatusFromCollaterals(incomingCollaterals, payload.status || "pending");
+      payload.deadline = deriveTaskDeadlineFromCollaterals(incomingCollaterals, payload.campaign);
+    }
+
+    if (!payload.title) {
+      return res.status(400).json({ error: "Request title is required." });
+    }
+    if (!payload.category) {
+      return res.status(400).json({ error: "Category is required." });
+    }
     if (!payload.deadline) {
       return res.status(400).json({ error: "Deadline is required." });
     }
@@ -2235,6 +2581,238 @@ const hydrateMissingFileMeta = async (task) => {
   }
   return task;
 };
+
+router.post("/:id/collaterals", ensureTaskAccess, async (req, res) => {
+  try {
+    const viewerRole = normalizeTaskRole(req.user?.role);
+    if (req.taskAccessMode === "view_only") {
+      return res.status(403).json({ error: "View-only users cannot modify collaterals." });
+    }
+    if (!["staff", "designer", "treasurer", "admin"].includes(viewerRole)) {
+      return res.status(403).json({ error: "You do not have permission to add collaterals." });
+    }
+
+    const task = req.task;
+    const nextCampaign = normalizeCampaignPayload(
+      { ...(task?.campaign || {}), ...(req.body?.campaign || {}) },
+      {
+        title: task?.title,
+        description: task?.campaign?.brief || task?.description,
+        commonDeadline: task?.campaign?.commonDeadline || task?.deadline,
+      }
+    );
+    const additions = normalizeCollateralCollection(
+      Array.isArray(req.body?.collaterals) ? req.body.collaterals : [req.body],
+      {
+        defaultDeadline: nextCampaign.commonDeadline || task?.deadline,
+        now: new Date(),
+      }
+    );
+
+    if (additions.length === 0) {
+      return res.status(400).json({ error: "At least one collateral is required." });
+    }
+
+    task.requestType = "campaign_request";
+    task.campaign = {
+      ...nextCampaign,
+      requestName: nextCampaign.requestName || String(task?.title || "").trim(),
+      brief: nextCampaign.brief || String(task?.campaign?.brief || task?.description || "").trim(),
+    };
+    task.collaterals = [...(Array.isArray(task.collaterals) ? task.collaterals : []), ...additions];
+    syncTaskFromCampaignData(task);
+
+    const actorId = getUserId(req);
+    const actorName = req.user?.name || "";
+    task.changeHistory.push({
+      type: "update",
+      field: "collateral_added",
+      oldValue: "",
+      newValue: additions.map((item) => item.title || item.presetLabel || item.collateralType).join(", "),
+      note: `${additions.length} collateral item${additions.length === 1 ? "" : "s"} added.`,
+      userId: actorId,
+      userName: actorName,
+      userRole: viewerRole,
+      createdAt: new Date(),
+    });
+
+    task.markModified("campaign");
+    task.markModified("collaterals");
+    await task.save();
+
+    const payload = buildTaskPayloadForViewer(task, req.user);
+    const taskId = task.id || task._id?.toString?.();
+    const io = getSocket();
+    if (io && taskId) {
+      io.to(String(taskId)).emit("task:updated", { taskId, task: payload });
+    }
+
+    res.json(payload);
+  } catch (error) {
+    console.error("Add collateral error:", error?.message || error);
+    res.status(400).json({ error: error?.message || "Failed to add collateral." });
+  }
+});
+
+router.patch("/:id/collaterals/:collateralId", ensureTaskAccess, async (req, res) => {
+  try {
+    const viewerRole = normalizeTaskRole(req.user?.role);
+    if (req.taskAccessMode === "view_only") {
+      return res.status(403).json({ error: "View-only users cannot modify collaterals." });
+    }
+    if (!["staff", "designer", "treasurer", "admin"].includes(viewerRole)) {
+      return res.status(403).json({ error: "You do not have permission to update collaterals." });
+    }
+
+    const task = req.task;
+    const collateralId = String(req.params.collateralId || "").trim();
+    const collaterals = Array.isArray(task.collaterals) ? task.collaterals : [];
+    const currentIndex = collaterals.findIndex((item) => String(item?.id || "") === collateralId);
+    if (currentIndex === -1) {
+      return res.status(404).json({ error: "Collateral not found." });
+    }
+
+    if (viewerRole === "staff" && req.body?.status) {
+      return res.status(403).json({ error: "Staff cannot change collateral status directly." });
+    }
+
+    const nextCampaign = normalizeCampaignPayload(
+      { ...(task?.campaign || {}), ...(req.body?.campaign || {}) },
+      {
+        title: task?.title,
+        description: task?.campaign?.brief || task?.description,
+        commonDeadline: task?.campaign?.commonDeadline || task?.deadline,
+      }
+    );
+    const currentCollateral = collaterals[currentIndex];
+    const nextCollateral = normalizeCollateralInput(
+      {
+        ...(typeof currentCollateral?.toObject === "function"
+          ? currentCollateral.toObject()
+          : { ...(currentCollateral || {}) }),
+        ...(req.body?.collateral || req.body || {}),
+        id: currentCollateral?.id,
+        createdAt: currentCollateral?.createdAt,
+      },
+      {
+        defaultDeadline: nextCampaign.commonDeadline || task?.deadline,
+        now: new Date(),
+      }
+    );
+
+    collaterals[currentIndex] = nextCollateral;
+    task.campaign = {
+      ...nextCampaign,
+      requestName: nextCampaign.requestName || String(task?.title || "").trim(),
+      brief: nextCampaign.brief || String(task?.campaign?.brief || task?.description || "").trim(),
+    };
+    task.collaterals = collaterals;
+    syncTaskFromCampaignData(task);
+
+    const actorId = getUserId(req);
+    const actorName = req.user?.name || "";
+    task.changeHistory.push({
+      type: "update",
+      field: "collateral_updated",
+      oldValue: currentCollateral?.title || currentCollateral?.presetLabel || currentCollateral?.collateralType || "",
+      newValue: nextCollateral?.title || nextCollateral?.presetLabel || nextCollateral?.collateralType || "",
+      note: `Updated collateral ${nextCollateral?.title || nextCollateral?.collateralType || collateralId}.`,
+      userId: actorId,
+      userName: actorName,
+      userRole: viewerRole,
+      createdAt: new Date(),
+    });
+
+    task.markModified("campaign");
+    task.markModified("collaterals");
+    await task.save();
+
+    const payload = buildTaskPayloadForViewer(task, req.user);
+    const taskId = task.id || task._id?.toString?.();
+    const io = getSocket();
+    if (io && taskId) {
+      io.to(String(taskId)).emit("task:updated", { taskId, task: payload });
+    }
+
+    res.json(payload);
+  } catch (error) {
+    console.error("Update collateral error:", error?.message || error);
+    res.status(400).json({ error: error?.message || "Failed to update collateral." });
+  }
+});
+
+router.patch("/:id/collaterals/:collateralId/status", ensureTaskAccess, async (req, res) => {
+  try {
+    const viewerRole = normalizeTaskRole(req.user?.role);
+    if (req.taskAccessMode === "view_only") {
+      return res.status(403).json({ error: "View-only users cannot modify collaterals." });
+    }
+    if (!["designer", "treasurer", "admin"].includes(viewerRole)) {
+      return res.status(403).json({ error: "Only designers or approvers can update collateral status." });
+    }
+
+    const task = req.task;
+    const collateralId = String(req.params.collateralId || "").trim();
+    const nextStatus = normalizeCollateralStatus(req.body?.status);
+    const note = String(req.body?.note || "").trim();
+    const collaterals = Array.isArray(task.collaterals) ? task.collaterals : [];
+    const currentIndex = collaterals.findIndex((item) => String(item?.id || "") === collateralId);
+    if (currentIndex === -1) {
+      return res.status(404).json({ error: "Collateral not found." });
+    }
+
+    const currentCollateral = collaterals[currentIndex];
+    const updatedCollateral = normalizeCollateralInput(
+      {
+        ...(typeof currentCollateral?.toObject === "function"
+          ? currentCollateral.toObject()
+          : { ...(currentCollateral || {}) }),
+        status: nextStatus,
+        assignedToId: currentCollateral?.assignedToId || getUserId(req) || "",
+        assignedToName: currentCollateral?.assignedToName || req.user?.name || "",
+        id: currentCollateral?.id,
+        createdAt: currentCollateral?.createdAt,
+      },
+      {
+        defaultDeadline: task?.campaign?.commonDeadline || task?.deadline,
+        now: new Date(),
+      }
+    );
+
+    collaterals[currentIndex] = updatedCollateral;
+    task.collaterals = collaterals;
+    syncTaskFromCampaignData(task);
+
+    task.changeHistory.push({
+      type: "status",
+      field: "collateral_status",
+      oldValue: currentCollateral?.status || "pending",
+      newValue: nextStatus,
+      note:
+        note ||
+        `Collateral ${updatedCollateral?.title || updatedCollateral?.collateralType || collateralId} moved to ${nextStatus.replace(/_/g, " ")}.`,
+      userId: getUserId(req),
+      userName: req.user?.name || "",
+      userRole: viewerRole,
+      createdAt: new Date(),
+    });
+
+    task.markModified("collaterals");
+    await task.save();
+
+    const payload = buildTaskPayloadForViewer(task, req.user);
+    const taskId = task.id || task._id?.toString?.();
+    const io = getSocket();
+    if (io && taskId) {
+      io.to(String(taskId)).emit("task:updated", { taskId, task: payload });
+    }
+
+    res.json(payload);
+  } catch (error) {
+    console.error("Update collateral status error:", error?.message || error);
+    res.status(400).json({ error: error?.message || "Failed to update collateral status." });
+  }
+});
 
 router.get("/:id", ensureTaskAccess, async (req, res) => {
   try {

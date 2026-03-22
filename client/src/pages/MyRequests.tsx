@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { mergeLocalTasks } from '@/lib/taskStorage';
+import { hydrateTask } from '@/lib/taskHydration';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 
@@ -69,27 +70,7 @@ export default function MyRequests() {
           throw new Error('Failed to load requests');
         }
         const data = await response.json();
-        const hydrated = data.map((task: any) => ({
-          ...task,
-          id: task.id || task._id,
-          deadline: new Date(task.deadline),
-          createdAt: new Date(task.createdAt),
-          updatedAt: new Date(task.updatedAt),
-          proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
-          deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
-          files: task.files?.map((file) => ({
-            ...file,
-            uploadedAt: new Date(file.uploadedAt),
-          })),
-          comments: task.comments?.map((comment) => ({
-            ...comment,
-            createdAt: new Date(comment.createdAt),
-          })),
-          changeHistory: task.changeHistory?.map((entry) => ({
-            ...entry,
-            createdAt: new Date(entry.createdAt),
-          })),
-        }));
+        const hydrated = data.map((task: any) => hydrateTask({ ...task, id: task.id || task._id }));
         setTasks(hydrated);
         setUseLocalData(false);
       } catch (error) {
@@ -120,27 +101,7 @@ export default function MyRequests() {
       if (!payload) return;
       const id = payload.id || payload._id;
       if (!id) return;
-      const hydrated = {
-        ...payload,
-        id,
-        deadline: new Date(payload.deadline),
-        createdAt: new Date(payload.createdAt),
-        updatedAt: new Date(payload.updatedAt),
-        proposedDeadline: payload.proposedDeadline ? new Date(payload.proposedDeadline) : undefined,
-        deadlineApprovedAt: payload.deadlineApprovedAt ? new Date(payload.deadlineApprovedAt) : undefined,
-        files: payload.files?.map((file: any) => ({
-          ...file,
-          uploadedAt: new Date(file.uploadedAt),
-        })),
-        comments: payload.comments?.map((comment: any) => ({
-          ...comment,
-          createdAt: new Date(comment.createdAt),
-        })),
-        changeHistory: payload.changeHistory?.map((entry: any) => ({
-          ...entry,
-          createdAt: new Date(entry.createdAt),
-        })),
-      };
+      const hydrated = hydrateTask({ ...payload, id });
       setTasks((prev) => {
         const index = prev.findIndex((task) => (task.id || (task as any)._id) === id);
         if (index === -1) return prev;

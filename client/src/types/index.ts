@@ -18,6 +18,18 @@ export type TaskCategory =
   | 'flyer';
 
 export type TaskUrgency = 'low' | 'intermediate' | 'normal' | 'urgent';
+export type RequestType = 'single_task' | 'campaign_request';
+export type CollateralStatus =
+  | 'pending'
+  | 'in_progress'
+  | 'submitted_for_review'
+  | 'approved'
+  | 'rework'
+  | 'completed';
+export type CollateralPriority = 'low' | 'normal' | 'high' | 'critical';
+export type CollateralSizeMode = 'preset' | 'custom';
+export type CollateralOrientation = 'portrait' | 'landscape' | 'square' | 'custom';
+export type CollateralUnit = 'px' | 'mm' | 'cm' | 'in' | 'ft';
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 export type FinalDeliverableReviewStatus =
@@ -199,9 +211,45 @@ export interface FinalDeliverableVersion {
   files: FinalDeliverableFile[];
 }
 
+export interface CampaignRequestDetails {
+  requestName: string;
+  brief: string;
+  deadlineMode: 'common' | 'itemized';
+  commonDeadline?: Date;
+}
+
+export interface CollateralItem {
+  id: string;
+  title?: string;
+  collateralType: string;
+  presetCategory?: string;
+  presetKey?: string;
+  presetLabel?: string;
+  sizeMode: CollateralSizeMode;
+  width?: number;
+  height?: number;
+  unit?: CollateralUnit;
+  sizeLabel?: string;
+  ratioLabel?: string;
+  customSizeLabel?: string;
+  orientation: CollateralOrientation;
+  platform?: string;
+  usageType?: string;
+  brief: string;
+  deadline?: Date;
+  priority: CollateralPriority;
+  status: CollateralStatus;
+  referenceFiles: TaskFile[];
+  assignedToId?: string;
+  assignedToName?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface Task {
   id: string;
   _id?: string;
+  requestType?: RequestType;
   title: string;
   description: string;
   category: TaskCategory;
@@ -245,6 +293,8 @@ export interface Task {
   finalDeliverableReviewedBy?: string;
   finalDeliverableReviewedAt?: Date;
   finalDeliverableReviewNote?: string;
+  campaign?: CampaignRequestDetails;
+  collaterals?: CollateralItem[];
   comments: TaskComment[];
   createdAt: Date;
   updatedAt: Date;

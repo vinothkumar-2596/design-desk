@@ -1,6 +1,6 @@
 import { Task, TaskStatus } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight, CheckCircle2, AlertTriangle, Tag, Share2, MessageCircle, Mail, Copy, Check } from 'lucide-react';
+import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight, CheckCircle2, AlertTriangle, Tag, Share2, MessageCircle, Mail, Copy, Check, Layers3 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
@@ -219,6 +219,8 @@ export function TaskCard({
           className: 'max-w-[calc(50%-0.25rem)]',
           title: categoryLabel,
         })}
+        {(task.collaterals?.length || 0) > 0 &&
+          renderChip(Layers3, 'Collaterals', task.collaterals?.length || 0)}
         {task.urgency === 'urgent' && renderChip(AlertTriangle, 'Urgent')}
         {task.approvalStatus === 'pending' && renderChip(Clock, 'Awaiting Approval')}
         {(task.isEmergency || emergencyStatus) && renderChip(AlertTriangle, emergencyLabel)}

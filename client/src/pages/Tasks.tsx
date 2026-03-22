@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { TaskCategory, TaskStatus, TaskUrgency } from '@/types';
 import { mergeLocalTasks } from '@/lib/taskStorage';
+import { hydrateTask } from '@/lib/taskHydration';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { filterTasksForUser } from '@/lib/taskVisibility';
@@ -101,28 +102,6 @@ export default function Tasks() {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const hydrateTask = (task: any) => ({
-    ...task,
-    id: task.id || task._id,
-    deadline: new Date(task.deadline),
-    createdAt: new Date(task.createdAt),
-    updatedAt: new Date(task.updatedAt),
-    proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
-    deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
-    files: task.files?.map((file: any) => ({
-      ...file,
-      uploadedAt: new Date(file.uploadedAt),
-    })),
-    comments: task.comments?.map((comment: any) => ({
-      ...comment,
-      createdAt: new Date(comment.createdAt),
-    })),
-    changeHistory: task.changeHistory?.map((entry: any) => ({
-      ...entry,
-      createdAt: new Date(entry.createdAt),
-    })),
-  });
-
   const loadTasks = async () => {
     if (!apiUrl) return;
     setIsLoading(true);
@@ -132,7 +111,7 @@ export default function Tasks() {
         throw new Error('Failed to load tasks');
       }
       const data = await response.json();
-      const hydrated = data.map(hydrateTask);
+      const hydrated = data.map((task: any) => hydrateTask({ ...task, id: task.id || task._id }));
       setTasks(hydrated);
       setUseLocalData(false);
     } catch (error) {

@@ -73,6 +73,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from 
 import { toast } from 'sonner';
 import {
   ApprovalStatus,
+  CollateralStatus,
   DesignVersion,
   FinalDeliverableFile,
   FinalDeliverableReviewAnnotation,
@@ -85,7 +86,7 @@ import {
   UserRole,
 } from '@/types';
 import { cn } from '@/lib/utils';
-import { loadLocalTaskById } from '@/lib/taskStorage';
+import { loadLocalTaskById, upsertLocalTask } from '@/lib/taskStorage';
 import { createSocket } from '@/lib/socket';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { pushScheduleNotification } from '@/lib/designerSchedule';
@@ -99,6 +100,11 @@ import { ImageAnnotationDialog } from '@/components/tasks/ImageAnnotationDialog'
 import { isMainDesigner } from '@/lib/designerAccess';
 import { DESIGN_GOVERNANCE_NOTICE_COMPACT } from '@/lib/designGovernance';
 import { UserAvatar } from '@/components/common/UserAvatar';
+import {
+  deriveTaskStatusFromCollaterals,
+  formatCollateralStatusLabel,
+  getCollateralDisplayName,
+} from '@/lib/campaignRequest';
 
 type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
 const statusConfig: Record<DisplayTaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
@@ -119,6 +125,22 @@ const statusDetails: Record<DisplayTaskStatus, string> = {
   clarification_required: 'Waiting on clarifications',
   under_review: 'Review in progress',
   completed: 'Delivery complete',
+};
+
+const getCollateralStatusPillClass = (status?: string) => {
+  switch (String(status || '').trim().toLowerCase()) {
+    case 'completed':
+      return 'border-emerald-200/80 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-950/30 dark:text-emerald-300';
+    case 'rework':
+      return 'border-amber-200/80 bg-amber-50 text-amber-700 dark:border-amber-500/35 dark:bg-amber-950/30 dark:text-amber-300';
+    case 'submitted_for_review':
+    case 'approved':
+      return 'border-[#C9D7FF] bg-[#EEF4FF] text-[#2F4E96] dark:border-[#4D70B4]/70 dark:bg-[#1E3A73]/45 dark:text-[#C7D8FF]';
+    case 'in_progress':
+      return 'border-sky-200/80 bg-sky-50 text-sky-700 dark:border-sky-500/35 dark:bg-sky-950/30 dark:text-sky-300';
+    default:
+      return 'border-slate-200/80 bg-slate-50 text-slate-600 dark:border-slate-600/40 dark:bg-slate-900/40 dark:text-slate-300';
+  }
 };
 const normalizeTaskStatus = (value?: string): DisplayTaskStatus => {
   const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
@@ -1052,6 +1074,32 @@ export default function TaskDetail() {
           }) ?? []
         );
       })(),
+      campaign: raw.campaign
+        ? {
+            ...raw.campaign,
+            commonDeadline: raw.campaign.commonDeadline
+              ? new Date(raw.campaign.commonDeadline)
+              : undefined,
+          }
+        : undefined,
+      collaterals:
+        raw.collaterals?.map((collateral, index) => ({
+          ...collateral,
+          id:
+            collateral.id ||
+            `collateral-${index}-${collateral.collateralType || collateral.presetLabel || 'item'}`,
+          deadline: collateral.deadline ? new Date(collateral.deadline) : undefined,
+          createdAt: collateral.createdAt ? new Date(collateral.createdAt) : undefined,
+          updatedAt: collateral.updatedAt ? new Date(collateral.updatedAt) : undefined,
+          referenceFiles:
+            collateral.referenceFiles?.map((file, fileIndex) => ({
+              ...file,
+              id:
+                file.id ||
+                `collateral-file-${index}-${fileIndex}-${file.name || 'reference'}`,
+              uploadedAt: file.uploadedAt ? new Date(file.uploadedAt) : new Date(),
+            })) ?? [],
+        })) ?? [],
       changeHistory: raw.changeHistory?.map((entry, index) => normalizeTaskChangeEntry(entry, index)),
     };
   };
@@ -2189,6 +2237,12 @@ export default function TaskDetail() {
   const canRemoveFiles = canDesignerActions;
   const canViewWorkingFiles = user?.role === 'designer' || user?.role === 'treasurer';
   const canManageWorkingFiles = canDesignerActions || (isDesignerRole && isMainDesignerUser);
+  const collateralItems = Array.isArray(taskState.collaterals) ? taskState.collaterals : [];
+  const isCampaignRequest =
+    taskState.requestType === 'campaign_request' || collateralItems.length > 0;
+  const campaignDeadlineMode = taskState.campaign?.deadlineMode || 'common';
+  const canUpdateCollateralStatus =
+    (isDesignerRole || user?.role === 'treasurer') && hasFullTaskAccess && !isViewOnlyTask;
   const minDeadlineDate = addWorkingDays(new Date(), 3);
   const emergencyStatus =
     taskState.isEmergency || taskState.emergencyApprovalStatus
@@ -3952,6 +4006,66 @@ export default function TaskDetail() {
       { status }
     );
     setNewStatus(status);
+  };
+
+  const handleCollateralStatusChange = async (
+    collateralId: string,
+    nextStatus: CollateralStatus
+  ) => {
+    if (!taskState) return;
+    if (!ensureWritableTask()) return;
+    const currentCollateral = collateralItems.find((item) => item.id === collateralId);
+    if (!currentCollateral || currentCollateral.status === nextStatus) return;
+
+    const taskId = taskState.id || (taskState as { _id?: string })._id || '';
+    if (!taskId) {
+      toast.error('Task not found.');
+      return;
+    }
+
+    try {
+      if (apiUrl) {
+        const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/collaterals/${collateralId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: nextStatus }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Failed to update collateral status.');
+        }
+        const hydrated = withAccessMetadata(hydrateTask(payload));
+        setTaskState(hydrated);
+        window.dispatchEvent(new CustomEvent('designhub:task:updated', { detail: hydrated }));
+      } else {
+        const updatedCollaterals = collateralItems.map((item) =>
+          item.id === collateralId
+            ? {
+                ...item,
+                status: nextStatus,
+                assignedToId: item.assignedToId || user?.id || '',
+                assignedToName: item.assignedToName || user?.name || '',
+                updatedAt: new Date(),
+              }
+            : item
+        );
+        const nextTask = {
+          ...taskState,
+          collaterals: updatedCollaterals,
+          status: deriveTaskStatusFromCollaterals(updatedCollaterals, taskState.status),
+          updatedAt: new Date(),
+        };
+        setTaskState(nextTask);
+        upsertLocalTask(nextTask);
+        window.dispatchEvent(new CustomEvent('designhub:task:updated', { detail: nextTask }));
+      }
+
+      toast.success(
+        `${getCollateralDisplayName(currentCollateral)} updated to ${formatCollateralStatusLabel(nextStatus)}.`
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update collateral status.');
+    }
   };
 
   const handleAcceptTask = async () => {
@@ -6492,7 +6606,174 @@ export default function TaskDetail() {
               </p>
             </div>
 
-            {canEditTask && (
+            {isCampaignRequest && (
+              <div className={`${glassPanelClass} p-5 animate-slide-up`}>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h2 className="font-semibold text-foreground">Campaign Request Structure</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      This request is split into individual collateral items so the design team can track each deliverable separately.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs">
+                      {collateralItems.length} collateral{collateralItems.length === 1 ? '' : 's'}
+                    </Badge>
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-xs">
+                      {campaignDeadlineMode === 'common' ? 'Common deadline' : 'Item-wise deadlines'}
+                    </Badge>
+                  </div>
+                </div>
+
+                {taskState.campaign?.brief ? (
+                  <div className="mt-4 rounded-2xl border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 px-4 py-4 dark:border-border dark:bg-slate-900/50">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Overall Brief
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                      {taskState.campaign.brief}
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="mt-5 space-y-4">
+                  {collateralItems.map((collateral) => {
+                    const effectiveDeadline =
+                      campaignDeadlineMode === 'common'
+                        ? taskState.campaign?.commonDeadline
+                        : collateral.deadline;
+
+                    return (
+                      <div
+                        key={collateral.id}
+                        className="rounded-[24px] border border-[#D7E4FF] bg-white/95 px-4 py-4 dark:border-border dark:bg-card/90"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-sm font-semibold text-foreground">
+                                {getCollateralDisplayName(collateral)}
+                              </h3>
+                              <span
+                                className={cn(
+                                  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
+                                  getCollateralStatusPillClass(collateral.status)
+                                )}
+                              >
+                                {formatCollateralStatusLabel(collateral.status)}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {[collateral.collateralType, collateral.platform, collateral.usageType]
+                                .filter(Boolean)
+                                .join(' • ')}
+                            </p>
+                          </div>
+
+                          <div className="grid gap-2 sm:min-w-[210px]">
+                            <div className="text-right text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                              Designer Status
+                            </div>
+                            <Select
+                              value={collateral.status}
+                              onValueChange={(value) =>
+                                handleCollateralStatusChange(collateral.id, value as CollateralStatus)
+                              }
+                              disabled={!canUpdateCollateralStatus}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Update status" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="in_progress">In Progress</SelectItem>
+                                <SelectItem value="submitted_for_review">Submitted for Review</SelectItem>
+                                <SelectItem value="approved">Approved</SelectItem>
+                                <SelectItem value="rework">Rework</SelectItem>
+                                <SelectItem value="completed">Completed</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+                          <div className="rounded-2xl border border-[#E1E9FF] bg-[#F9FBFF] px-3.5 py-3 dark:border-border dark:bg-slate-900/50">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              Content Brief
+                            </p>
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                              {collateral.brief || 'No collateral brief added.'}
+                            </p>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="rounded-2xl border border-[#E1E9FF] bg-[#F9FBFF] px-3.5 py-3 dark:border-border dark:bg-slate-900/50">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                Specifications
+                              </p>
+                              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                                <p>
+                                  Size:{' '}
+                                  <span className="font-medium text-foreground/90">
+                                    {collateral.customSizeLabel ||
+                                      collateral.sizeLabel ||
+                                      `${collateral.width || '-'} x ${collateral.height || '-'} ${collateral.unit || ''}`.trim()}
+                                  </span>
+                                </p>
+                                <p>
+                                  Orientation:{' '}
+                                  <span className="font-medium capitalize text-foreground/90">
+                                    {collateral.orientation || 'custom'}
+                                  </span>
+                                </p>
+                                <p>
+                                  Priority:{' '}
+                                  <span className="font-medium capitalize text-foreground/90">
+                                    {String(collateral.priority || 'normal').replace(/_/g, ' ')}
+                                  </span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-[#E1E9FF] bg-[#F9FBFF] px-3.5 py-3 dark:border-border dark:bg-slate-900/50">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                Delivery & References
+                              </p>
+                              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                                <p>
+                                  Deadline:{' '}
+                                  <span className="font-medium text-foreground/90">
+                                    {effectiveDeadline
+                                      ? format(effectiveDeadline, 'EEE, dd MMM yyyy')
+                                      : 'Not set'}
+                                  </span>
+                                </p>
+                                <p>
+                                  Reference files:{' '}
+                                  <span className="font-medium text-foreground/90">
+                                    {collateral.referenceFiles?.length || 0}
+                                  </span>
+                                </p>
+                                {collateral.assignedToName ? (
+                                  <p>
+                                    Owner:{' '}
+                                    <span className="font-medium text-foreground/90">
+                                      {collateral.assignedToName}
+                                    </span>
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {canEditTask && !isCampaignRequest && (
               <div className={`${glassPanelClass} p-5 animate-slide-up`}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-semibold text-foreground">Edit Task</h2>
@@ -6692,7 +6973,7 @@ export default function TaskDetail() {
             )}
 
             {/* Status Update (Designer/Admin only) */}
-            {canDesignerActions && normalizedTaskStatus !== 'completed' && (
+            {canDesignerActions && !isCampaignRequest && normalizedTaskStatus !== 'completed' && (
               <div className={`${glassPanelClass} p-5 animate-slide-up`}>
                 <h2 className="font-semibold text-foreground mb-3">Update Status</h2>
                 <div className="flex gap-3">
@@ -8035,6 +8316,20 @@ export default function TaskDetail() {
             <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Details</h2>
               <dl className="space-y-4">
+                {isCampaignRequest && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground uppercase tracking-wider">
+                      Campaign Mode
+                    </dt>
+                    <dd className="mt-1 text-[13px] text-foreground">
+                      {campaignDeadlineMode === 'common' ? 'Common deadline across collaterals' : 'Individual collateral deadlines'}
+                    </dd>
+                    <dd className="text-xs text-muted-foreground mt-0.5">
+                      {collateralItems.length} collateral item{collateralItems.length === 1 ? '' : 's'}
+                    </dd>
+                  </div>
+                )}
+
                 <div>
                   <dt className="text-xs text-muted-foreground uppercase tracking-wider">
                     Requester

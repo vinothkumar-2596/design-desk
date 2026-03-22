@@ -1,4 +1,12 @@
-import type { TaskCategory, TaskUrgency } from '@/types';
+import type {
+  CollateralOrientation,
+  CollateralPriority,
+  CollateralSizeMode,
+  CollateralStatus,
+  CollateralUnit,
+  TaskCategory,
+  TaskUrgency,
+} from '@/types';
 
 type DraftUser = {
   id?: string;
@@ -16,6 +24,30 @@ export type RequestDraftFile = {
   thumbnailUrl?: string;
 };
 
+export type RequestDraftCollateral = {
+  id: string;
+  title?: string;
+  collateralType: string;
+  presetCategory?: string;
+  presetKey?: string;
+  presetLabel?: string;
+  sizeMode: CollateralSizeMode;
+  width?: number;
+  height?: number;
+  unit?: CollateralUnit;
+  sizeLabel?: string;
+  ratioLabel?: string;
+  customSizeLabel?: string;
+  orientation: CollateralOrientation;
+  platform?: string;
+  usageType?: string;
+  brief: string;
+  deadline?: string;
+  priority: CollateralPriority;
+  status: CollateralStatus;
+  referenceFiles: RequestDraftFile[];
+};
+
 export type RequestDraftPayload = {
   title: string;
   description: string;
@@ -26,6 +58,11 @@ export type RequestDraftPayload = {
   isEmergency: boolean;
   requesterPhone: string;
   files: RequestDraftFile[];
+  requestType?: 'single_task' | 'campaign_request';
+  deadlineMode?: 'common' | 'itemized';
+  commonDeadline?: string;
+  collaterals?: RequestDraftCollateral[];
+  requesterDepartment?: string;
   savedAt: string;
 };
 

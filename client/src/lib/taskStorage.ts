@@ -1,4 +1,5 @@
 import type { Task } from '@/types';
+import { hydrateTask } from '@/lib/taskHydration';
 
 const TASK_LIST_KEY = 'designhub.task.list';
 const TASK_ITEM_PREFIX = 'designhub.task.';
@@ -12,61 +13,6 @@ const safeParse = <T,>(value: string): T | null => {
     return null;
   }
 };
-
-const toDate = (value?: string | Date) => (value ? new Date(value) : undefined);
-
-const hydrateTask = (raw: Task): Task => ({
-  ...raw,
-  deadline: new Date(raw.deadline),
-  createdAt: new Date(raw.createdAt),
-  updatedAt: new Date(raw.updatedAt),
-  proposedDeadline: toDate(raw.proposedDeadline),
-  deadlineApprovedAt: toDate(raw.deadlineApprovedAt),
-  approvalDate: toDate(raw.approvalDate),
-  emergencyApprovedAt: toDate(raw.emergencyApprovedAt),
-  emergencyRequestedAt: toDate(raw.emergencyRequestedAt),
-  files: raw.files?.map((file) => ({
-    ...file,
-    uploadedAt: new Date(file.uploadedAt),
-  })) ?? [],
-  designVersions: raw.designVersions?.map((version) => ({
-    ...version,
-    uploadedAt: new Date(version.uploadedAt),
-  })) ?? [],
-  finalDeliverableVersions:
-    raw.finalDeliverableVersions?.map((version) => ({
-      ...version,
-      uploadedAt: new Date(version.uploadedAt),
-      files:
-        version.files?.map((file) => ({
-          ...file,
-          uploadedAt: new Date(file.uploadedAt),
-        })) ?? [],
-    })) ?? [],
-  comments: raw.comments?.map((comment) => ({
-    ...comment,
-    createdAt: new Date(comment.createdAt),
-    editedAt: toDate(comment.editedAt),
-    deletedAt: toDate(comment.deletedAt),
-    attachments:
-      comment.attachments?.map((file) => ({
-        ...file,
-        uploadedAt: new Date(file.uploadedAt),
-      })) ?? [],
-    seenBy: comment.seenBy?.map((entry) => ({
-      ...entry,
-      seenAt: new Date(entry.seenAt),
-    })) ?? [],
-    reactions: comment.reactions?.map((reaction) => ({
-      ...reaction,
-      createdAt: new Date(reaction.createdAt),
-    })) ?? [],
-  })) ?? [],
-  changeHistory: raw.changeHistory?.map((entry) => ({
-    ...entry,
-    createdAt: new Date(entry.createdAt),
-  })) ?? [],
-});
 
 export const loadLocalTaskList = (): Task[] => {
   if (!canUseStorage()) return [];

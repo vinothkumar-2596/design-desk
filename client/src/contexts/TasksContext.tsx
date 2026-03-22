@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { API_URL, authFetch } from '@/lib/api';
 import { mockTasks } from '@/data/mockTasks';
 import { mergeLocalTasks } from '@/lib/taskStorage';
+import { hydrateTask } from '@/lib/taskHydration';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Task } from '@/types';
 
@@ -14,32 +15,6 @@ type TasksContextValue = {
 };
 
 const TasksContext = createContext<TasksContextValue | undefined>(undefined);
-
-const hydrateTask = (task: any): Task => ({
-  ...task,
-  id: task.id || task._id,
-  deadline: new Date(task.deadline),
-  createdAt: new Date(task.createdAt),
-  updatedAt: new Date(task.updatedAt),
-  proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
-  deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
-  files: task.files?.map((file: any) => ({
-    ...file,
-    uploadedAt: new Date(file.uploadedAt),
-  })) ?? [],
-  comments: task.comments?.map((comment: any) => ({
-    ...comment,
-    createdAt: new Date(comment.createdAt),
-    attachments: comment.attachments?.map((file: any) => ({
-      ...file,
-      uploadedAt: new Date(file.uploadedAt),
-    })) ?? [],
-  })) ?? [],
-  changeHistory: task.changeHistory?.map((entry: any) => ({
-    ...entry,
-    createdAt: new Date(entry.createdAt),
-  })) ?? [],
-});
 
 const getLocalTasks = (): Task[] => {
   if (typeof window === 'undefined') return mockTasks;

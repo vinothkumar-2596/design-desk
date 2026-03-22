@@ -176,8 +176,65 @@ const ChangeHistorySchema = new mongoose.Schema(
   { _id: true }
 );
 
+const CampaignDetailsSchema = new mongoose.Schema(
+  {
+    requestName: { type: String, default: "", trim: true },
+    brief: { type: String, default: "", trim: true },
+    deadlineMode: { type: String, enum: ["common", "itemized"], default: "common" },
+    commonDeadline: { type: Date }
+  },
+  { _id: false }
+);
+
+const CollateralSchema = new mongoose.Schema(
+  {
+    id: {
+      type: String,
+      default: () => new mongoose.Types.ObjectId().toString(),
+    },
+    title: { type: String, default: "", trim: true },
+    collateralType: { type: String, required: true, trim: true },
+    presetCategory: { type: String, default: "", trim: true },
+    presetKey: { type: String, default: "", trim: true },
+    presetLabel: { type: String, default: "", trim: true },
+    sizeMode: { type: String, enum: ["preset", "custom"], default: "preset" },
+    width: { type: Number },
+    height: { type: Number },
+    unit: { type: String, enum: ["px", "mm", "cm", "in", "ft"], default: "px" },
+    sizeLabel: { type: String, default: "", trim: true },
+    ratioLabel: { type: String, default: "", trim: true },
+    customSizeLabel: { type: String, default: "", trim: true },
+    orientation: {
+      type: String,
+      enum: ["portrait", "landscape", "square", "custom"],
+      default: "portrait"
+    },
+    platform: { type: String, default: "", trim: true },
+    usageType: { type: String, default: "", trim: true },
+    brief: { type: String, default: "", trim: true },
+    deadline: { type: Date },
+    priority: { type: String, enum: ["low", "normal", "high", "critical"], default: "normal" },
+    status: {
+      type: String,
+      enum: ["pending", "in_progress", "submitted_for_review", "approved", "rework", "completed"],
+      default: "pending"
+    },
+    referenceFiles: { type: [TaskFileSchema], default: [] },
+    assignedToId: { type: String, default: "" },
+    assignedToName: { type: String, default: "" },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
 const TaskSchema = new mongoose.Schema(
   {
+    requestType: {
+      type: String,
+      enum: ["single_task", "campaign_request"],
+      default: "single_task"
+    },
     title: { type: String, required: true, trim: true },
     description: { type: String, default: "" },
     category: {
@@ -226,6 +283,8 @@ const TaskSchema = new mongoose.Schema(
     deadlineApprovedAt: { type: Date },
     changeHistory: { type: [ChangeHistorySchema], default: [] },
     reminderSent: { type: Boolean, default: false },
+    campaign: { type: CampaignDetailsSchema, default: undefined },
+    collaterals: { type: [CollateralSchema], default: [] },
     files: { type: [TaskFileSchema], default: [] },
     designVersions: { type: [DesignVersionSchema], default: [] },
     activeDesignVersionId: { type: String, default: "" },

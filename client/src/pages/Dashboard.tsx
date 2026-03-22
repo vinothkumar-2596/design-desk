@@ -51,6 +51,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { useTasksContext } from '@/contexts/TasksContext';
+import { hydrateTask } from '@/lib/taskHydration';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { filterTasksForUser } from '@/lib/taskVisibility';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
@@ -284,29 +285,6 @@ export default function Dashboard() {
   const canAssignDesigner = isMainDesigner(user);
   const deadlineTimeParts = parseTimeParts(assignmentDeadlineTime);
 
-  const hydrateTask = (raw: typeof mockTasks[number]) => {
-    if (!raw) return raw;
-    return {
-      ...raw,
-      deadline: new Date(raw.deadline),
-      createdAt: new Date(raw.createdAt),
-      updatedAt: new Date(raw.updatedAt),
-      proposedDeadline: raw.proposedDeadline ? new Date(raw.proposedDeadline) : undefined,
-      deadlineApprovedAt: raw.deadlineApprovedAt ? new Date(raw.deadlineApprovedAt) : undefined,
-      files: raw.files?.map((file) => ({
-        ...file,
-        uploadedAt: new Date(file.uploadedAt),
-      })),
-      comments: raw.comments?.map((comment) => ({
-        ...comment,
-        createdAt: new Date(comment.createdAt),
-      })),
-      changeHistory: raw.changeHistory?.map((entry) => ({
-        ...entry,
-        createdAt: new Date(entry.createdAt),
-      })),
-    };
-  };
   const resetAssignDesignerModal = () => {
     setAssigningTask(null);
     setSelectedDesignerId('');

@@ -1,981 +1,518 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+import { toast } from '@/components/ui/sonner';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Switch } from '@/components/ui/switch';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import Lottie from 'lottie-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Upload,
-  FileText,
-  Clock,
-  Info,
-  X,
-  Image,
-  Flag,
-  Megaphone,
-  Share2,
-  Globe,
-  Layout,
-  Monitor,
-  BookOpen,
-  Mail,
-  Minus,
-  CheckCircle2,
-  Move,
-  Plus,
-  RotateCw,
-  RotateCcw,
-  ChevronDown,
-  ChevronUp,
-  AlertTriangle,
-  Check,
-} from 'lucide-react';
-import { toast } from '@/components/ui/sonner';
-import { Task, TaskCategory, TaskChange, TaskUrgency } from '@/types';
-import {
-  addDays,
-  format,
-  isBefore,
-  isWithinInterval,
-  startOfDay,
-} from 'date-fns';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { PickersDay, type PickersDayProps } from '@mui/x-date-pickers/PickersDay';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AttachmentUploadField } from '@/components/request-builder/AttachmentUploadField';
+import { CollateralEditorCard } from '@/components/request-builder/CollateralEditorCard';
+import { CollateralPresetDialog } from '@/components/request-builder/CollateralPresetDialog';
+import type { BuilderAttachment, CollateralDraft } from '@/components/request-builder/types';
 import { useAuth } from '@/contexts/AuthContext';
+import { API_URL, authFetch } from '@/lib/api';
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
-import {
-  buildInvalidRanges,
-  buildScheduleFromTasks,
-  getDefaultDesignerId,
-  Task as ScheduleTask,
-} from '@/lib/designerSchedule';
-import {
-  addOfficeOpenDays,
-  getOfficeGovernmentHolidayName,
-  isOfficeClosedDate,
-  OFFICE_REGION_LABEL,
-} from '@/lib/officeCalendar';
-import { upsertLocalTask } from '@/lib/taskStorage';
+  buildCampaignDescription,
+  deriveEffectiveDeadline,
+  deriveTaskCategoryFromCollaterals,
+  deriveTaskStatusFromCollaterals,
+  deriveTaskUrgencyFromCollaterals,
+  formatCollateralPriorityLabel,
+  formatCollateralStatusLabel,
+  getCollateralDisplayName,
+  getCollateralSizeSummary,
+  type CollateralPreset,
+} from '@/lib/campaignRequest';
 import {
   clearRequestDraft,
-  getRequestDraftStorageKey,
   loadRequestDraft,
   saveRequestDraft,
-  type RequestDraftFile,
+  type RequestDraftCollateral,
   type RequestDraftPayload,
 } from '@/lib/requestDrafts';
-import { TaskBuddyModal } from '@/components/ai/TaskBuddyModal';
-import { GeminiBlink } from '@/components/common/GeminiBlink';
-import { AttachmentPreviewDialog } from '@/components/tasks/AttachmentPreviewDialog';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { TaskDraft } from '@/lib/ai';
-import {
-  DESIGN_GOVERNANCE_EMAIL_LINES,
-  DESIGN_GOVERNANCE_NOTICE_MINIMAL,
-} from '@/lib/designGovernance';
+import { upsertLocalTask } from '@/lib/taskStorage';
 import { cn } from '@/lib/utils';
+import { addOfficeOpenDays } from '@/lib/officeCalendar';
+import type { Task } from '@/types';
+import {
+  ArrowRight,
+  BriefcaseBusiness,
+  Building2,
+  CalendarRange,
+  Check,
+  ChevronLeft,
+  Layers3,
+  ListChecks,
+  Paperclip,
+  Phone,
+  Plus,
+} from 'lucide-react';
 
-type DeadlineCalendarDayProps = PickersDayProps & {
-  tooltipLabel?: string;
-};
+type BuilderStepId = 'campaign' | 'timeline' | 'collaterals' | 'review';
 
-function DeadlineCalendarDay({ tooltipLabel, ...props }: DeadlineCalendarDayProps) {
-  const dayButton = <PickersDay {...props} />;
-
-  if (!tooltipLabel || props.outsideCurrentMonth) {
-    return dayButton;
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">{dayButton}</span>
-      </TooltipTrigger>
-      <TooltipContent side="top" align="center" sideOffset={8} className="z-[100100]">
-        {tooltipLabel}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-const SUBMISSION_POLICY_ACCEPTANCE_VERSION = '2026-03-15';
-
-const getSubmissionPolicyAcceptanceKey = (
-  userId?: string | null,
-  userEmail?: string | null
-) => {
-  const identity = [String(userId || '').trim(), String(userEmail || '').trim().toLowerCase()]
-    .filter(Boolean)
-    .join(':');
-
-  return `designhub:submission-policy:${SUBMISSION_POLICY_ACCEPTANCE_VERSION}:${identity || 'anonymous'}`;
-};
-
-const readStoredSubmissionPolicyAcceptance = (storageKey: string) => {
-  if (typeof window === 'undefined') return false;
-
-  const stored = window.localStorage.getItem(storageKey);
-  if (!stored) return false;
-
-  try {
-    const parsed = JSON.parse(stored);
-    return parsed?.accepted === true;
-  } catch {
-    return stored === 'true';
-  }
-};
-
-const persistSubmissionPolicyAcceptance = (storageKey: string) => {
-  if (typeof window === 'undefined') return;
-
-  window.localStorage.setItem(
-    storageKey,
-    JSON.stringify({
-      accepted: true,
-      acceptedAt: new Date().toISOString(),
-      version: SUBMISSION_POLICY_ACCEPTANCE_VERSION,
-    })
-  );
-};
-
-interface UploadedFile {
-  id: string;
-  name: string;
-  size: number;
-  localPreviewUrl?: string;
-  driveId?: string;
-  url?: string;
-  webViewLink?: string;
-  webContentLink?: string;
-  thumbnailUrl?: string;
-  extractedContent?: string;
-  uploading?: boolean;
-  progress?: number;
-  error?: string;
-}
-
-type IncomingAiDraft = Partial<TaskDraft> & {
-  requestTitle?: string;
-  description?: string;
-  category?: string;
-  urgency?: string;
-  deadline?: string;
-  phone?: string;
-  files?: UploadedFile[];
-  whatsappNumbers?: string[];
-};
-
-type NewRequestLocationState = {
-  aiDraft?: IncomingAiDraft;
-  aiDraftFiles?: UploadedFile[];
-  openTaskBuddy?: boolean;
-  restoreDraft?: boolean;
-} | null;
-
-
-const colorKeywords = [
-  'dark blue',
-  'navy',
-  'blue',
-  'red',
-  'green',
-  'orange',
-  'yellow',
-  'purple',
-  'black',
-  'white',
-  'gold',
-  'silver',
+const BUILDER_STEPS: Array<{
+  id: BuilderStepId;
+  label: string;
+  title: string;
+  description: string;
+  icon: typeof BriefcaseBusiness;
+}> = [
+  {
+    id: 'campaign',
+    label: '01',
+    title: 'Campaign Details',
+    description: 'Set the request basics and campaign brief.',
+    icon: BriefcaseBusiness,
+  },
+  {
+    id: 'timeline',
+    label: '02',
+    title: 'Timeline & Files',
+    description: 'Choose deadline mode and upload master references.',
+    icon: CalendarRange,
+  },
+  {
+    id: 'collaterals',
+    label: '03',
+    title: 'Collateral Builder',
+    description: 'Add preset-based collateral items and item briefs.',
+    icon: Layers3,
+  },
+  {
+    id: 'review',
+    label: '04',
+    title: 'Review & Submit',
+    description: 'Check the full request before sending it to design.',
+    icon: ListChecks,
+  },
 ];
 
-const modificationKeywords = ['edit', 'change', 'revise', 'modify', 'update', 'rework'];
-
-const toCleanText = (value: string) => value.replace(/\s+/g, ' ').trim();
-
-const extractSize = (text: string) => {
-  const sizeMatch = text.match(
-    /(\d+(?:\.\d+)?)\s*(ft|feet|in|cm|mm|px)\s*(?:x|×)\s*(\d+(?:\.\d+)?)\s*(ft|feet|in|cm|mm|px)?/i
-  );
-  if (sizeMatch) {
-    const width = Number(sizeMatch[1]);
-    const height = Number(sizeMatch[3]);
-    const unit = (sizeMatch[4] || sizeMatch[2]).toLowerCase();
-    return {
-      value: `${sizeMatch[1]} ${unit} x ${sizeMatch[3]} ${unit}`,
-      width,
-      height,
-      unit,
-    };
-  }
-
-  const altMatch = text.match(
-    /(\d+(?:\.\d+)?)\s*(?:x|×)\s*(\d+(?:\.\d+)?)\s*(ft|feet|in|cm|mm|px)/i
-  );
-  if (altMatch) {
-    const width = Number(altMatch[1]);
-    const height = Number(altMatch[2]);
-    const unit = altMatch[3].toLowerCase();
-    return {
-      value: `${altMatch[1]} ${unit} x ${altMatch[2]} ${unit}`,
-      width,
-      height,
-      unit,
-    };
-  }
-
-  return null;
-};
-
-const extractDateFromText = (text: string) => {
-  const numericMatch = text.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
-  if (numericMatch) {
-    const day = Number(numericMatch[1]);
-    const month = Number(numericMatch[2]);
-    let year = Number(numericMatch[3]);
-    if (year < 100) year += 2000;
-    return new Date(year, month - 1, day);
-  }
-
-  const monthMatch = text.match(
-    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|sept|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?,?\s*(\d{1,2})(?:,?\s*(\d{4}))?/i
-  );
-  if (monthMatch) {
-    const monthName = monthMatch[1].toLowerCase();
-    const day = Number(monthMatch[2]);
-    const year = monthMatch[3] ? Number(monthMatch[3]) : new Date().getFullYear();
-    const monthMap: Record<string, number> = {
-      jan: 0,
-      january: 0,
-      feb: 1,
-      february: 1,
-      mar: 2,
-      march: 2,
-      apr: 3,
-      april: 3,
-      may: 4,
-      jun: 5,
-      june: 5,
-      jul: 6,
-      july: 6,
-      aug: 7,
-      august: 7,
-      sep: 8,
-      sept: 8,
-      september: 8,
-      oct: 9,
-      october: 9,
-      nov: 10,
-      november: 10,
-      dec: 11,
-      december: 11,
-    };
-    const monthIndex = monthMap[monthName];
-    if (typeof monthIndex === 'number') {
-      return new Date(year, monthIndex, day);
-    }
-  }
-
-  return null;
-};
-
-const normalizeIncomingAiCategory = (value?: string): TaskCategory | '' => {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[\s/-]+/g, '_');
-  if (!normalized) return '';
-  if (normalized === 'banner' || normalized.includes('standee')) return 'banner';
-  if (normalized === 'social_media_creative' || normalized.includes('social')) return 'social_media_creative';
-  if (normalized === 'website_assets' || normalized.includes('website') || normalized.includes('web')) return 'website_assets';
-  if (normalized === 'ui_ux' || normalized.includes('ui') || normalized.includes('ux')) return 'ui_ux';
-  if (normalized === 'led_backdrop' || normalized.includes('led') || normalized.includes('backdrop')) return 'led_backdrop';
-  if (normalized === 'brochure') return 'brochure';
-  if (normalized === 'flyer') return 'flyer';
-  return 'campaign_or_others';
-};
-
-const normalizeIncomingAiUrgency = (value?: string): TaskUrgency => {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized.includes('urgent') || normalized.includes('asap') || normalized.includes('high')) return 'urgent';
-  if (normalized.includes('intermediate') || normalized.includes('medium')) return 'intermediate';
-  if (normalized.includes('low')) return 'low';
-  return 'normal';
-};
-
-const MIN_DESCRIPTION_WORDS = 30;
-
-const countWords = (value: string) =>
-  String(value || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
-
-const extractTimeRange = (text: string) => {
-  const timeMatch = text.match(
-    /(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*(?:-|–|to)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i
-  );
-  if (timeMatch) {
-    return `${timeMatch[1].toUpperCase()} – ${timeMatch[2].toUpperCase()}`;
-  }
-
-  return null;
-};
-
-const extractLanguage = (text: string) => {
-  const lower = text.toLowerCase();
-  if (lower.includes('both')) return 'Tamil / English (Both)';
-  if (lower.includes('tamil') || text.includes('தமிழ்') || text.includes('தமிழர்')) return 'Tamil';
-  if (lower.includes('english')) return 'English';
-  return null;
-};
-
-const extractEventName = (text: string) => {
-  const eventMatch = text.match(/event\s*(?:name)?\s*[:\-]\s*([^\n,]+)/i);
-  if (eventMatch) return toCleanText(eventMatch[1]);
-
-  const forMatch = text.match(
-    /for\s+([^\n,]+?)\s+(banner|poster|flyer|brochure|reel|certificate|design|invite|invitation)/i
-  );
-  if (forMatch) return toCleanText(forMatch[1]);
-
-  const quotedMatch = text.match(/["'“”‘’]([^"'“”‘’]+)["'“”‘’]/);
-  if (quotedMatch) return toCleanText(quotedMatch[1]);
-
-  return null;
-};
-
-const extractVenue = (text: string) => {
-  const venueMatch = text.match(/venue\s*[:\-]\s*([^\n,]+)/i);
-  if (venueMatch) return toCleanText(venueMatch[1]);
-  return null;
-};
-
-const extractTagline = (text: string) => {
-  const taglineMatch = text.match(/tagline\s*[:\-]\s*([^\n]+)/i);
-  if (taglineMatch) return toCleanText(taglineMatch[1]);
-  return null;
-};
-
-const extractThemeColor = (text: string) => {
-  const lower = text.toLowerCase();
-  return colorKeywords.find((color) => lower.includes(color)) || null;
-};
-
-const extractCategory = (text: string): TaskCategory => {
-  const lower = text.toLowerCase();
-  const matches = [
-    { value: 'banner', keywords: ['banner', 'standee', 'flex'] },
-    { value: 'social_media_creative', keywords: ['social', 'instagram', 'facebook', 'post', 'story', 'reel', 'video'] },
-    { value: 'flyer', keywords: ['flyer', 'handbill', 'leaflet'] },
-    { value: 'brochure', keywords: ['brochure', 'catalog'] },
-    { value: 'website_assets', keywords: ['website', 'web', 'landing page', 'landing', 'hero'] },
-    { value: 'ui_ux', keywords: ['ui', 'ux', 'app', 'dashboard', 'prototype'] },
-    { value: 'led_backdrop', keywords: ['led', 'backdrop', 'stage'] },
-    { value: 'campaign_or_others', keywords: ['campaign', 'certificate', 'poster', 'logo', 'branding', 'invite', 'invitation'] },
-  ] as const;
-
-  for (const match of matches) {
-    if (match.keywords.some((keyword) => lower.includes(keyword))) {
-      return match.value;
-    }
-  }
-
-  return 'campaign_or_others';
-};
-
-const getCategoryLabel = (category: TaskCategory) =>
-  categoryOptions.find((option) => option.value === category)?.label || 'Design';
-
-const getAssetLabel = (category: TaskCategory) => {
-  switch (category) {
-    case 'social_media_creative':
-      return 'social media creative';
-    case 'website_assets':
-      return 'website asset';
-    case 'ui_ux':
-      return 'UI/UX layout';
-    case 'led_backdrop':
-      return 'LED backdrop';
-    case 'campaign_or_others':
-      return 'campaign asset';
-    default:
-      return category;
-  }
-};
-
-const getDeliverablesForCategory = (category: TaskCategory) => {
-  switch (category) {
-    case 'social_media_creative':
-      return ['Social media post (1080x1080)', 'Story/Reel version (1080x1920)'];
-    case 'website_assets':
-      return ['Primary web banner/hero asset', 'Mobile-friendly variant'];
-    case 'ui_ux':
-      return ['High-fidelity UI screens', 'Prototype-ready assets (if required)'];
-    case 'brochure':
-      return ['Print-ready brochure PDF', 'Editable source file (if applicable)'];
-    case 'flyer':
-      return ['Print-ready flyer PDF', 'Web-friendly version'];
-    case 'led_backdrop':
-      return ['Stage-ready LED backdrop design', 'Scaled preview version'];
-    case 'banner':
-      return ['Event banner (print-ready)', 'Optional digital version for social media'];
-    default:
-      return ['Primary design output', 'Optional digital version'];
-  }
-};
-
-const buildAttachmentChecklist = (text: string) => {
-  const lower = text.toLowerCase();
-  const checklist = new Set<string>();
-  if (lower.includes('smvec')) checklist.add('SMVEC logo');
-  if (text.includes('ழ') || lower.includes('zha')) checklist.add("‘ழ’ logo");
-  checklist.add('Primary logo (mandatory)');
-
-  if (lower.includes('brand guideline') || lower.includes('brand guide') || lower.includes('brandbook')) {
-    checklist.add('Brand guidelines (if available)');
-  }
-
-  if (lower.includes('reference') || lower.includes('sample') || lower.includes('example')) {
-    checklist.add('Reference design (optional)');
-  } else {
-    checklist.add('Reference design (optional)');
-  }
-
-  return Array.from(checklist);
-};
-
-const parseIsoDate = (value: string) => {
-  const match = value.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return null;
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-};
-
-const categoryOptions: { value: TaskCategory; label: string; icon: React.ElementType }[] = [
-  { value: 'banner', label: 'Banner', icon: Flag },
-  { value: 'campaign_or_others', label: 'Campaign or others', icon: Megaphone },
-  { value: 'social_media_creative', label: 'Social Media Creative', icon: Share2 },
-  { value: 'website_assets', label: 'Website Assets', icon: Globe },
-  { value: 'ui_ux', label: 'UI/UX', icon: Layout },
-  { value: 'led_backdrop', label: 'LED Backdrop', icon: Monitor },
-  { value: 'brochure', label: 'Brochure', icon: BookOpen },
-  { value: 'flyer', label: 'Flyer', icon: FileText },
-];
-
-const getFileIcon = (fileName: string, className: string) => {
-  const extension = fileName.split('.').pop()?.toLowerCase();
-  if (extension === 'pdf') return <FileText className={className} />;
-  if (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(extension)) {
-    return <Image className={className} />;
-  }
-  return <FileText className={className} />;
-};
-const getFileExtension = (fileName: string) => {
-  const extension = fileName.split('.').pop()?.trim().toUpperCase();
-  return extension ? extension.slice(0, 4) : 'FILE';
-};
-const IMAGE_FILE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
-const PDF_FILE_EXTENSIONS = new Set(['pdf']);
-const isImageAttachment = (fileName: string) => {
-  const extension = fileName.split('.').pop()?.trim().toLowerCase() || '';
-  return IMAGE_FILE_EXTENSIONS.has(extension);
-};
-const isPdfAttachment = (fileName: string) => {
-  const extension = fileName.split('.').pop()?.trim().toLowerCase() || '';
-  return PDF_FILE_EXTENSIONS.has(extension);
-};
-const getAttachmentPreviewKind = (fileName: string): 'image' | 'pdf' | 'none' => {
-  if (isImageAttachment(fileName)) return 'image';
-  if (isPdfAttachment(fileName)) return 'pdf';
-  return 'none';
-};
-const inferPreviewMimeType = (fileName: string) => {
-  const extension = fileName.split('.').pop()?.trim().toLowerCase() || '';
-  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
-  if (extension === 'png') return 'image/png';
-  if (extension === 'gif') return 'image/gif';
-  if (extension === 'webp') return 'image/webp';
-  if (extension === 'bmp') return 'image/bmp';
-  if (extension === 'svg') return 'image/svg+xml';
-  if (extension === 'pdf') return 'application/pdf';
-  return '';
-};
-
-const createMailtoUrl = (to: string, subject: string, body: string) =>
-  `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-const EMAIL_DRAFT_MAILTO_STORAGE_KEY = 'designhub:email-draft-mailto';
-const EMAIL_SEND_PENDING_KEY = 'designhub:gmail-send-pending';
-const EMAIL_COMPOSE_OPENED_EVENT = 'designhub:gmail-compose-opened';
-const createGmailComposeUrl = (to: string, subject: string, body: string) =>
-  `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
-    to
-  )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 const INDIAN_MOBILE_REGEX = /^\+91[6-9]\d{9}$/;
-const INDIAN_PREFIX = '+91 ';
-const FREE_DATE_SUGGESTION_COUNT = 6;
+
+const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate());
+
 const formatIndianPhoneInput = (value?: string) => {
   const digitsOnly = String(value || '').replace(/\D/g, '');
   const local = digitsOnly.startsWith('91') ? digitsOnly.slice(2) : digitsOnly;
-  const trimmed = local.slice(0, 10);
-  return `${INDIAN_PREFIX}${trimmed}`;
+  return `+91 ${local.slice(0, 10)}`.trim();
 };
+
 const normalizeIndianPhone = (value?: string) => {
-  const digits = String(value || '').replace(/\D/g, '');
-  if (digits === '91') return '';
-  const local = digits.startsWith('91') ? digits.slice(2) : digits;
+  const digitsOnly = String(value || '').replace(/\D/g, '');
+  if (!digitsOnly) return '';
+  const local = digitsOnly.startsWith('91') ? digitsOnly.slice(2) : digitsOnly;
   if (local.length !== 10) return '';
   const normalized = `+91${local}`;
   return INDIAN_MOBILE_REGEX.test(normalized) ? normalized : '';
 };
 
-const shouldPromptDriveReconnect = (errorMessage?: string) => {
-  const normalized = String(errorMessage || '').toLowerCase();
-  return (
-    normalized.includes('drive oauth not connected') ||
-    normalized.includes('must be set for oauth') ||
-    normalized.includes('missing oauth code')
-  );
-};
-const buildDriveViewUrl = (driveId?: string) => {
-  const normalizedId = String(driveId || '').trim();
-  if (!normalizedId) return '';
-  return `https://drive.google.com/file/d/${encodeURIComponent(normalizedId)}/view?usp=drivesdk`;
-};
-const buildDrivePreviewUrl = (driveId?: string) => {
-  const normalizedId = String(driveId || '').trim();
-  if (!normalizedId) return '';
-  return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(normalizedId)}`;
-};
-const resolveUploadedDriveUrl = (data?: {
-  id?: string;
-  webViewLink?: string;
-  webContentLink?: string;
-} | null) => {
-  const webViewLink = String(data?.webViewLink || '').trim();
-  if (webViewLink) return webViewLink;
-  const webContentLink = String(data?.webContentLink || '').trim();
-  if (webContentLink) return webContentLink;
-  return buildDriveViewUrl(data?.id);
+const toDateValue = (value?: Date) => (value ? format(value, 'yyyy-MM-dd') : '');
+const minDeadlineDate = startOfDay(addOfficeOpenDays(new Date(), 3));
+const minDeadlineInputValue = format(minDeadlineDate, 'yyyy-MM-dd');
+
+const toBuilderAttachmentRecord = (attachments: BuilderAttachment[], uploadedBy?: string) =>
+  attachments
+    .filter((attachment) => !attachment.uploading && !attachment.error)
+    .map((attachment) => ({
+      id: attachment.driveId || attachment.id,
+      name: attachment.name,
+      url: attachment.url || attachment.webViewLink || '',
+      driveId: attachment.driveId || '',
+      webViewLink: attachment.webViewLink || '',
+      webContentLink: attachment.webContentLink || '',
+      type: 'input' as const,
+      uploadedAt: new Date(),
+      uploadedBy: uploadedBy || '',
+      size: attachment.size,
+      thumbnailUrl: attachment.thumbnailUrl,
+    }));
+
+const mapDraftCollateral = (collateral: CollateralDraft): RequestDraftCollateral => ({
+  ...collateral,
+  deadline: collateral.deadline?.toISOString(),
+  referenceFiles: collateral.referenceFiles.map((file) => ({
+    id: file.id,
+    name: file.name,
+    size: file.size,
+    driveId: file.driveId,
+    url: file.url,
+    webViewLink: file.webViewLink,
+    webContentLink: file.webContentLink,
+    thumbnailUrl: file.thumbnailUrl,
+  })),
+});
+
+const hydrateDraftCollateral = (collateral: RequestDraftCollateral): CollateralDraft => ({
+  ...collateral,
+  deadline: collateral.deadline ? new Date(collateral.deadline) : undefined,
+  referenceFiles: collateral.referenceFiles.map((file) => ({
+    ...file,
+    uploading: false,
+  })),
+});
+
+const createCollateralDraftFromPreset = (
+  preset: CollateralPreset,
+  deadlineMode: 'common' | 'itemized',
+  commonDeadline?: Date
+): CollateralDraft => ({
+  id: crypto.randomUUID(),
+  title: '',
+  collateralType: preset.collateralType,
+  presetCategory: preset.group,
+  presetKey: preset.id,
+  presetLabel: preset.label,
+  sizeMode: preset.width && preset.height ? 'preset' : 'custom',
+  width: preset.width,
+  height: preset.height,
+  unit: preset.unit || 'px',
+  sizeLabel: preset.sizeLabel,
+  ratioLabel: preset.ratioLabel,
+  customSizeLabel: '',
+  orientation: preset.orientation || 'custom',
+  platform: preset.platform || '',
+  usageType: preset.usageType || '',
+  brief: '',
+  deadline: deadlineMode === 'common' ? commonDeadline : minDeadlineDate,
+  priority: 'normal',
+  status: 'pending',
+  referenceFiles: [],
+});
+
+const hasUploadingFiles = (attachments: BuilderAttachment[]) =>
+  attachments.some((attachment) => attachment.uploading);
+
+const hasErroredFiles = (attachments: BuilderAttachment[]) =>
+  attachments.some((attachment) => attachment.error);
+
+const validateCampaignStep = ({
+  title,
+  department,
+  requesterPhone,
+  brief,
+}: {
+  title: string;
+  department: string;
+  requesterPhone: string;
+  brief: string;
+}) => {
+  if (!title.trim()) return 'Campaign title is required.';
+  if (!department.trim()) return 'Department is required.';
+  if (!brief.trim()) return 'Overall campaign brief is required.';
+  if (!normalizeIndianPhone(requesterPhone)) return 'Enter a valid contact number in +91 format.';
+  return '';
 };
 
-import { API_URL, authFetch, getAuthToken, openDriveReconnectWindow } from '@/lib/api';
+const validateTimelineStep = ({
+  deadlineMode,
+  commonDeadline,
+  masterAttachments,
+}: {
+  deadlineMode: 'common' | 'itemized';
+  commonDeadline?: Date;
+  masterAttachments: BuilderAttachment[];
+}) => {
+  if (deadlineMode === 'common' && !commonDeadline) {
+    return 'Set a common deadline for the campaign.';
+  }
+  if (commonDeadline && startOfDay(commonDeadline) < minDeadlineDate) {
+    return 'Campaign deadline must be at least 3 working days from today.';
+  }
+  if (hasUploadingFiles(masterAttachments)) {
+    return 'Wait for master reference uploads to finish before continuing.';
+  }
+  if (hasErroredFiles(masterAttachments)) {
+    return 'Resolve master reference upload errors before continuing.';
+  }
+  return '';
+};
+
+const validateCollateralsStep = ({
+  deadlineMode,
+  commonDeadline,
+  collaterals,
+}: {
+  deadlineMode: 'common' | 'itemized';
+  commonDeadline?: Date;
+  collaterals: CollateralDraft[];
+}) => {
+  if (collaterals.length === 0) return 'Add at least one collateral item.';
+
+  for (const collateral of collaterals) {
+    if (!collateral.collateralType.trim()) {
+      return 'Each collateral must have a collateral type.';
+    }
+    if (!collateral.brief.trim()) {
+      return `Add a content brief for ${getCollateralDisplayName(collateral)}.`;
+    }
+    if (
+      collateral.sizeMode === 'custom' &&
+      !collateral.customSizeLabel?.trim() &&
+      !(collateral.width && collateral.height)
+    ) {
+      return `Provide a custom size for ${getCollateralDisplayName(collateral)}.`;
+    }
+
+    const effectiveDeadline = deadlineMode === 'common' ? commonDeadline : collateral.deadline;
+    if (!effectiveDeadline) {
+      return `Set a deadline for ${getCollateralDisplayName(collateral)}.`;
+    }
+    if (startOfDay(effectiveDeadline) < minDeadlineDate) {
+      return `Deadline for ${getCollateralDisplayName(collateral)} must be at least 3 working days from today.`;
+    }
+    if (hasUploadingFiles(collateral.referenceFiles)) {
+      return `Wait for the uploads to finish for ${getCollateralDisplayName(collateral)}.`;
+    }
+    if (hasErroredFiles(collateral.referenceFiles)) {
+      return `Resolve reference upload errors for ${getCollateralDisplayName(collateral)}.`;
+    }
+  }
+
+  return '';
+};
+
+const validateReferenceCoverage = ({
+  collaterals,
+  masterAttachments,
+}: {
+  collaterals: CollateralDraft[];
+  masterAttachments: BuilderAttachment[];
+}) => {
+  const hasAnyReference =
+    masterAttachments.some((file) => !file.uploading && !file.error) ||
+    collaterals.some((collateral) =>
+      collateral.referenceFiles.some((file) => !file.uploading && !file.error)
+    );
+
+  if (!hasAnyReference) {
+    return 'Upload at least one master or collateral-level reference before submitting.';
+  }
+
+  return '';
+};
+
+const validateBuilder = ({
+  title,
+  department,
+  requesterPhone,
+  brief,
+  deadlineMode,
+  commonDeadline,
+  collaterals,
+  masterAttachments,
+}: {
+  title: string;
+  department: string;
+  requesterPhone: string;
+  brief: string;
+  deadlineMode: 'common' | 'itemized';
+  commonDeadline?: Date;
+  collaterals: CollateralDraft[];
+  masterAttachments: BuilderAttachment[];
+}) =>
+  validateCampaignStep({ title, department, requesterPhone, brief }) ||
+  validateTimelineStep({ deadlineMode, commonDeadline, masterAttachments }) ||
+  validateCollateralsStep({ deadlineMode, commonDeadline, collaterals }) ||
+  validateReferenceCoverage({ collaterals, masterAttachments });
+
+const resolveWizardStep = ({
+  title,
+  department,
+  requesterPhone,
+  brief,
+  deadlineMode,
+  commonDeadline,
+  collaterals,
+  masterAttachments,
+}: {
+  title: string;
+  department: string;
+  requesterPhone: string;
+  brief: string;
+  deadlineMode: 'common' | 'itemized';
+  commonDeadline?: Date;
+  collaterals: CollateralDraft[];
+  masterAttachments: BuilderAttachment[];
+}): BuilderStepId => {
+  if (validateCampaignStep({ title, department, requesterPhone, brief })) return 'campaign';
+  if (validateTimelineStep({ deadlineMode, commonDeadline, masterAttachments })) return 'timeline';
+  if (validateCollateralsStep({ deadlineMode, commonDeadline, collaterals })) return 'collaterals';
+  return 'review';
+};
 
 export default function NewRequest() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const locationState = location.state as NewRequestLocationState;
   const { user } = useAuth();
-  const apiUrl = API_URL;
-  const defaultRequesterPhone = formatIndianPhoneInput(normalizeIndianPhone(user?.phone) || '');
-  const draftStorageKey = getRequestDraftStorageKey(user);
-  const submissionPolicyStorageKey = useMemo(
-    () => getSubmissionPolicyAcceptanceKey(user?.id, user?.email),
-    [user?.email, user?.id]
-  );
+  const navigate = useNavigate();
+  const [requestTitle, setRequestTitle] = useState('');
+  const [department, setDepartment] = useState(user?.department || '');
+  const [requesterPhone, setRequesterPhone] = useState(formatIndianPhoneInput(user?.phone));
+  const [overallBrief, setOverallBrief] = useState('');
+  const [deadlineMode, setDeadlineMode] = useState<'common' | 'itemized'>('common');
+  const [commonDeadline, setCommonDeadline] = useState<Date | undefined>(minDeadlineDate);
+  const [masterAttachments, setMasterAttachments] = useState<BuilderAttachment[]>([]);
+  const [collaterals, setCollaterals] = useState<CollateralDraft[]>([]);
+  const [currentStep, setCurrentStep] = useState<BuilderStepId>('campaign');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hasAcceptedSubmissionPolicy, setHasAcceptedSubmissionPolicy] = useState(() =>
-    readStoredSubmissionPolicyAcceptance(submissionPolicyStorageKey)
-  );
-  const [isSubmissionPolicyChecked, setIsSubmissionPolicyChecked] = useState(() =>
-    readStoredSubmissionPolicyAcceptance(submissionPolicyStorageKey)
-  );
-  const [showThankYou, setShowThankYou] = useState(false);
-  const [showCancelDraftDialog, setShowCancelDraftDialog] = useState(false);
-  const [thankYouAnimation, setThankYouAnimation] = useState<object | null>(null);
-  const [uploadAnimation, setUploadAnimation] = useState<object | null>(null);
-  const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
-  const [showEmailPreview, setShowEmailPreview] = useState(false);
-  const [attachmentPreviewFile, setAttachmentPreviewFile] = useState<UploadedFile | null>(null);
-  const [attachmentPreviewResolvedUrl, setAttachmentPreviewResolvedUrl] = useState('');
-  const [attachmentPreviewState, setAttachmentPreviewState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [attachmentPreviewZoom, setAttachmentPreviewZoom] = useState(1);
-  const [attachmentPreviewPan, setAttachmentPreviewPan] = useState({ x: 0, y: 0 });
-  const [isAttachmentPreviewDragging, setIsAttachmentPreviewDragging] = useState(false);
+  const [isPresetDialogOpen, setIsPresetDialogOpen] = useState(false);
 
-  // Form state
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState<TaskCategory | ''>('');
-  const [urgency, setUrgency] = useState<TaskUrgency>('normal');
-  const [deadline, setDeadline] = useState<Date | null>(null);
-  const [hasDeadlineInteracted, setHasDeadlineInteracted] = useState(false);
-  const [isEmergency, setIsEmergency] = useState(false);
-  const [requesterPhone, setRequesterPhone] = useState(defaultRequesterPhone);
-  const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [isAttachmentQueueExpanded, setIsAttachmentQueueExpanded] = useState(true);
-  const activeUploadRequestsRef = useRef(new Map<string, XMLHttpRequest>());
-  const cancelledUploadIdsRef = useRef(new Set<string>());
-  const hasRestoredDraftRef = useRef(false);
-  const lastDraftStorageKeyRef = useRef('');
-  const latestFilesRef = useRef<UploadedFile[]>([]);
-  const attachmentPreviewViewportRef = useRef<HTMLDivElement | null>(null);
-  const attachmentPreviewObjectUrlRef = useRef<string | null>(null);
-  const submissionPolicyCardRef = useRef<HTMLDivElement | null>(null);
-  const attachmentPreviewDragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    originX: number;
-    originY: number;
-  } | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [scheduleTasks, setScheduleTasks] = useState<ScheduleTask[]>([]);
-  const [defaultsApplied, setDefaultsApplied] = useState(false);
-  const readyAttachments = useMemo(
-    () => files.filter((file) => !file.uploading && !file.error),
-    [files]
-  );
-  const taskBuddyAttachmentContext = useMemo(
+  useEffect(() => {
+    setDepartment((current) => current || user?.department || '');
+    setRequesterPhone((current) => current || formatIndianPhoneInput(user?.phone));
+  }, [user?.department, user?.phone]);
+
+  useEffect(() => {
+    const draft = loadRequestDraft(user);
+    if (!draft || draft.requestType !== 'campaign_request') return;
+
+    const draftTitle = draft.title || '';
+    const draftDepartment = draft.requesterDepartment || user?.department || '';
+    const draftPhone = draft.requesterPhone || formatIndianPhoneInput(user?.phone);
+    const draftBrief = draft.description || '';
+    const draftDeadlineMode = draft.deadlineMode || 'common';
+    const draftCommonDeadline = draft.commonDeadline ? new Date(draft.commonDeadline) : minDeadlineDate;
+    const draftAttachments = (draft.files || []).map((file) => ({
+      ...file,
+      uploading: false,
+    }));
+    const draftCollaterals = (draft.collaterals || []).map(hydrateDraftCollateral);
+
+    setRequestTitle(draftTitle);
+    setDepartment(draftDepartment);
+    setRequesterPhone(draftPhone);
+    setOverallBrief(draftBrief);
+    setDeadlineMode(draftDeadlineMode);
+    setCommonDeadline(draftCommonDeadline);
+    setMasterAttachments(draftAttachments);
+    setCollaterals(draftCollaterals);
+    setCurrentStep(
+      resolveWizardStep({
+        title: draftTitle,
+        department: draftDepartment,
+        requesterPhone: draftPhone,
+        brief: draftBrief,
+        deadlineMode: draftDeadlineMode,
+        commonDeadline: draftCommonDeadline,
+        collaterals: draftCollaterals,
+        masterAttachments: draftAttachments,
+      })
+    );
+    toast.message('Draft restored.');
+  }, [user?.department, user?.email, user?.id, user?.phone]);
+
+  const summary = useMemo(() => {
+    const effectiveDeadline = deriveEffectiveDeadline(collaterals, {
+      deadlineMode,
+      commonDeadline,
+    });
+    const masterReferenceCount = masterAttachments.filter((attachment) => !attachment.error).length;
+    const collateralReferenceCount = collaterals.reduce(
+      (total, collateral) =>
+        total + collateral.referenceFiles.filter((attachment) => !attachment.error).length,
+      0
+    );
+    return {
+      collateralCount: collaterals.length,
+      masterReferenceCount,
+      collateralReferenceCount,
+      totalReferenceCount: masterReferenceCount + collateralReferenceCount,
+      effectiveDeadline,
+      taskCategory: deriveTaskCategoryFromCollaterals(collaterals),
+      urgency: deriveTaskUrgencyFromCollaterals(collaterals),
+    };
+  }, [collaterals, commonDeadline, deadlineMode, masterAttachments]);
+
+  const campaignValidationMessage = useMemo(
     () =>
-      readyAttachments
-        .map((file) => file.extractedContent || file.name)
-        .filter(Boolean)
-        .join('\n\n'),
-    [readyAttachments]
+      validateCampaignStep({
+        title: requestTitle,
+        department,
+        requesterPhone,
+        brief: overallBrief,
+      }),
+    [department, overallBrief, requestTitle, requesterPhone]
   );
-  const attachmentQueueSummary = useMemo(() => {
-    const total = files.length;
-    const uploading = files.filter((file) => file.uploading).length;
-    const failed = files.filter((file) => file.error).length;
-    const ready = files.filter((file) => !file.uploading && !file.error).length;
-    const completedProgress = files.reduce((sum, file) => {
-      if (file.error) return sum;
-      if (file.uploading) {
-        const progressValue = Number(file.progress ?? 0);
-        const normalizedProgress = Math.max(0, Math.min(100, progressValue));
-        return sum + normalizedProgress;
-      }
-      return sum + 100;
-    }, 0);
-    const overallProgress = total > 0 ? Math.round(completedProgress / total) : 0;
-    return {
-      total,
-      uploading,
-      failed,
-      ready,
-      overallProgress,
-    };
-  }, [files]);
-  const isAttachmentQueueComplete =
-    attachmentQueueSummary.total > 0 &&
-    attachmentQueueSummary.uploading === 0 &&
-    attachmentQueueSummary.failed === 0 &&
-    attachmentQueueSummary.ready === attachmentQueueSummary.total;
-  const hasAttachmentQueueIssues = attachmentQueueSummary.failed > 0;
-  const attachmentQueueStatusText = isAttachmentQueueComplete
-    ? `${attachmentQueueSummary.ready} completed, ready to submit`
-    : `${attachmentQueueSummary.uploading} uploading, ${attachmentQueueSummary.ready} ready, ${attachmentQueueSummary.failed} issues`;
-  const attachmentQueuePrimaryLabel =
-    attachmentQueueSummary.uploading > 0
-      ? `Uploading ${attachmentQueueSummary.total} item${attachmentQueueSummary.total === 1 ? '' : 's'} (${attachmentQueueSummary.overallProgress}%)`
-      : hasAttachmentQueueIssues
-        ? `${attachmentQueueSummary.ready} completed, ${attachmentQueueSummary.failed} issue${attachmentQueueSummary.failed === 1 ? '' : 's'}`
-        : `${attachmentQueueSummary.ready} item${attachmentQueueSummary.ready === 1 ? '' : 's'} completed`;
-  const attachmentQueueFooterText =
-    attachmentQueueSummary.uploading > 0
-      ? `Upload in progress: ${attachmentQueueSummary.overallProgress}%`
-      : hasAttachmentQueueIssues
-        ? `${attachmentQueueSummary.failed} item${attachmentQueueSummary.failed === 1 ? '' : 's'} need attention before submit.`
-        : `${attachmentQueueSummary.ready} completed, ready to submit`;
-  const isAttachmentQueueUploading = attachmentQueueSummary.uploading > 0;
-  const shouldCompactAttachmentQueue = files.length > 6;
-  const attachmentQueueMaxHeightClass = shouldCompactAttachmentQueue
-    ? isAttachmentQueueExpanded
-      ? 'max-h-[30rem]'
-      : 'max-h-[16rem]'
-    : '';
-  const getAttachmentPreviewCandidates = (file?: UploadedFile | null) => {
-    if (!file || getAttachmentPreviewKind(file.name) === 'none' || file.uploading || file.error) {
-      return [] as string[];
-    }
-    const localPreviewUrl = String(file.localPreviewUrl || '').trim();
-    const driveId = String(file.driveId || '').trim();
-    const apiDownloadUrl =
-      driveId && apiUrl ? `${apiUrl}/api/files/download/${encodeURIComponent(driveId)}` : '';
-    const webContentLink = String(file.webContentLink || '').trim();
-    const url = String(file.url || '').trim();
-    const thumbnailUrl = String(file.thumbnailUrl || '').trim();
-    const drivePreviewUrl =
-      driveId
-        ? buildDrivePreviewUrl(driveId) || `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveId)}&sz=w1600`
-        : '';
-    return Array.from(
-      new Set(
-        [localPreviewUrl, apiDownloadUrl, webContentLink, url, drivePreviewUrl, thumbnailUrl]
-          .map((value) => String(value || '').trim())
-          .filter(Boolean)
-      )
-    );
+
+  const timelineValidationMessage = useMemo(
+    () =>
+      validateTimelineStep({
+        deadlineMode,
+        commonDeadline,
+        masterAttachments,
+      }),
+    [commonDeadline, deadlineMode, masterAttachments]
+  );
+
+  const collateralValidationMessage = useMemo(
+    () =>
+      validateCollateralsStep({
+        deadlineMode,
+        commonDeadline,
+        collaterals,
+      }),
+    [collaterals, commonDeadline, deadlineMode]
+  );
+
+  const reviewValidationMessage = useMemo(
+    () =>
+      validateBuilder({
+        title: requestTitle,
+        department,
+        requesterPhone,
+        brief: overallBrief,
+        deadlineMode,
+        commonDeadline,
+        collaterals,
+        masterAttachments,
+      }),
+    [
+      collaterals,
+      commonDeadline,
+      deadlineMode,
+      department,
+      masterAttachments,
+      overallBrief,
+      requestTitle,
+      requesterPhone,
+    ]
+  );
+
+  const validationMessages: Record<BuilderStepId, string> = {
+    campaign: campaignValidationMessage,
+    timeline: timelineValidationMessage,
+    collaterals: collateralValidationMessage,
+    review: reviewValidationMessage,
   };
-  const isAttachmentPreviewable = (file?: UploadedFile | null) =>
-    getAttachmentPreviewCandidates(file).length > 0;
-  const attachmentPreviewKind = attachmentPreviewFile
-    ? getAttachmentPreviewKind(attachmentPreviewFile.name)
-    : 'none';
-  const clampAttachmentPreviewPan = (pan: { x: number; y: number }, zoom: number) => {
-    const viewport = attachmentPreviewViewportRef.current;
-    if (!viewport || zoom <= 1) return { x: 0, y: 0 };
-    const limitX = Math.max(0, ((zoom - 1) * viewport.clientWidth) / 2);
-    const limitY = Math.max(0, ((zoom - 1) * viewport.clientHeight) / 2);
-    return {
-      x: Math.max(-limitX, Math.min(limitX, pan.x)),
-      y: Math.max(-limitY, Math.min(limitY, pan.y)),
-    };
-  };
-  const resetAttachmentPreviewTransform = () => {
-    attachmentPreviewDragRef.current = null;
-    setIsAttachmentPreviewDragging(false);
-    setAttachmentPreviewZoom(1);
-    setAttachmentPreviewPan({ x: 0, y: 0 });
-  };
-  const updateAttachmentPreviewZoom = (nextZoom: number) => {
-    const normalizedZoom = Math.max(1, Math.min(5, Number(nextZoom.toFixed(2))));
-    setAttachmentPreviewZoom(normalizedZoom);
-    setAttachmentPreviewPan((prev) =>
-      normalizedZoom <= 1 ? { x: 0, y: 0 } : clampAttachmentPreviewPan(prev, normalizedZoom)
-    );
-    if (normalizedZoom <= 1) {
-      attachmentPreviewDragRef.current = null;
-      setIsAttachmentPreviewDragging(false);
-    }
-  };
-  const handleAttachmentPreviewWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
-    if (!attachmentPreviewUrl || attachmentPreviewKind !== 'image') return;
-    event.preventDefault();
-    const delta = event.deltaY < 0 ? 0.2 : -0.2;
-    updateAttachmentPreviewZoom(attachmentPreviewZoom + delta);
-  };
-  const handleAttachmentPreviewPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (attachmentPreviewKind !== 'image' || attachmentPreviewZoom <= 1) return;
-    attachmentPreviewDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: attachmentPreviewPan.x,
-      originY: attachmentPreviewPan.y,
-    };
-    setIsAttachmentPreviewDragging(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-  const handleAttachmentPreviewPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const dragState = attachmentPreviewDragRef.current;
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    const nextPan = {
-      x: dragState.originX + (event.clientX - dragState.startX),
-      y: dragState.originY + (event.clientY - dragState.startY),
-    };
-    setAttachmentPreviewPan(clampAttachmentPreviewPan(nextPan, attachmentPreviewZoom));
-  };
-  const handleAttachmentPreviewPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const dragState = attachmentPreviewDragRef.current;
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    attachmentPreviewDragRef.current = null;
-    setIsAttachmentPreviewDragging(false);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  };
-  const hasDraftableChanges = useMemo(() => {
-    const normalizedCurrentPhone = normalizeIndianPhone(requesterPhone);
-    const normalizedDefaultPhone = normalizeIndianPhone(defaultRequesterPhone);
-    return Boolean(
-      title.trim() ||
-        description.trim() ||
-        category ||
-        urgency !== 'normal' ||
-        deadline ||
-        isEmergency ||
-        normalizedCurrentPhone !== normalizedDefaultPhone ||
-        files.length > 0
-    );
-  }, [
-    category,
-    deadline,
-    defaultRequesterPhone,
-    description,
-    files.length,
-    isEmergency,
-    requesterPhone,
-    title,
-    urgency,
-  ]);
-  const attachmentPreviewUrl = attachmentPreviewResolvedUrl;
 
-  useEffect(() => {
-    latestFilesRef.current = files;
-  }, [files]);
+  const currentStepIndex = BUILDER_STEPS.findIndex((step) => step.id === currentStep);
+  const furthestUnlockedStepIndex = campaignValidationMessage
+    ? 0
+    : timelineValidationMessage
+      ? 1
+      : collateralValidationMessage
+        ? 2
+        : 3;
 
-  useEffect(() => {
-    resetAttachmentPreviewTransform();
-  }, [attachmentPreviewFile?.id, attachmentPreviewResolvedUrl]);
+  const footerNote = validationMessages[currentStep]
+    ? validationMessages[currentStep]
+    : currentStep === 'review'
+      ? 'Everything looks ready. Submit the request to create one parent campaign with structured collateral items.'
+      : 'Current step is complete. Continue to the next step.';
 
-  useEffect(() => {
-    const revokePreviewObjectUrl = () => {
-      if (attachmentPreviewObjectUrlRef.current) {
-        URL.revokeObjectURL(attachmentPreviewObjectUrlRef.current);
-        attachmentPreviewObjectUrlRef.current = null;
-      }
-    };
-
-    const activeFile = attachmentPreviewFile;
-    const candidates = getAttachmentPreviewCandidates(activeFile);
-    if (!activeFile || candidates.length === 0) {
-      revokePreviewObjectUrl();
-      setAttachmentPreviewResolvedUrl('');
-      setAttachmentPreviewState(activeFile ? 'error' : 'idle');
-      return;
-    }
-
-    let cancelled = false;
-    setAttachmentPreviewState('loading');
-    setAttachmentPreviewResolvedUrl('');
-
-    const previewKind = getAttachmentPreviewKind(activeFile.name);
-    const expectedMime = inferPreviewMimeType(activeFile.name);
-
-    const loadImageElement = (src: string, timeoutMs = 8000) =>
-      new Promise<string>((resolve, reject) => {
-        let settled = false;
-        const image = new window.Image();
-
-        const cleanup = () => {
-          image.onload = null;
-          image.onerror = null;
-          window.clearTimeout(timeoutId);
-        };
-        const settle = (callback: () => void) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          callback();
-        };
-        const timeoutId = window.setTimeout(() => {
-          settle(() => reject(new Error(`Image load timed out for ${src}`)));
-        }, timeoutMs);
-
-        image.onload = () => settle(() => resolve(src));
-        image.onerror = () => settle(() => reject(new Error(`Image load failed for ${src}`)));
-        image.src = src;
-      });
-
-    const shouldAttemptAuthenticatedFetch = (src: string) => {
-      if (!src) return false;
-      try {
-        const parsed = new URL(src, window.location.origin);
-        const isSameOrigin = parsed.origin === window.location.origin;
-        const isApiDownloadPath = parsed.pathname.includes('/api/files/download/');
-        return isSameOrigin || isApiDownloadPath;
-      } catch {
-        return src.startsWith('/') || src.includes('/api/files/download/');
-      }
-    };
-
-    const resolvePreview = async () => {
-      revokePreviewObjectUrl();
-      for (const candidate of candidates) {
-        if (shouldAttemptAuthenticatedFetch(candidate)) {
-          try {
-            const response = await authFetch(candidate);
-            if (response.ok) {
-              const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-              if (
-                contentType.includes('text/html') ||
-                contentType.includes('application/json')
-              ) {
-                continue;
-              }
-              const rawBlob = await response.blob();
-              if (rawBlob && rawBlob.size > 0) {
-                const blob =
-                  expectedMime && (!rawBlob.type || rawBlob.type === 'application/octet-stream')
-                    ? new Blob([rawBlob], { type: expectedMime })
-                    : rawBlob;
-                const objectUrl = URL.createObjectURL(blob);
-                attachmentPreviewObjectUrlRef.current = objectUrl;
-                if (previewKind === 'image') {
-                  await loadImageElement(objectUrl);
-                }
-                if (cancelled) return;
-                setAttachmentPreviewResolvedUrl(objectUrl);
-                setAttachmentPreviewState('ready');
-                return;
-              }
-            }
-          } catch {
-            // Fall through to direct candidate loading.
-          }
-        }
-
-        if (previewKind === 'image') {
-          try {
-            await loadImageElement(candidate);
-            if (cancelled) return;
-            setAttachmentPreviewResolvedUrl(candidate);
-            setAttachmentPreviewState('ready');
-            return;
-          } catch {
-            // Try the next candidate.
-          }
-        }
-
-        if (previewKind === 'pdf') {
-          if (cancelled) return;
-          setAttachmentPreviewResolvedUrl(candidate);
-          setAttachmentPreviewState('ready');
-          return;
-        }
-      }
-
-      if (cancelled) return;
-      revokePreviewObjectUrl();
-      setAttachmentPreviewResolvedUrl('');
-      setAttachmentPreviewState('error');
-    };
-
-    resolvePreview();
-
-    return () => {
-      cancelled = true;
-      revokePreviewObjectUrl();
-    };
-  }, [attachmentPreviewFile, apiUrl]);
-
-  const getPersistableDraftFiles = (sourceFiles: UploadedFile[]) =>
-    sourceFiles
-      .filter((file) => !file.uploading && !file.error)
-      .map((file) => ({
+  const saveDraft = () => {
+    const payload: RequestDraftPayload = {
+      title: requestTitle,
+      description: overallBrief,
+      category: deriveTaskCategoryFromCollaterals(collaterals),
+      urgency: deriveTaskUrgencyFromCollaterals(collaterals),
+      deadline: commonDeadline?.toISOString() || '',
+      hasDeadlineInteracted: Boolean(commonDeadline),
+      isEmergency: false,
+      requesterPhone,
+      files: masterAttachments.map((file) => ({
         id: file.id,
         name: file.name,
         size: file.size,
@@ -984,2000 +521,812 @@ export default function NewRequest() {
         webViewLink: file.webViewLink,
         webContentLink: file.webContentLink,
         thumbnailUrl: file.thumbnailUrl,
-      }));
-
-  const buildRequestDraftPayload = (sourceFiles: UploadedFile[]): RequestDraftPayload => ({
-    title,
-    description,
-    category,
-    urgency,
-    deadline: deadline ? deadline.toISOString() : '',
-    hasDeadlineInteracted,
-    isEmergency,
-    requesterPhone,
-    files: getPersistableDraftFiles(sourceFiles),
-    savedAt: new Date().toISOString(),
-  });
-
-  const applySavedDraft = (draft: RequestDraftPayload) => {
-    setTitle(String(draft.title || ''));
-    setDescription(String(draft.description || ''));
-    setCategory((draft.category as TaskCategory | '') || '');
-    setUrgency((draft.urgency as TaskUrgency) || 'normal');
-    const parsedDeadline = draft.deadline ? new Date(draft.deadline) : null;
-    setDeadline(parsedDeadline && !isNaN(parsedDeadline.getTime()) ? parsedDeadline : null);
-    setHasDeadlineInteracted(Boolean(draft.hasDeadlineInteracted || draft.deadline));
-    setIsEmergency(Boolean(draft.isEmergency));
-    setRequesterPhone(String(draft.requesterPhone || defaultRequesterPhone));
-    const restoredFiles = Array.isArray(draft.files)
-      ? draft.files.map((file) => ({
-          ...file,
-          uploading: false,
-          progress: 100,
-          error: undefined,
-        }))
-      : [];
-    setFiles(restoredFiles);
-    setIsAttachmentQueueExpanded(true);
-  };
-
-  const clearSavedDraft = () => {
-    clearRequestDraft(user);
-  };
-
-  const cancelTrackedUpload = (id: string) => {
-    const xhr = activeUploadRequestsRef.current.get(id);
-    if (!xhr) return false;
-    cancelledUploadIdsRef.current.add(id);
-    xhr.abort();
-    activeUploadRequestsRef.current.delete(id);
-    return true;
-  };
-
-  const stopActiveUploads = () => {
-    const activeIds = Array.from(activeUploadRequestsRef.current.keys());
-    activeIds.forEach((id) => {
-      cancelledUploadIdsRef.current.add(id);
-      const xhr = activeUploadRequestsRef.current.get(id);
-      xhr?.abort();
-      activeUploadRequestsRef.current.delete(id);
-    });
-    return activeIds.length;
-  };
-
-  const handleSaveDraft = (options?: { navigateAfter?: boolean }) => {
-    if (typeof window === 'undefined') return;
-    if (!hasDraftableChanges) {
-      toast.message('Nothing to save yet.');
-      return;
-    }
-    const navigateAfter = options?.navigateAfter === true;
-    const uploadingCount = files.filter((file) => file.uploading).length;
-    const filesForDraft = navigateAfter ? files.filter((file) => !file.uploading) : files;
-    const payload = buildRequestDraftPayload(filesForDraft);
-
-    if (navigateAfter && uploadingCount > 0) {
-      stopActiveUploads();
-      setFiles((prev) => prev.filter((file) => !file.uploading));
-    }
-
+      })),
+      requestType: 'campaign_request',
+      deadlineMode,
+      commonDeadline: commonDeadline?.toISOString(),
+      collaterals: collaterals.map(mapDraftCollateral),
+      requesterDepartment: department,
+      savedAt: new Date().toISOString(),
+    };
     saveRequestDraft(user, payload);
-    toast.success(
-      uploadingCount > 0
-        ? navigateAfter
-          ? `Draft saved. ${uploadingCount} active uploads were cancelled.`
-          : `Draft saved. ${uploadingCount} active uploads are still running and not included yet.`
-        : 'Draft saved.'
-    );
-
-    if (navigateAfter) {
-      setShowCancelDraftDialog(false);
-      navigate('/dashboard');
-    }
+    toast.success('Draft saved.');
   };
 
-  const handleDiscardAndExit = () => {
-    stopActiveUploads();
-    clearSavedDraft();
-    setShowCancelDraftDialog(false);
-    navigate('/dashboard');
-  };
-
-  const handleCancelRequest = () => {
-    if (!hasDraftableChanges) {
-      navigate('/dashboard');
+  const handleStepChange = (nextStep: BuilderStepId) => {
+    const targetIndex = BUILDER_STEPS.findIndex((step) => step.id === nextStep);
+    if (targetIndex <= furthestUnlockedStepIndex) {
+      setCurrentStep(nextStep);
       return;
     }
-    setShowCancelDraftDialog(true);
+
+    const blockingStep = BUILDER_STEPS[Math.max(0, targetIndex - 1)].id;
+    toast.error(validationMessages[blockingStep] || 'Complete the previous step first.');
   };
 
-  const applyAiDraft = (draft: TaskDraft) => {
-    const normalizedTitle = String((draft as IncomingAiDraft).title || (draft as IncomingAiDraft).requestTitle || '');
-    const normalizedDescription = String((draft as IncomingAiDraft).description || '');
-    const normalizedCategory = normalizeIncomingAiCategory((draft as IncomingAiDraft).category);
-    const normalizedUrgency = normalizeIncomingAiUrgency((draft as IncomingAiDraft).urgency);
-    const normalizedDeadline = String((draft as IncomingAiDraft).deadline || '');
-    const normalizedPhone =
-      Array.isArray((draft as IncomingAiDraft).whatsappNumbers) && (draft as IncomingAiDraft).whatsappNumbers?.length
-        ? String((draft as IncomingAiDraft).whatsappNumbers?.[0] || '')
-        : String((draft as IncomingAiDraft).phone || '');
-
-    setTitle(normalizedTitle);
-    setDescription(normalizedDescription);
-    setCategory(normalizedCategory);
-    setUrgency(normalizedUrgency);
-    if (normalizedDeadline) {
-      const parsedDate = new Date(normalizedDeadline);
-      if (!isNaN(parsedDate.getTime())) {
-        setDeadline(parsedDate);
-        setHasDeadlineInteracted(true);
-      }
-    }
-    if (normalizedPhone) {
-      setRequesterPhone(formatIndianPhoneInput(normalizedPhone));
-    }
-    const incomingFiles = Array.isArray((draft as IncomingAiDraft).files)
-      ? (draft as IncomingAiDraft).files
-      : Array.isArray(locationState?.aiDraftFiles)
-        ? locationState.aiDraftFiles
-        : [];
-    if (incomingFiles.length > 0) {
-      setFiles(
-        incomingFiles.map((file) => ({
-          ...file,
-          uploading: false,
-          progress: 100,
-          error: undefined,
-        }))
-      );
-      setIsAttachmentQueueExpanded(true);
-    }
-  };
-  // Initialize from AI Buddy state if provided
-  useEffect(() => {
-    if (locationState?.aiDraft) {
-      const draft = locationState.aiDraft as IncomingAiDraft;
-      if (draft) {
-        applyAiDraft(draft as TaskDraft);
-        toast.success("AI Buddy: Draft applied to form!");
-        return;
-      }
-    }
-  }, [locationState?.aiDraft, locationState?.aiDraftFiles]);
-
-  useEffect(() => {
-    if (!locationState?.openTaskBuddy) return;
-    if (!hasAcceptedSubmissionPolicy) return;
-    setIsTaskBuddyOpen(true);
-  }, [hasAcceptedSubmissionPolicy, locationState?.openTaskBuddy]);
-
-  useEffect(() => {
-    const accepted = readStoredSubmissionPolicyAcceptance(submissionPolicyStorageKey);
-    setHasAcceptedSubmissionPolicy(accepted);
-    setIsSubmissionPolicyChecked(accepted);
-  }, [submissionPolicyStorageKey]);
-
-  const glassPanelClass =
-    'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border-0 ring-1 ring-black/5 rounded-2xl shadow-none dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:ring-white/5';
-  const glassInputClass =
-    'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg text-[12.5px] font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF] dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus-visible:ring-primary/40 dark:focus-visible:border-slate-500/60';
-  const queueGlassCardClass =
-    'relative overflow-hidden rounded-[22px] border border-[#CBD9FF]/60 bg-gradient-to-br from-white/92 via-[#F8FBFF]/84 to-[#E8F1FF]/86 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-[#F8FBFF]/62 supports-[backdrop-filter]:to-[#E8F1FF]/64 backdrop-blur-2xl shadow-none ring-1 ring-white/60 dark:border-border dark:bg-card/78 dark:bg-none dark:ring-0';
-  const queueActionButtonClass =
-    'inline-flex h-8 items-center rounded-full border border-[#D3E1FF] bg-gradient-to-r from-white/88 via-[#F3F7FF]/80 to-[#EAF2FF]/86 px-3 text-xs font-semibold text-[#223467] shadow-none transition-all duration-150 hover:border-[#C4D6FF] hover:bg-[#EEF4FF] dark:border-slate-700/60 dark:bg-slate-900/72 dark:text-slate-200 dark:hover:bg-slate-900/82';
-  const policyPillClass =
-    'inline-flex items-center rounded-full border border-[#C7D8FF]/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.2),rgba(74,118,255,0.14),rgba(99,102,241,0.18))] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#5A6887] shadow-none dark:border-[#5474B6]/45 dark:bg-[linear-gradient(135deg,rgba(48,67,116,0.92),rgba(67,94,167,0.78),rgba(76,92,176,0.74))] dark:text-white';
-  const policyStatusPillClass =
-    'inline-flex items-center rounded-full border border-[#C9D7FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(238,244,255,0.84))] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#5A6986] shadow-none dark:border-[#4A66A3]/70 dark:bg-[linear-gradient(135deg,rgba(28,45,84,0.96),rgba(35,53,94,0.92))] dark:text-[#E3ECFF]';
-  const queueDangerButtonClass =
-    'inline-flex h-8 items-center rounded-full border border-[#D3E1FF] bg-gradient-to-r from-white/88 via-[#F3F7FF]/80 to-[#EAF2FF]/86 px-3 text-xs font-semibold text-[#223467] shadow-none transition-all duration-150 hover:border-[#C4D6FF] hover:bg-[#EEF4FF] dark:border-slate-700/60 dark:bg-slate-900/72 dark:text-slate-200 dark:hover:bg-slate-900/82';
-  const queueFileRowClass =
-    'flex items-start justify-between gap-3 rounded-[18px] border border-[#D7E3FF]/80 bg-gradient-to-r from-white/85 via-[#F4F8FF]/74 to-[#EAF2FF]/82 px-4 py-2.5 supports-[backdrop-filter]:from-white/62 supports-[backdrop-filter]:via-[#F4F8FF]/54 supports-[backdrop-filter]:to-[#EAF2FF]/58 backdrop-blur-xl shadow-none dark:border-slate-700/60 dark:bg-[linear-gradient(135deg,rgba(11,21,44,0.76),rgba(15,28,58,0.72),rgba(18,37,76,0.68))]';
-  const queueIconButtonClass =
-    'shrink-0 rounded-full border border-[#D8E4FF] bg-white/60 p-1.5 text-[#6D7FA8] shadow-none transition-colors hover:border-[#C4D6FF] hover:bg-[#F1F6FF] hover:text-[#223467] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground';
-  const queuePanelRowClass =
-    'rounded-xl border border-[#CFE0FF] bg-white/95 px-3 py-2.5 shadow-none dark:border-border dark:bg-slate-900/70';
-  const queueCollapseButtonClass =
-    'inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted';
-
-  // Minimum deadline is 3 office-working days from now.
-  const todayDate = startOfDay(new Date());
-  const minDeadlineDate = addOfficeOpenDays(new Date(), 3);
-  const designerId = getDefaultDesignerId(scheduleTasks);
-  const invalidRanges = useMemo(
-    () => buildInvalidRanges(scheduleTasks, designerId),
-    [designerId, scheduleTasks]
-  );
-  const hasDesignerConflict = (value: Date) =>
-    invalidRanges.some((range) =>
-      isWithinInterval(startOfDay(value), {
-        start: startOfDay(range.start),
-        end: startOfDay(range.end),
-      })
-    );
-  const isDateSuggestionAvailable = (value: Date) => {
-    const normalizedValue = startOfDay(value);
-    if (isBefore(normalizedValue, todayDate)) return false;
-    if (isOfficeClosedDate(normalizedValue)) return false;
-    if (hasDesignerConflict(normalizedValue)) return false;
-    if (!isEmergency && isBefore(normalizedValue, minDeadlineDate)) return false;
-    return true;
-  };
-  const isDateBlocked = (value: Date) =>
-    isOfficeClosedDate(value) || (!isEmergency && hasDesignerConflict(value));
-  const getDeadlineCalendarDayMeta = (value: Date) => {
-    const normalizedValue = startOfDay(value);
-    const holidayName = getOfficeGovernmentHolidayName(normalizedValue);
-    const isSunday = normalizedValue.getDay() === 0;
-    const isSaturday = normalizedValue.getDay() === 6;
-    const hasConflict = hasDesignerConflict(normalizedValue);
-    const isPastDate = isBefore(normalizedValue, todayDate);
-    const isInsideLeadWindow =
-      !isEmergency && !isPastDate && isBefore(normalizedValue, minDeadlineDate);
-
-    let title = '';
-    let dotColor = '';
-    let textColor = '';
-    const mutedMarkerColor = '#94A3B8';
-
-    if (holidayName) {
-      title = `${holidayName} holiday in ${OFFICE_REGION_LABEL}`;
-      dotColor = mutedMarkerColor;
-    } else if (isSunday) {
-      title = 'Sunday';
-      dotColor = mutedMarkerColor;
-    } else if (isSaturday) {
-      title = 'Saturday';
-      dotColor = mutedMarkerColor;
-    }
-
-    if (hasConflict) {
-      title = title
-        ? `${title} | Designer already has scheduled work`
-        : 'Designer already has scheduled work';
-      if (!dotColor) {
-        dotColor = mutedMarkerColor;
-      }
-    }
-
-    if (!title && isInsideLeadWindow) {
-      title = 'Inside the 3-working-day lead window';
-    }
-
-    return {
-      title,
-      dotColor,
-      textColor,
-      shouldShowDot: Boolean(dotColor),
-    };
-  };
-  const getNextAvailableDeadline = (baseDate: Date) => {
-    let candidate = startOfDay(baseDate);
-    if (isBefore(candidate, todayDate)) {
-      candidate = todayDate;
-    }
-    if (!isEmergency && isBefore(candidate, minDeadlineDate)) {
-      candidate = minDeadlineDate;
-    }
-    let attempts = 0;
-    while (isDateBlocked(candidate) && attempts < 180) {
-      candidate = addDays(candidate, 1);
-      attempts += 1;
-    }
-    return candidate;
-  };
-  const freeDateSuggestions = useMemo(() => {
-    const suggestions: Date[] = [];
-    let candidate = startOfDay(isEmergency ? todayDate : minDeadlineDate);
-    let attempts = 0;
-
-    while (suggestions.length < FREE_DATE_SUGGESTION_COUNT && attempts < 90) {
-      if (isDateSuggestionAvailable(candidate)) {
-        suggestions.push(candidate);
-      }
-      candidate = addDays(candidate, 1);
-      attempts += 1;
-    }
-
-    return suggestions;
-  }, [invalidRanges, isEmergency, minDeadlineDate, todayDate]);
-  const selectedDeadlineKey = deadline ? format(startOfDay(deadline), 'yyyy-MM-dd') : '';
-  const pickerPortalContainer = typeof document === 'undefined' ? undefined : document.body;
-  const scheduleEndpoint =
-    apiUrl && user?.role === 'staff'
-      ? `${apiUrl}/api/tasks/availability`
-      : apiUrl
-        ? `${apiUrl}/api/tasks`
-        : '';
-
-  useEffect(() => {
-    if (!apiUrl) {
-      setScheduleTasks([]);
+  const handleNextStep = () => {
+    const validationMessage = validationMessages[currentStep];
+    if (validationMessage) {
+      toast.error(validationMessage);
       return;
     }
-    let isActive = true;
-    const loadSchedule = async () => {
-      try {
-        const response = await authFetch(scheduleEndpoint);
-        if (!response.ok) {
-          throw new Error('Failed to load tasks');
-        }
-        const data = await response.json();
-        if (!isActive) return;
-        setScheduleTasks(buildScheduleFromTasks(data));
-      } catch {
-        if (!isActive) return;
-        setScheduleTasks([]);
-      }
-    };
-    loadSchedule();
-    return () => {
-      isActive = false;
-    };
-  }, [apiUrl, scheduleEndpoint]);
 
-  useEffect(() => {
-    let isActive = true;
-
-    const fetchAnimation = async (path: string) => {
-      const response = await fetch(path);
-      return response.ok ? response.json() : null;
-    };
-
-    Promise.all([
-      fetchAnimation('/lottie/thank-you.json'),
-      fetchAnimation('/lottie/upload-file.json'),
-    ])
-      .then(([thankYouData, uploadData]) => {
-        if (!isActive) return;
-        if (thankYouData) setThankYouAnimation(thankYouData);
-        if (uploadData) setUploadAnimation(uploadData);
-      })
-      .catch(() => { });
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    setRequesterPhone(defaultRequesterPhone);
-  }, [defaultRequesterPhone]);
-
-  useEffect(() => {
-    if (lastDraftStorageKeyRef.current !== draftStorageKey) {
-      hasRestoredDraftRef.current = false;
-      lastDraftStorageKeyRef.current = draftStorageKey;
+    const nextStep = BUILDER_STEPS[currentStepIndex + 1];
+    if (nextStep) {
+      setCurrentStep(nextStep.id);
     }
-  }, [draftStorageKey]);
-
-  useEffect(() => {
-    if (hasRestoredDraftRef.current) return;
-    if (locationState?.aiDraft) return;
-    if (!locationState?.restoreDraft) {
-      hasRestoredDraftRef.current = true;
-      return;
-    }
-    if (typeof window === 'undefined') return;
-    const parsed = loadRequestDraft(user);
-    if (!parsed) {
-      hasRestoredDraftRef.current = true;
-      return;
-    }
-    applySavedDraft(parsed);
-    hasRestoredDraftRef.current = true;
-    toast.message(
-      parsed.savedAt
-        ? `Draft restored from ${format(new Date(parsed.savedAt), 'd MMM, h:mm a')}.`
-        : 'Draft restored.'
-    );
-  }, [draftStorageKey, locationState?.aiDraft, locationState?.restoreDraft, user]);
-
-  useEffect(() => {
-    if (defaultsApplied) return;
-    const saved = localStorage.getItem('designhub:requestDefaults');
-    if (!saved) return;
-    try {
-      const parsed = JSON.parse(saved);
-      if (!category && parsed.category) {
-        setCategory(parsed.category as TaskCategory);
-      }
-      if (parsed.urgency && urgency === 'normal') {
-        setUrgency(parsed.urgency as TaskUrgency);
-      }
-      if (!deadline && typeof parsed.deadlineBufferDays === 'number') {
-        const bufferDays = Math.max(0, parsed.deadlineBufferDays);
-        setDeadline(getNextAvailableDeadline(addDays(new Date(), bufferDays)));
-      }
-      setDefaultsApplied(true);
-    } catch {
-      setDefaultsApplied(true);
-    }
-  }, [defaultsApplied, category, urgency, deadline]);
-
-  useEffect(() => {
-    if (hasDeadlineInteracted || !deadline) return;
-    const normalized = startOfDay(deadline);
-    const isPastDate = isBefore(normalized, todayDate);
-    const requiresMinLead = isBefore(normalized, minDeadlineDate);
-    const blockedDate = isDateBlocked(normalized);
-    if (!isPastDate && (!requiresMinLead || isEmergency) && !blockedDate) return;
-    const corrected = getNextAvailableDeadline(normalized);
-    if (corrected.getTime() !== normalized.getTime()) {
-      setDeadline(corrected);
-    }
-  }, [deadline, hasDeadlineInteracted, isEmergency, minDeadlineDate, invalidRanges, todayDate]);
-
-  const updateFile = (id: string, updates: Partial<UploadedFile>) => {
-    setFiles((prev) =>
-      prev.map((file) => (file.id === id ? { ...file, ...updates } : file))
-    );
   };
 
-  const revokeLocalPreviewUrl = (url?: string) => {
-    const previewUrl = String(url || '').trim();
-    if (!previewUrl || !previewUrl.startsWith('blob:')) return;
-    URL.revokeObjectURL(previewUrl);
+  const handlePreviousStep = () => {
+    const previousStep = BUILDER_STEPS[currentStepIndex - 1];
+    if (previousStep) {
+      setCurrentStep(previousStep.id);
+    }
   };
 
-  useEffect(
-    () => () => {
-      activeUploadRequestsRef.current.forEach((xhr) => xhr.abort());
-      activeUploadRequestsRef.current.clear();
-      cancelledUploadIdsRef.current.clear();
-      latestFilesRef.current.forEach((file) => revokeLocalPreviewUrl(file.localPreviewUrl));
-    },
-    []
-  );
-
-  const uploadFileWithProgress = (file: File, localId: string) =>
-    new Promise<void>((resolve) => {
-      if (!apiUrl) {
-        updateFile(localId, { uploading: false, progress: 100 });
-        resolve();
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const xhr = new XMLHttpRequest();
-      activeUploadRequestsRef.current.set(localId, xhr);
-      xhr.open('POST', `${apiUrl}/api/files/upload`);
-      const token = getAuthToken();
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      }
-
-      xhr.upload.onprogress = (event) => {
-        if (!event.lengthComputable) return;
-        const nextProgress = Math.round((event.loaded / event.total) * 100);
-        updateFile(localId, {
-          progress: nextProgress,
-          uploading: nextProgress < 100,
-        });
-      };
-
-      xhr.onload = () => {
-        activeUploadRequestsRef.current.delete(localId);
-        const wasCancelled = cancelledUploadIdsRef.current.has(localId);
-        cancelledUploadIdsRef.current.delete(localId);
-        if (wasCancelled) {
-          resolve();
-          return;
-        }
-        if (xhr.status < 200 || xhr.status >= 300) {
-          let errorMsg = 'Upload failed';
-          try {
-            const errData = JSON.parse(xhr.responseText);
-            errorMsg = errData.error || errData.message || errorMsg;
-          } catch { }
-          if (xhr.status === 401 || xhr.status === 403) {
-            errorMsg = token
-              ? 'Session expired. Please sign in again.'
-              : 'Please sign in to upload files.';
-          }
-          if (errorMsg === 'Upload failed') {
-            errorMsg = xhr.status
-              ? `Upload failed (HTTP ${xhr.status})`
-              : 'Upload failed (Unknown error)';
-          }
-
-          updateFile(localId, { uploading: false, error: errorMsg });
-
-          if (shouldPromptDriveReconnect(errorMsg)) {
-            toast.error('Google Drive Disconnected', {
-              description: 'Reconnect Drive access and try uploading again.',
-              action: {
-                label: 'Connect',
-                onClick: async () => {
-                  try {
-                    await openDriveReconnectWindow();
-                  } catch (error) {
-                    const message = error instanceof Error ? error.message : 'Failed to get auth URL';
-                    toast.error('Drive reconnect failed', { description: message });
-                  }
-                }
-              },
-              duration: 10000,
-            });
-          } else {
-            toast.error('File upload failed', { description: errorMsg });
-          }
-
-          resolve();
-          return;
-        }
-
-        let data: {
-          id?: string;
-          webViewLink?: string;
-          webContentLink?: string;
-          size?: number | string;
-          thumbnailLink?: string;
-          extractedContent?: string;
-        } | null =
-          null;
-        try {
-          data = JSON.parse(xhr.responseText) as {
-            id?: string;
-            webViewLink?: string;
-            webContentLink?: string;
-            size?: number | string;
-            thumbnailLink?: string;
-          };
-        } catch {
-          data = null;
-        }
-
-        const resolvedUrl = resolveUploadedDriveUrl(data);
-        if (!resolvedUrl) {
-          const errorMsg = 'Upload failed: file link missing. Please retry.';
-          updateFile(localId, { uploading: false, error: errorMsg });
-          toast.error('File upload failed', { description: errorMsg });
-          resolve();
-          return;
-        }
-
-        updateFile(localId, {
-          driveId: data?.id,
-          url: resolvedUrl,
-          webViewLink: data?.webViewLink,
-          webContentLink: data?.webContentLink,
-          thumbnailUrl: data?.thumbnailLink,
-          extractedContent: data?.extractedContent,
-          uploading: false,
-          progress: 100,
-        });
-        resolve();
-      };
-
-      xhr.onerror = () => {
-        activeUploadRequestsRef.current.delete(localId);
-        const wasCancelled = cancelledUploadIdsRef.current.has(localId);
-        cancelledUploadIdsRef.current.delete(localId);
-        if (wasCancelled) {
-          resolve();
-          return;
-        }
-        const errorMsg = 'Network error. Please check your connection.';
-        updateFile(localId, { uploading: false, error: errorMsg });
-        toast.error('File upload failed', { description: errorMsg });
-        resolve();
-      };
-
-      xhr.onabort = () => {
-        activeUploadRequestsRef.current.delete(localId);
-        cancelledUploadIdsRef.current.delete(localId);
-        resolve();
-      };
-
-      xhr.send(formData);
+  const handleSubmit = async () => {
+    const validationMessage = validateBuilder({
+      title: requestTitle,
+      department,
+      requesterPhone,
+      brief: overallBrief,
+      deadlineMode,
+      commonDeadline,
+      collaterals,
+      masterAttachments,
     });
 
-  const processFiles = async (selected: File[]) => {
-    if (selected.length === 0) return;
-    if (!apiUrl) {
-      const newFiles = selected.map((file) => ({
-        id: Math.random().toString(36).substr(2, 9),
-        name: file.name,
-        size: file.size,
-        localPreviewUrl:
-          getAttachmentPreviewKind(file.name) !== 'none' ? URL.createObjectURL(file) : undefined,
-        progress: 100,
-      }));
-      setFiles((prev) => [...prev, ...newFiles]);
+    if (validationMessage) {
+      toast.error(validationMessage);
       return;
     }
 
-    const pending = selected.map((file) => ({
-      id: Math.random().toString(36).substr(2, 9),
-      name: file.name,
-      size: file.size,
-      localPreviewUrl:
-        getAttachmentPreviewKind(file.name) !== 'none' ? URL.createObjectURL(file) : undefined,
-      uploading: true,
-      progress: 0,
+    const normalizedPhone = normalizeIndianPhone(requesterPhone);
+    const persistedCollaterals = collaterals.map((collateral) => ({
+      ...collateral,
+      deadline: deadlineMode === 'common' ? commonDeadline : collateral.deadline,
+      referenceFiles: toBuilderAttachmentRecord(collateral.referenceFiles, user?.id),
+      status: 'pending' as const,
     }));
-    setFiles((prev) => [...prev, ...pending]);
-
-    await Promise.all(
-      selected.map(async (file, index) => {
-        const localId = pending[index].id;
-        await uploadFileWithProgress(file, localId);
-      })
-    );
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const uploadedFiles = e.target.files;
-    if (!uploadedFiles) return;
-    await processFiles(Array.from(uploadedFiles));
-  };
-
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'copy';
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
-    const droppedFiles = Array.from(event.dataTransfer.files || []);
-    await processFiles(droppedFiles);
-  };
-
-  const removeFile = (id: string) => {
-    cancelTrackedUpload(id);
-    if (attachmentPreviewFile?.id === id) {
-      resetAttachmentPreviewTransform();
-      setAttachmentPreviewFile(null);
-    }
-    setFiles((prev) => {
-      const removedFile = prev.find((file) => file.id === id);
-      revokeLocalPreviewUrl(removedFile?.localPreviewUrl);
-      return prev.filter((file) => file.id !== id);
-    });
-  };
-
-  const handleCancelActiveUploads = () => {
-    const activeUploads = files.filter((file) => file.uploading);
-    if (activeUploads.length === 0) {
-      return;
-    }
-    activeUploads.forEach((file) => cancelTrackedUpload(file.id));
-    setFiles((prev) => {
-      prev
-        .filter((file) => file.uploading)
-        .forEach((file) => revokeLocalPreviewUrl(file.localPreviewUrl));
-      return prev.filter((file) => !file.uploading);
-    });
-    if (attachmentPreviewFile?.uploading) {
-      resetAttachmentPreviewTransform();
-      setAttachmentPreviewFile(null);
-    }
-    toast.message(
-      activeUploads.length === 1 ? 'Upload cancelled.' : `${activeUploads.length} uploads cancelled.`
-    );
-  };
-
-  const handleClearAttachmentQueue = () => {
-    activeUploadRequestsRef.current.forEach((xhr, id) => {
-      cancelledUploadIdsRef.current.add(id);
-      xhr.abort();
-    });
-    activeUploadRequestsRef.current.clear();
-    cancelledUploadIdsRef.current.clear();
-    files.forEach((file) => revokeLocalPreviewUrl(file.localPreviewUrl));
-    resetAttachmentPreviewTransform();
-    setAttachmentPreviewFile(null);
-    setFiles([]);
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
-
-  // Task Buddy AI Handler
-  const handleTaskBuddyDraft = (draft: TaskDraft) => {
-    const aiResponse = draft;
-    if (aiResponse) {
-      applyAiDraft(aiResponse);
-      toast.success('Draft added to the form. Review it and submit when ready.');
-      return;
-    }
-  };
-
-  const scrollToSubmissionPolicyCard = () => {
-    submissionPolicyCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  const handleOpenTaskBuddy = () => {
-    if (!hasAcceptedSubmissionPolicy) {
-      toast.error('Accept the submission policy first', {
-        description: 'Review and accept the one-time submission guidelines before creating a request.',
-      });
-      scrollToSubmissionPolicyCard();
+    const campaign = {
+      requestName: requestTitle.trim(),
+      brief: overallBrief.trim(),
+      deadlineMode,
+      commonDeadline,
+    };
+    const effectiveDeadline = deriveEffectiveDeadline(persistedCollaterals, campaign);
+    if (!effectiveDeadline) {
+      toast.error('Unable to derive a request deadline.');
       return;
     }
 
-    setIsTaskBuddyOpen(true);
-  };
-
-  const handleAcceptSubmissionPolicy = () => {
-    if (!isSubmissionPolicyChecked) {
-      toast.error('Confirmation required', {
-        description: 'Tick the acceptance checkbox to continue to the request form.',
-      });
-      scrollToSubmissionPolicyCard();
-      return;
-    }
-
-    persistSubmissionPolicyAcceptance(submissionPolicyStorageKey);
-    setHasAcceptedSubmissionPolicy(true);
-    toast.success('Submission policy accepted.');
-  };
-
-  const descriptionWordCount = countWords(description);
-  const hasMinimumDescriptionWords = descriptionWordCount >= MIN_DESCRIPTION_WORDS;
-
-  const isFormValid = () => {
-    const hasUploadsInProgress = files.some((file) => file.uploading);
-    const hasUploadErrors = files.some((file) => file.error);
-    const hasReadyAttachments = readyAttachments.length > 0;
-    const normalizedDeadline = deadline ? startOfDay(deadline) : null;
-    const deadlineValid = Boolean(
-      normalizedDeadline &&
-      !isBefore(normalizedDeadline, todayDate) &&
-      (isEmergency || !isBefore(normalizedDeadline, minDeadlineDate)) &&
-      !isDateBlocked(normalizedDeadline)
-    );
-    return (
-      hasAcceptedSubmissionPolicy &&
-      title.trim() &&
-      description.trim() &&
-      hasMinimumDescriptionWords &&
-      category &&
-      hasReadyAttachments &&
-      deadlineValid &&
-      !hasUploadsInProgress &&
-      !hasUploadErrors
-    );
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!hasAcceptedSubmissionPolicy) {
-      toast.error('Accept the submission policy first', {
-        description: 'Review and accept the one-time submission guidelines before creating a request.',
-      });
-      scrollToSubmissionPolicyCard();
-      return;
-    }
-
-    if (!hasMinimumDescriptionWords) {
-      toast.error('Description is too short', {
-        description: `Please provide at least ${MIN_DESCRIPTION_WORDS} words for the designer brief.`,
-      });
-      return;
-    }
-
-    if (readyAttachments.length === 0) {
-      toast.error('Attachments are required', {
-        description: 'Upload at least one attachment before submitting the request.',
-      });
-      return;
-    }
-
-    if (!isFormValid()) {
-      toast.error('Please complete all required fields', {
-        description: 'Ensure all required fields are filled in.',
-      });
-      return;
-    }
+    const payload = {
+      requestType: 'campaign_request' as const,
+      title: requestTitle.trim(),
+      description: buildCampaignDescription(campaign, persistedCollaterals as any),
+      category: deriveTaskCategoryFromCollaterals(persistedCollaterals as any),
+      urgency: deriveTaskUrgencyFromCollaterals(persistedCollaterals as any),
+      status: deriveTaskStatusFromCollaterals(persistedCollaterals, 'pending'),
+      deadline: effectiveDeadline,
+      requesterId: user?.id || '',
+      requesterName: user?.name || '',
+      requesterEmail: user?.email || '',
+      requesterPhone: normalizedPhone,
+      requesterDepartment: department.trim(),
+      isEmergency: false,
+      designVersions: [],
+      files: toBuilderAttachmentRecord(masterAttachments, user?.id),
+      campaign: {
+        requestName: requestTitle.trim(),
+        brief: overallBrief.trim(),
+        deadlineMode,
+        commonDeadline,
+      },
+      collaterals: persistedCollaterals,
+    };
 
     setIsSubmitting(true);
-    let fallbackToMock = false;
-    const phoneValue =
-      normalizeIndianPhone(requesterPhone) || normalizeIndianPhone(user?.phone) || '';
-    if (requesterPhone.trim() && requesterPhone.trim() !== '+91' && !phoneValue) {
-      toast.error('Enter a valid Indian WhatsApp number (e.g., +919876543210).');
-      setIsSubmitting(false);
-      return;
-    }
-    if (apiUrl) {
-      try {
-        const payload = {
-          title,
-          description,
-          category,
-          urgency,
-          deadline: deadline as Date,
-          status: 'pending',
-          isEmergency,
-          emergencyApprovalStatus: isEmergency ? 'pending' : undefined,
-          emergencyRequestedAt: isEmergency ? new Date() : undefined,
-          requesterId: user?.id || '',
-          requesterName: user?.name || '',
-          requesterEmail: user?.email || '',
-          requesterPhone: phoneValue || undefined,
-          secondaryPhones: [],
-          requesterDepartment: user?.department || '',
-          designVersions: [],
-          files: files.map((file) => ({
-            name: file.name,
-            url: file.url || '',
-            driveId: file.driveId || '',
-            webViewLink: file.webViewLink || '',
-            webContentLink: file.webContentLink || '',
-            type: 'input',
-            size: file.size,
-            thumbnailUrl: file.thumbnailUrl,
-            uploadedAt: new Date(),
-            uploadedBy: user?.id || '',
-          })),
-        };
-        const response = await authFetch(`${apiUrl}/api/tasks`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) {
-          throw new Error('Request failed');
-        }
-      } catch {
-        fallbackToMock = true;
+    try {
+      if (!API_URL) {
+        throw new Error('API unavailable');
       }
-    }
-    if (isEmergency) {
-      toast.message('Emergency request sent for designer approval.');
-    }
-
-    if (!apiUrl || fallbackToMock) {
+      const response = await authFetch(`${API_URL}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          data && typeof data.error === 'string' && data.error.trim()
+            ? data.error.trim()
+            : 'Failed to create request.'
+        );
+      }
+      window.dispatchEvent(new CustomEvent('designhub:request:new', { detail: data }));
+      clearRequestDraft(user);
+      toast.success('Campaign request submitted.');
+      navigate('/my-requests');
+      return;
+    } catch (error) {
       const now = new Date();
-      const createdChange: TaskChange = {
-        id: `ch-${Date.now()}-0`,
-        type: 'status',
-        field: 'created',
-        oldValue: undefined,
-        newValue: 'Created',
-        note: `New request submitted by ${user?.name || 'Staff'}`,
-        userId: user?.id || '',
-        userName: user?.name || 'Staff',
-        userRole: user?.role || 'staff',
-        createdAt: now,
-      };
-      const localTask: Task = {
+      const fallbackTask: Task = {
         id: crypto.randomUUID(),
-        title: title.trim(),
-        description: description.trim(),
-        category: category as TaskCategory,
-        urgency,
+        requestType: 'campaign_request',
+        title: requestTitle.trim(),
+        description: buildCampaignDescription(campaign, persistedCollaterals as any),
+        category: deriveTaskCategoryFromCollaterals(persistedCollaterals as any),
+        urgency: deriveTaskUrgencyFromCollaterals(persistedCollaterals as any),
         status: 'pending',
-        isEmergency,
-        emergencyApprovalStatus: isEmergency ? 'pending' : undefined,
-        emergencyRequestedAt: isEmergency ? now : undefined,
         requesterId: user?.id || '',
         requesterName: user?.name || 'Staff',
         requesterEmail: user?.email,
-        requesterPhone: phoneValue || undefined,
-        requesterDepartment: user?.department,
-        deadline: deadline as Date,
+        requesterPhone: normalizedPhone,
+        requesterDepartment: department.trim(),
+        deadline: effectiveDeadline,
         isModification: false,
         changeCount: 0,
-        changeHistory: [createdChange],
+        changeHistory: [
+          {
+            id: crypto.randomUUID(),
+            type: 'status',
+            field: 'created',
+            newValue: 'Created',
+            note: `Campaign request submitted by ${user?.name || 'Staff'}`,
+            userId: user?.id || '',
+            userName: user?.name || 'Staff',
+            userRole: user?.role || 'staff',
+            createdAt: now,
+          },
+        ],
         designVersions: [],
-        files: files.map((file) => ({
-          id: file.driveId || file.id,
-          name: file.name,
-          url: file.url || '',
-          driveId: file.driveId || '',
-          webViewLink: file.webViewLink || '',
-          webContentLink: file.webContentLink || '',
-          type: 'input',
-          size: file.size,
-          thumbnailUrl: file.thumbnailUrl,
-          uploadedAt: now,
-          uploadedBy: user?.id || '',
-        })),
+        files: toBuilderAttachmentRecord(masterAttachments, user?.id),
+        campaign: {
+          requestName: requestTitle.trim(),
+          brief: overallBrief.trim(),
+          deadlineMode,
+          commonDeadline,
+        },
+        collaterals: persistedCollaterals as any,
         comments: [],
         createdAt: now,
         updatedAt: now,
       };
-      upsertLocalTask(localTask);
-    }
-
-    if (!apiUrl || fallbackToMock) {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-    }
-
-    setIsSubmitting(false);
-    clearSavedDraft();
-    setShowThankYou(true);
-  };
-
-  const handleThankYouClose = () => {
-    setShowThankYou(false);
-    navigate('/my-requests');
-  };
-
-  const openExistingUploader = () => {
-    const uploader = document.getElementById('file-upload') as HTMLInputElement | null;
-    uploader?.click();
-  };
-
-  useEffect(() => {
-    const handleOpenUploader = () => {
-      openExistingUploader();
-    };
-    window.addEventListener('designhub:open-uploader', handleOpenUploader);
-    return () => {
-      window.removeEventListener('designhub:open-uploader', handleOpenUploader);
-    };
-  }, []);
-
-  const buildEmailDraft = () => {
-    const to = 'design@smvec.ac.in';
-    const requestTitle = title.trim();
-    const descriptionValue = description.trim();
-    const categoryLabel = category ? getCategoryLabel(category as TaskCategory) : '';
-    const urgencyLabel = urgency
-      ? urgency
-        .replace(/_/g, ' ')
-        .replace(/\b\w/g, (char) => char.toUpperCase())
-      : '';
-    const deadlineLabel = deadline ? format(deadline, 'd MMMM yyyy') : '';
-    const phoneLabel = normalizeIndianPhone(requesterPhone);
-    const submittedOn = format(new Date(), 'd MMM yyyy, h:mm a');
-
-    const hasPrimaryField =
-      Boolean(requestTitle) ||
-      Boolean(descriptionValue) ||
-      Boolean(categoryLabel) ||
-      Boolean(deadlineLabel) ||
-      Boolean(phoneLabel);
-    const shouldShowUrgency = Boolean(urgencyLabel) && (hasPrimaryField || urgency !== 'normal');
-    const maxBodyLength = 1800;
-    const truncationSuffix = ' (truncated)';
-    const footerWidth = 72;
-    const sectionDivider = '----------------------------------------';
-    const centerFooterLine = (value: string) => {
-      if (!value) return '';
-      const trimmed = value.trim();
-      const leftPadding = Math.max(0, Math.floor((footerWidth - trimmed.length) / 2));
-      return `${' '.repeat(leftPadding)}${trimmed}`;
-    };
-    const footerLines = [
-      sectionDivider,
-      'SUBMISSION GUIDELINES',
-      sectionDivider,
-      '',
-      'Data Requirements',
-      '- All final text content',
-      '- Images / photographs',
-      '- Logos (high resolution)',
-      '- Reference designs or samples',
-      '',
-      'Timeline',
-      '- Minimum 3 working days for standard requests',
-      '- Urgent requests require proper justification',
-      '',
-      'Design Governance',
-      ...DESIGN_GOVERNANCE_EMAIL_LINES.map((line) => `- ${line}`),
-      '',
-      'Attachments Required',
-      '- Screenshot of the requirement screen (MANDATORY)',
-      '- Reference images',
-      '- Logos',
-      '- Text content',
-      '- Any supporting files',
-      '',
-    ];
-
-    const buildBodyContent = (descriptionText: string) => {
-      const details: string[] = [];
-      const addDetail = (label: string, value: string) => {
-        const cleanValue = value?.trim();
-        if (!cleanValue) return;
-        details.push(label, cleanValue, '');
-      };
-
-      addDetail('Request Title', requestTitle);
-      addDetail('Description', descriptionText);
-      addDetail('Category', categoryLabel);
-      if (shouldShowUrgency) {
-        addDetail('Urgency', urgencyLabel);
-      }
-      addDetail('Deadline', deadlineLabel);
-      addDetail('WhatsApp Updates', phoneLabel);
-
-      const lines: string[] = [];
-
-      if (details.length > 0) {
-        lines.push(
-          sectionDivider,
-          'DESIGN REQUEST DETAILS',
-          sectionDivider,
-          '',
-          ...details
-        );
-      }
-
-      lines.push(...footerLines);
-
-      return lines.join('\n');
-    };
-
-    let body = buildBodyContent(descriptionValue);
-    if (body.length > maxBodyLength && descriptionValue) {
-      const bodyWithoutDescription = buildBodyContent('');
-      const availableDescriptionChars = Math.max(
-        0,
-        maxBodyLength - bodyWithoutDescription.length - truncationSuffix.length
+      upsertLocalTask(fallbackTask);
+      clearRequestDraft(user);
+      window.dispatchEvent(new CustomEvent('designhub:request:new', { detail: fallbackTask }));
+      toast.success(
+        error instanceof Error && error.message !== 'API unavailable'
+          ? `${error.message} Saved locally instead.`
+          : 'API unavailable. Request saved locally instead.'
       );
-      const truncatedDescription = `${descriptionValue
-        .slice(0, availableDescriptionChars)
-        .trimEnd()}${truncationSuffix}`;
-      body = buildBodyContent(truncatedDescription);
-    }
-
-    if (body.length > maxBodyLength) {
-      body = `${body.slice(0, maxBodyLength - truncationSuffix.length).trimEnd()}${truncationSuffix}`;
-    }
-
-    const subject = requestTitle
-      ? `Design Request - ${requestTitle}`
-      : 'Design Request - New Design Request';
-
-    return { subject, body, to };
-  };
-  const emailPreviewDraft = buildEmailDraft();
-  const emailDraftMailtoUrl = createMailtoUrl(
-    emailPreviewDraft.to,
-    emailPreviewDraft.subject,
-    emailPreviewDraft.body
-  );
-
-  const handleEmailDesignRequest = () => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(
-      EMAIL_SEND_PENDING_KEY,
-      JSON.stringify({ openedAt: Date.now() })
-    );
-    window.dispatchEvent(new CustomEvent(EMAIL_COMPOSE_OPENED_EVENT));
-    const gmailUrl = createGmailComposeUrl(
-      emailPreviewDraft.to,
-      emailPreviewDraft.subject,
-      emailPreviewDraft.body
-    );
-    const popup = window.open(gmailUrl, '_blank', 'noopener,noreferrer');
-    if (!popup) {
-      window.location.href = gmailUrl;
+      navigate('/my-requests');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(EMAIL_DRAFT_MAILTO_STORAGE_KEY, emailDraftMailtoUrl);
-  }, [emailDraftMailtoUrl]);
-
-  return (
-    <DashboardLayout
-      allowContentOverflow
-      background={
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-white dark:bg-slate-950 overflow-hidden rounded-[32px]">
-          <div className="absolute left-1/2 top-[-22%] h-[680px] w-[780px] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(77,92,218,0.6),_rgba(120,190,255,0.4)_45%,_transparent_72%)] blur-[90px] opacity-90 dark:opacity-0" />
-          <div className="absolute left-[10%] bottom-[-20%] h-[520px] w-[620px] rounded-[50%] bg-[radial-gradient(ellipse_at_center,_rgba(120,190,255,0.35),_transparent_70%)] blur-[110px] opacity-70 dark:opacity-0" />
-        </div>
-      }
-    >
-      <div className="max-w-3xl mx-auto space-y-6 pt-8">
-        {/* Header */}
-        <div className="animate-fade-in flex items-start justify-between">
-          <div className="space-y-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              Request Workspace
-            </p>
-            <h1 className="text-[2rem] leading-tight font-semibold tracking-tight text-foreground premium-headline">New Design Request</h1>
-            <p className="text-base text-muted-foreground premium-body">
-              Submit a new design request to the team
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <GeminiBlink
-              onClick={handleOpenTaskBuddy}
-              className={!hasAcceptedSubmissionPolicy ? 'opacity-55 saturate-75' : ''}
-            />
-          </div>
-        </div>
-        {!hasAcceptedSubmissionPolicy ? (
-          <div ref={submissionPolicyCardRef} className="animate-slide-up">
-            <div
-              className={cn(
-                glassPanelClass,
-                'relative overflow-hidden rounded-[22px] border border-[#CFE0FF]/40 ring-0 p-5 sm:p-6 dark:border-[#314A82]/36'
-              )}
-            >
-              <div className="relative flex flex-col gap-4 sm:flex-row">
-                <div
-                  className={cn(
-                    queueIconButtonClass,
-                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl p-0 text-primary dark:text-slate-100'
-                  )}
-                >
-                  <Info className="h-5 w-5" />
+  const renderStepContent = () => {
+    if (currentStep === 'campaign') {
+      return (
+        <section className="space-y-6">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <BriefcaseBusiness className="h-5 w-5" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={policyPillClass}
-                    >
-                      Submission Policy
-                    </span>
-                    <span className="text-[11px] font-medium text-muted-foreground">
-                      One-time acceptance required before the first request
-                    </span>
-                  </div>
-                  <h3 className="mt-3 text-[17px] font-semibold text-foreground">
-                    Accept submission guidelines to continue
-                  </h3>
-                  <p className="mt-1 text-[12.5px] leading-6 text-muted-foreground">
-                    New users must review and accept this policy before creating a design request.
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Campaign Details</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Define the shared request context once before adding collateral items.
                   </p>
+                </div>
+              </div>
 
-                  <div
-                    className={cn(
-                      queuePanelRowClass,
-                      'mt-4 rounded-[22px] p-4 supports-[backdrop-filter]:bg-white/56 backdrop-blur-xl dark:bg-[linear-gradient(135deg,rgba(11,21,44,0.76),rgba(15,28,58,0.72),rgba(18,37,76,0.68))] dark:supports-[backdrop-filter]:bg-slate-900/58'
-                    )}
-                  >
-                    <ul className="space-y-3 text-[12.5px] text-muted-foreground">
-                      <li className="flex items-start gap-2.5">
-                        <span className="material-symbols-outlined mt-0.5 text-base text-muted-foreground">
-                          database
-                        </span>
-                        <span>
-                          <strong className="font-semibold text-foreground">Data Requirements:</strong>{' '}
-                          Include all text content, images, logos, and associated files.
-                        </span>
-                      </li>
-                      <li className="flex items-start gap-2.5">
-                        <span className="material-symbols-outlined mt-0.5 text-base text-muted-foreground">
-                          schedule
-                        </span>
-                        <span>
-                          <strong className="font-semibold text-foreground">Timeline:</strong>{' '}
-                          Minimum 3 working days for standard requests. Urgent requests require justification.
-                        </span>
-                      </li>
-                    </ul>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Campaign Title</Label>
+                  <Input
+                    value={requestTitle}
+                    onChange={(event) => setRequestTitle(event.target.value)}
+                    placeholder="Admissions Drive 2026 / Annual Day / Product Launch Campaign"
+                  />
+                </div>
 
-                    <div
-                      className={cn(
-                        queuePanelRowClass,
-                        'mt-4 rounded-[20px] p-4 supports-[backdrop-filter]:bg-white/48 backdrop-blur-xl dark:bg-[linear-gradient(135deg,rgba(11,25,57,0.92),rgba(17,37,77,0.9),rgba(20,45,90,0.82))] dark:supports-[backdrop-filter]:bg-slate-900/72'
-                      )}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={cn(
-                            queueIconButtonClass,
-                            'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl p-0 text-primary dark:text-slate-100'
-                          )}
-                        >
-                          <AlertTriangle className="h-4.5 w-4.5" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                            Important Notice
-                          </p>
-                          <h4 className="mt-1 text-[13.5px] font-semibold text-foreground">
-                            Submission standards
-                          </h4>
-                          <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">
-                            {DESIGN_GOVERNANCE_NOTICE_MINIMAL}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <label
-                    htmlFor="submission-policy-acceptance"
-                    className={cn(
-                      queuePanelRowClass,
-                      'mt-4 flex cursor-pointer items-start gap-3 rounded-[18px] px-4 py-3 transition-all duration-200 supports-[backdrop-filter]:bg-white/52 backdrop-blur-xl dark:supports-[backdrop-filter]:bg-slate-900/68',
-                      isSubmissionPolicyChecked
-                        ? 'dark:bg-[linear-gradient(135deg,rgba(11,21,44,0.76),rgba(15,28,58,0.72),rgba(18,37,76,0.68))]'
-                        : 'ring-1 ring-[#D8E4FF] shadow-[0_18px_34px_-28px_rgba(53,66,154,0.42)] dark:bg-[linear-gradient(135deg,rgba(11,21,44,0.82),rgba(15,28,58,0.78),rgba(18,37,76,0.74))] dark:ring-white/10 dark:shadow-[0_24px_40px_-32px_rgba(8,18,45,0.9)]'
-                    )}
-                  >
-                    <Checkbox
-                      id="submission-policy-acceptance"
-                      checked={isSubmissionPolicyChecked}
-                      onCheckedChange={(checked) => setIsSubmissionPolicyChecked(checked === true)}
-                      className={cn(
-                        'mt-0.5 border-[#C9D7FF] transition-colors data-[state=checked]:border-[#35429A] data-[state=checked]:bg-[#35429A] data-[state=checked]:text-white dark:border-[#6381C2] dark:data-[state=checked]:border-[#87A8FF] dark:data-[state=checked]:bg-[#4E6FD0]',
-                        !isSubmissionPolicyChecked && 'border-[#8CA9E8] bg-white shadow-[0_0_0_4px_rgba(217,230,255,0.6)] dark:border-[#6A89CB] dark:bg-[#0F1D42] dark:shadow-[0_0_0_4px_rgba(42,72,138,0.38)]'
-                      )}
+                <div className="space-y-2">
+                  <Label>Department / Requester</Label>
+                  <div className="relative">
+                    <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={department}
+                      onChange={(event) => setDepartment(event.target.value)}
+                      placeholder="Marketing / HR / Admin"
+                      className="pl-9"
                     />
-                    <span className="min-w-0 flex-1 space-y-1">
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={policyStatusPillClass}
-                        >
-                          {isSubmissionPolicyChecked ? 'Acknowledged' : 'Action Required'}
-                        </span>
-                        <span className="text-[11px] font-medium text-muted-foreground">
-                          {isSubmissionPolicyChecked
-                            ? 'Continue is enabled below.'
-                            : 'Tick this checkbox to enable Continue.'}
-                        </span>
-                      </span>
-                      <span className="block text-[12.5px] leading-6 text-muted-foreground">
-                        I have reviewed these submission guidelines and understand that further changes must follow the approved governance process.
-                      </span>
-                    </span>
-                  </label>
+                  </div>
+                </div>
 
-                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        Stored once per account
-                      </p>
-                      <p className="text-[11px] leading-5 text-muted-foreground">
-                        By continuing, you acknowledge the{' '}
-                        <Link
-                          to="/privacy-policy"
-                          className="font-semibold text-primary underline-offset-4 hover:underline dark:text-slate-100"
-                        >
-                          Privacy Policy
-                        </Link>{' '}
-                        and{' '}
-                        <Link
-                          to="/terms-service"
-                          className="font-semibold text-primary underline-offset-4 hover:underline dark:text-slate-100"
-                        >
-                          Terms of Service
-                        </Link>
-                        .
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={handleAcceptSubmissionPolicy}
-                      disabled={!isSubmissionPolicyChecked}
-                      className={cn(
-                        'h-10 rounded-full px-5 text-[12.5px] font-semibold transition-all duration-200',
-                        isSubmissionPolicyChecked
-                          ? 'border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] dark:border-transparent'
-                          : 'border border-[#D7E0F8] bg-white/90 text-[#223467] shadow-none disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#36528D]/70 dark:bg-[#102047]/85 dark:text-[#D7E4FF]'
-                      )}
-                    >
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Accept and Continue
-                    </Button>
+                <div className="space-y-2">
+                  <Label>Contact Number</Label>
+                  <div className="relative">
+                    <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={requesterPhone}
+                      onChange={(event) => setRequesterPhone(formatIndianPhoneInput(event.target.value))}
+                      placeholder="+91 9876543210"
+                      className="pl-9"
+                    />
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="flex justify-end items-center gap-2">
-              <button
-                type="button"
-                onClick={handleEmailDesignRequest}
-                aria-label="Email Design Request"
-                className="group flex h-8 w-8 items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
-                title="Email Design Request"
-              >
-                <Mail className="h-4 w-4" />
-              </button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setShowEmailPreview((prev) => !prev)}
-                className="h-8 rounded-full bg-primary/5 px-3 text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-foreground"
-              >
-                Preview Email
-                {showEmailPreview ? (
-                  <ChevronUp className="ml-1 h-3.5 w-3.5" />
-                ) : (
-                  <ChevronDown className="ml-1 h-3.5 w-3.5" />
-                )}
-              </Button>
-            </div>
-            {showEmailPreview && (
-              <div className={`${glassPanelClass} p-4 animate-fade-in space-y-3`}>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Subject
-                  </p>
-                  <p className="mt-1 text-sm font-medium text-foreground break-words">
-                    {emailPreviewDraft.subject}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Body
-                  </p>
-                  <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-[#D9E6FF] bg-white/70 p-3 text-xs leading-relaxed text-foreground/90 dark:border-slate-700/60 dark:bg-slate-900/60">
-                    {emailPreviewDraft.body}
-                  </pre>
-                </div>
-              </div>
-            )}
-          </>
-        )}
 
-        {/* Form */}
-        {hasAcceptedSubmissionPolicy ? (
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className={`${glassPanelClass} p-6 pb-8 min-h-[520px] space-y-5 animate-slide-up`}>
-              {/* Title */}
-              <div className="space-y-2">
-                <Label htmlFor="title">
-                  Request Title <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="title"
-                  placeholder="e.g., Annual Report Cover Design"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className={`h-11 ${glassInputClass}`}
+              <div className="mt-4 space-y-2">
+                <Label>Overall Brief</Label>
+                <Textarea
+                  value={overallBrief}
+                  onChange={(event) => setOverallBrief(event.target.value)}
+                  className="min-h-[180px]"
+                  placeholder="Describe the campaign objective, audience, message hierarchy, mandatory copy, visual tone, logos, language, and approval context."
                 />
               </div>
+            </div>
 
-            {/* Description */}
-            <div className="space-y-2">
-              <Label htmlFor="description">
-                Description <span className="text-destructive">*</span>
-              </Label>
-              <Textarea
-                id="description"
-                placeholder="Provide detailed requirements, specifications, and any special instructions..."
-                rows={4}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className={`${glassInputClass} min-h-[120px] text-[13.5px] font-normal leading-7`}
-              />
-              <p
-                className={cn(
-                  'text-xs',
-                  description.trim() && !hasMinimumDescriptionWords ? 'text-destructive' : 'text-muted-foreground'
-                )}
-              >
-                {descriptionWordCount}/{MIN_DESCRIPTION_WORDS} words minimum for a proper designer brief.
+            <div className="rounded-[30px] border border-[#D7E4FF] bg-gradient-to-br from-[#0F172A] via-[#132042] to-[#1D3260] p-6 text-white shadow-xl">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/65">Step Guidance</p>
+              <h3 className="mt-4 text-xl font-semibold">Set the campaign story first</h3>
+              <p className="mt-3 text-sm text-white/72">
+                This step should answer what the campaign is, who is requesting it, and what the
+                design team needs to understand before opening any collateral item.
               </p>
-            </div>
 
-            {/* Category & Urgency */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>
-                  Category <span className="text-destructive">*</span>
-                </Label>
-                <Select value={category} onValueChange={(v) => setCategory(v as TaskCategory)}>
-                  <SelectTrigger className={`h-11 ${glassInputClass}`}>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:text-slate-100 dark:supports-[backdrop-filter]:bg-slate-900/70">
-                    {categoryOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <div className="flex items-center gap-2">
-                          <option.icon className="h-4 w-4 text-muted-foreground" />
-                          <span>{option.label}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Urgency</Label>
-                <Select value={urgency} onValueChange={(v) => setUrgency(v as TaskUrgency)}>
-                  <SelectTrigger className={`h-11 ${glassInputClass}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:text-slate-100 dark:supports-[backdrop-filter]:bg-slate-900/70">
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="normal">Normal</SelectItem>
-                    <SelectItem value="intermediate">Intermediate</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-white/70 px-4 py-3 dark:border-slate-700/60 dark:bg-slate-900/60">
-              <div>
-                <p className="text-sm font-semibold text-foreground">Emergency override</p>
-                <p className="text-xs text-muted-foreground">
-                  Requires designer approval
-                </p>
-              </div>
-              <Switch checked={isEmergency} onCheckedChange={setIsEmergency} />
-            </div>
-            {isEmergency && (
-                <p className="text-xs text-status-urgent">
-                Emergency requests can bypass blocked dates and 3-day minimum, but not past dates.
-                </p>
-              )}
-
-            {/* Deadline */}
-            <div className="space-y-2">
-              <Label htmlFor="deadline">
-                Deadline <span className="text-destructive">*</span>
-              </Label>
-              <div className="relative">
-                <LocalizationProvider dateAdapter={AdapterDateFns}>
-                  <DatePicker
-                    value={deadline}
-                    onChange={(newValue) => {
-                      setHasDeadlineInteracted(true);
-                      if (!newValue) {
-                        setDeadline(newValue);
-                        return;
-                      }
-                      setDeadline(getNextAvailableDeadline(newValue));
-                    }}
-                    minDate={isEmergency ? todayDate : minDeadlineDate}
-                    shouldDisableDate={isDateBlocked}
-                    slots={{
-                      day: DeadlineCalendarDay,
-                    }}
-                    slotProps={{
-                      popper: {
-                        container: pickerPortalContainer,
-                        disablePortal: false,
-                        placement: 'bottom-start',
-                        sx: {
-                          zIndex: 99999,
-                          '& .MuiPaper-root': {
-                            zIndex: 99999,
-                          },
-                        },
-                      },
-                      textField: {
-                        size: 'small',
-                        fullWidth: true,
-                        sx: {
-                          '& .MuiPickersOutlinedInput-root': {
-                            borderRadius: 'var(--radius)',
-                            height: 44,
-                            backgroundColor: 'rgba(255, 255, 255, 0.75)',
-                            backdropFilter: 'blur(12px)',
-                            fontWeight: 500,
-                            color: 'hsl(var(--foreground) / 0.9)',
-                            fontSize: '0.875rem',
-                          },
-                          '& .MuiPickersOutlinedInput-notchedOutline': {
-                            borderColor: '#D9E6FF',
-                          },
-                          '& .MuiPickersOutlinedInput-root:hover .MuiPickersOutlinedInput-notchedOutline': {
-                            borderColor: '#9FBCFF',
-                          },
-                          '& .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline':
-                          {
-                            borderColor: '#9FBCFF',
-                          },
-                          '& .MuiPickersOutlinedInput-root.Mui-focused': {
-                            boxShadow: '0 0 0 3px rgba(159, 188, 255, 0.35)',
-                          },
-                          '& .MuiPickersInputBase-input': {
-                            padding: '0 14px',
-                            fontWeight: 500,
-                            fontSize: '0.875rem',
-                          },
-                          '& .MuiPickersInputBase-sectionContent': {
-                            fontWeight: 500,
-                            color: 'hsl(var(--foreground) / 0.9)',
-                            fontSize: '0.875rem',
-                          },
-                          '& .MuiPickersInputBase-input::placeholder': {
-                            color: '#9CA3AF',
-                            opacity: 1,
-                          },
-                          '& .MuiSvgIcon-root': {
-                            color: 'hsl(var(--muted-foreground))',
-                          },
-                        },
-                      },
-                      day: ({ day, isDayOutsideMonth, isDaySelected }) => {
-                        const meta = getDeadlineCalendarDayMeta(day as Date);
-
-                        if (isDayOutsideMonth || (!meta.shouldShowDot && !meta.textColor && !meta.title)) {
-                          return {
-                            tooltipLabel: isDayOutsideMonth ? '' : meta.title,
-                          };
-                        }
-
-                        return {
-                          tooltipLabel: meta.title,
-                          sx: {
-                            ...(meta.textColor && !isDaySelected
-                              ? {
-                                  color: meta.textColor,
-                                }
-                              : {}),
-                            ...(meta.shouldShowDot && !isDaySelected
-                              ? {
-                                  '&::after': {
-                                    content: '""',
-                                    position: 'absolute',
-                                    left: '50%',
-                                    bottom: 3,
-                                    width: 5,
-                                    height: 5,
-                                    borderRadius: '999px',
-                                    backgroundColor: meta.dotColor,
-                                    transform: 'translateX(-50%)',
-                                  },
-                                }
-                              : {}),
-                          },
-                        };
-                      },
-                    }}
-                  />
-                </LocalizationProvider>
-              </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {isEmergency
-                  ? 'Emergency requests can bypass designer workload and the 3-day minimum.'
-                  : 'Minimum 3 working days from today.'}
-              </p>
-              {freeDateSuggestions.length > 0 && (
-                <div className="space-y-2 pt-1">
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    Suggested Free Dates
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {freeDateSuggestions.map((suggestedDate) => {
-                      const suggestionKey = format(suggestedDate, 'yyyy-MM-dd');
-                      const isSelected = selectedDeadlineKey === suggestionKey;
-                      return (
-                        <button
-                          key={suggestionKey}
-                          type="button"
-                          onClick={() => {
-                            setHasDeadlineInteracted(true);
-                            setDeadline(suggestedDate);
-                          }}
-                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${isSelected
-                            ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                            : 'border-[#D9E6FF] bg-white/75 text-foreground hover:border-[#B7C8FF] hover:bg-[#F4F8FF] dark:border-slate-700/60 dark:bg-slate-900/60 dark:hover:border-slate-500/60 dark:hover:bg-slate-900/80'
-                            }`}
-                        >
-                          {format(suggestedDate, 'EEE, MMM d')}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    These dates are currently open based on designer availability.
+              <div className="mt-6 grid gap-3">
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-white/60">Request Mode</p>
+                  <p className="mt-1 text-base font-semibold">Campaign Request Builder</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-white/60">Collaterals</p>
+                  <p className="mt-1 text-base font-semibold">{summary.collateralCount || 0} planned</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-white/60">Required</p>
+                  <p className="mt-1 text-sm font-medium text-white/82">
+                    Title, department, phone, and one strong brief.
                   </p>
                 </div>
-              )}
+              </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="requester-phone">Phone (WhatsApp updates)</Label>
-              <Input
-                id="requester-phone"
-                type="tel"
-                inputMode="numeric"
-                maxLength={14}
-                placeholder="+91 9876543210"
-                value={requesterPhone}
-                onChange={(event) => {
-                  setRequesterPhone(formatIndianPhoneInput(event.target.value));
-                }}
-                onFocus={() => {
-                  if (!requesterPhone.trim()) {
-                    setRequesterPhone(INDIAN_PREFIX);
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Backspace' && requesterPhone.length <= 4) {
-                    event.preventDefault();
-                    setRequesterPhone(INDIAN_PREFIX);
-                  }
-                }}
-                className={`h-11 ${glassInputClass}`}
-              />
-            </div>
-
           </div>
+        </section>
+      );
+    }
 
-          {/* File Upload */}
-          <div className={`${glassPanelClass} p-6 space-y-4 animate-slide-up`}>
-            <div>
-              <Label>
-                Attachments <span className="text-destructive">*</span>
-              </Label>
-              <p className="text-sm text-muted-foreground mt-1">
-                Upload at least one supporting file, screenshot, or reference before submitting
+    if (currentStep === 'timeline') {
+      return (
+        <section className="space-y-6">
+          <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <CalendarRange className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">Deadline Strategy</h2>
+                <p className="text-sm text-muted-foreground">
+                  Choose one campaign deadline or switch to individual deadlines per collateral item.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[240px_minmax(0,1fr)] md:items-end">
+              <div className="space-y-2">
+                <Label>Deadline Mode</Label>
+                <Select
+                  value={deadlineMode}
+                  onValueChange={(value) => setDeadlineMode(value as 'common' | 'itemized')}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select deadline mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="common">One common deadline</SelectItem>
+                    <SelectItem value="itemized">Individual item deadlines</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Common Deadline</Label>
+                <Input
+                  type="date"
+                  min={minDeadlineInputValue}
+                  value={toDateValue(commonDeadline)}
+                  disabled={deadlineMode !== 'common'}
+                  onChange={(event) =>
+                    setCommonDeadline(
+                      event.target.value ? new Date(`${event.target.value}T00:00:00`) : undefined
+                    )
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Delivery dates must be at least 3 working days from today.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+            <AttachmentUploadField
+              label="Master References / Attachments"
+              description="Upload campaign-level references shared across all collateral items: brand assets, approved copy, event brief, logos, prior creatives, or mandatory guidelines."
+              attachments={masterAttachments}
+              onChange={setMasterAttachments}
+              taskTitle={requestTitle || 'Campaign Request'}
+              taskSection="Campaign Master References"
+              emptyLabel="These files stay at request level and remain visible across the full campaign request."
+            />
+          </section>
+        </section>
+      );
+    }
+
+    if (currentStep === 'collaterals') {
+      return (
+        <section className="space-y-6">
+          <section className="rounded-[30px] border border-[#D7E4FF] bg-gradient-to-br from-white via-[#FBFDFF] to-[#EEF4FF] p-6 shadow-sm dark:border-border dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <Layers3 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">Collateral Builder</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Add preset-based collateral items. Each item keeps its own brief, platform,
+                      references, deadline, and status.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <Button type="button" onClick={() => setIsPresetDialogOpen(true)} className="rounded-full">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Collateral
+              </Button>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Badge variant="secondary" className="rounded-full px-3 py-1">
+                {summary.collateralCount} items
+              </Badge>
+              <Badge variant="outline" className="rounded-full px-3 py-1">
+                {summary.taskCategory}
+              </Badge>
+              <Badge variant="outline" className="rounded-full px-3 py-1">
+                {summary.urgency}
+              </Badge>
+            </div>
+          </section>
+
+          {collaterals.length === 0 ? (
+            <div className="rounded-[30px] border border-dashed border-[#CFE0FF] bg-[#F8FBFF] px-6 py-14 text-center dark:border-border dark:bg-slate-900/40">
+              <Layers3 className="mx-auto h-10 w-10 text-primary/70" />
+              <h3 className="mt-4 text-lg font-semibold text-foreground">No collaterals added yet</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Start with presets like Instagram Post, Standee, Flyer, LED Backdrop, Invitation,
+                Certificate, or WhatsApp Creative.
+              </p>
+              <Button
+                type="button"
+                onClick={() => setIsPresetDialogOpen(true)}
+                className="mt-5 rounded-full"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Choose First Preset
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {collaterals.map((collateral) => (
+                <CollateralEditorCard
+                  key={collateral.id}
+                  collateral={collateral}
+                  useCommonDeadline={deadlineMode === 'common'}
+                  commonDeadline={commonDeadline}
+                  minDeadline={minDeadlineInputValue}
+                  onChange={(next) =>
+                    setCollaterals((previous) =>
+                      previous.map((item) => (item.id === collateral.id ? next : item))
+                    )
+                  }
+                  onRemove={() =>
+                    setCollaterals((previous) => previous.filter((item) => item.id !== collateral.id))
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      );
+    }
+
+    return (
+      <section className="space-y-6">
+        <section className="rounded-[30px] border border-[#D7E4FF] bg-gradient-to-br from-[#0F172A] via-[#132042] to-[#1D3260] p-6 text-white shadow-xl">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/65">Review Summary</p>
+              <h2 className="mt-3 text-2xl font-semibold">{requestTitle.trim() || 'Campaign request'}</h2>
+              <p className="mt-3 text-sm text-white/72">
+                This submission will create one parent campaign request with separate collateral
+                items for designers to track and update individually.
               </p>
             </div>
 
-            <div
-              className={`border-2 border-dashed rounded-lg p-8 pb-10 text-center transition-colors ${isDragging
-                ? 'border-primary/60 bg-white/80 dark:border-primary/50 dark:bg-slate-900/70'
-                : 'border-border bg-white/70 hover:border-primary/50 dark:border-slate-700/60 dark:bg-slate-900/50 dark:hover:border-slate-500/50'
-                }`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-            >
-              <input
-                type="file"
-                multiple
-                onChange={handleFileUpload}
-                className="hidden"
-                id="file-upload"
-              />
-              <label htmlFor="file-upload" className="cursor-pointer">
-                {uploadAnimation ? (
-                  <Lottie
-                    animationData={uploadAnimation}
-                    loop
-                    className="h-24 w-24 mx-auto mb-3"
-                  />
-                ) : (
-                  <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                )}
-                <p className="font-medium text-foreground">
-                  Click to upload or drag and drop
+            <div className="grid w-full gap-3 sm:grid-cols-3 lg:max-w-xl">
+              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-white/60">Collaterals</p>
+                <p className="mt-1 text-xl font-semibold">{summary.collateralCount}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-white/60">References</p>
+                <p className="mt-1 text-xl font-semibold">{summary.totalReferenceCount}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-white/60">Deadline</p>
+                <p className="mt-1 text-sm font-semibold">
+                  {summary.effectiveDeadline
+                    ? format(summary.effectiveDeadline, 'EEE, dd MMM yyyy')
+                    : 'Not set'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  PDF, DOC, PNG, JPG, ZIP up to 50MB each
-                </p>
-              </label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-6">
+            <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">Campaign Details</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Shared campaign data visible across all collateral items.
+                  </p>
+                </div>
+                <Button type="button" variant="ghost" onClick={() => setCurrentStep('campaign')}>
+                  Edit
+                </Button>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Title</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">{requestTitle || '-'}</p>
+                </div>
+                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Department</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">{department || '-'}</p>
+                </div>
+                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Contact Number</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">{requesterPhone || '-'}</p>
+                </div>
+                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Deadline Mode</p>
+                  <p className="mt-2 text-sm font-medium capitalize text-foreground">
+                    {deadlineMode === 'common' ? 'One common deadline' : 'Individual item deadlines'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 md:col-span-2 dark:border-border dark:bg-slate-900/50">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Overall Brief</p>
+                  <p className="mt-2 text-sm leading-6 text-foreground">{overallBrief || '-'}</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">Collateral Queue</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Designer tracking will happen item by item after submission.
+                  </p>
+                </div>
+                <Button type="button" variant="ghost" onClick={() => setCurrentStep('collaterals')}>
+                  Edit
+                </Button>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {collaterals.map((collateral) => (
+                  <div
+                    key={collateral.id}
+                    className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-4 dark:border-border dark:bg-slate-900/50"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-sm font-semibold text-foreground">
+                            {getCollateralDisplayName(collateral)}
+                          </h4>
+                          <Badge variant="secondary">
+                            {formatCollateralStatusLabel(collateral.status)}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {(collateral.presetLabel || collateral.collateralType) + ' | '}
+                          {getCollateralSizeSummary(collateral)}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline">
+                          {formatCollateralPriorityLabel(collateral.priority)}
+                        </Badge>
+                        <Badge variant="outline">
+                          {deadlineMode === 'common'
+                            ? commonDeadline
+                              ? format(commonDeadline, 'dd MMM yyyy')
+                              : 'No deadline'
+                            : collateral.deadline
+                              ? format(collateral.deadline, 'dd MMM yyyy')
+                              : 'No deadline'}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                      {collateral.brief || 'No item brief added yet.'}
+                    </p>
+
+                    <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                      <span>{collateral.platform || 'No platform'}</span>
+                      <span>{collateral.usageType || 'No usage type'}</span>
+                      <span>{collateral.referenceFiles.length} item references</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <aside className="space-y-6">
+            <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">Files & Timing</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Shared references and the request timing logic.
+                  </p>
+                </div>
+                <Button type="button" variant="ghost" onClick={() => setCurrentStep('timeline')}>
+                  Edit
+                </Button>
+              </div>
+
+              <div className="mt-5 grid gap-3">
+                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Effective Deadline</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">
+                    {summary.effectiveDeadline
+                      ? format(summary.effectiveDeadline, 'EEE, dd MMM yyyy')
+                      : 'Not set'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Master References</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">
+                    {summary.masterReferenceCount} uploaded
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Item References</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">
+                    {summary.collateralReferenceCount} uploaded
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Paperclip className="h-4 w-4 text-primary" />
+                Final Checks
+              </div>
+              <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
+                <li>At least one master or item-level reference must be attached.</li>
+                <li>Common deadline applies to every item when selected.</li>
+                <li>After submission, designers will update each collateral status separately.</li>
+              </ul>
+            </section>
+          </aside>
+        </div>
+      </section>
+    );
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="mx-auto max-w-6xl space-y-6 pb-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <Badge variant="secondary" className="mb-3 rounded-full px-3 py-1">
+              Campaign Request Builder
+            </Badge>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              Build one campaign request with structured collateral items
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Modern step-by-step builder: complete the campaign basics first, then move into
+              deadline planning, collateral setup, and final review.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => navigate('/my-requests')}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+
+        <section className="rounded-[32px] border border-[#D7E4FF] bg-white/90 p-5 shadow-sm dark:border-border dark:bg-card/80">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
+                Step {currentStepIndex + 1} of {BUILDER_STEPS.length}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Complete the current block, then move to the next one.
+              </p>
             </div>
 
-            {files.length > 0 && (
-              <div className={queueGlassCardClass}>
-                <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-white/70 dark:bg-white/5" />
-                <div className="pointer-events-none absolute -left-8 top-1 h-24 w-24 rounded-full bg-white/55 blur-3xl dark:hidden" />
-                <div className="pointer-events-none absolute -right-6 bottom-[-24px] h-28 w-28 rounded-full bg-[#DDE9FF]/80 blur-3xl dark:hidden" />
-                <div className="relative px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="rounded-full px-3 py-1">
+                {summary.collateralCount} collaterals
+              </Badge>
+              <Badge variant="outline" className="rounded-full px-3 py-1">
+                {summary.totalReferenceCount} references
+              </Badge>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+            {BUILDER_STEPS.map((step, index) => {
+              const isCurrent = step.id === currentStep;
+              const isComplete = index < currentStepIndex && !validationMessages[step.id];
+              const isUnlocked = index <= furthestUnlockedStepIndex;
+              const StepIcon = step.icon;
+
+              return (
+                <div key={step.id} className="flex flex-1 items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleStepChange(step.id)}
+                    className={cn(
+                      'flex w-full items-start gap-3 rounded-[24px] border px-4 py-4 text-left transition',
+                      isCurrent &&
+                        'border-primary/40 bg-primary/[0.06] shadow-[0_10px_30px_rgba(43,87,255,0.08)]',
+                      !isCurrent && isUnlocked && 'border-[#D7E4FF] bg-[#F8FBFF] hover:border-primary/30',
+                      !isUnlocked && 'cursor-not-allowed border-[#E8EDF9] bg-[#FAFBFD] opacity-60'
+                    )}
+                    disabled={!isUnlocked}
+                  >
+                    <div
+                      className={cn(
+                        'flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm font-semibold',
+                        isCurrent && 'border-primary bg-primary text-white',
+                        isComplete && 'border-emerald-500 bg-emerald-500 text-white',
+                        !isCurrent && !isComplete && 'border-[#D7E4FF] bg-white text-foreground'
+                      )}
+                    >
+                      {isComplete ? <Check className="h-4 w-4" /> : step.label}
+                    </div>
+
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-foreground">{attachmentQueuePrimaryLabel}</p>
-                      <p
-                        className={`mt-1 text-xs ${
-                          hasAttachmentQueueIssues
-                            ? 'text-amber-700 dark:text-amber-300'
-                            : 'text-muted-foreground'
-                        }`}
-                      >
-                        {attachmentQueueStatusText}
+                      <div className="flex items-center gap-2">
+                        <StepIcon className="h-4 w-4 text-primary" />
+                        <p className="text-sm font-semibold text-foreground">{step.title}</p>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {step.description}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      {isAttachmentQueueUploading && (
-                        <button
-                          type="button"
-                          onClick={handleCancelActiveUploads}
-                          className="rounded-full px-2 py-1 text-[11px] font-semibold text-primary/80 hover:text-primary dark:text-slate-300 dark:hover:text-slate-100"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setIsAttachmentQueueExpanded((prev) => !prev)}
-                        className={queueCollapseButtonClass}
-                        aria-label={isAttachmentQueueExpanded ? 'Hide attachment uploads' : 'Show attachment uploads'}
-                      >
-                        <ChevronDown
-                          className={cn(
-                            'h-4 w-4 transition-transform',
-                            isAttachmentQueueExpanded ? 'rotate-180' : ''
-                          )}
-                        />
-                      </button>
-                      {attachmentQueueSummary.uploading === 0 && (
-                        <button
-                          type="button"
-                          onClick={handleClearAttachmentQueue}
-                          className={queueCollapseButtonClass}
-                          aria-label="Clear attachment uploads"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {isAttachmentQueueUploading && (
-                    <div className="mt-3 rounded-2xl border border-white/50 bg-white/45 px-3.5 py-3 supports-[backdrop-filter]:bg-white/28 backdrop-blur-xl dark:border-border dark:bg-card/80">
-                      <div className="text-[11px] font-medium text-[#6D7FA8] dark:text-slate-400">
-                        <span>Overall progress</span>
-                      </div>
-                      <div className="mt-2 grid grid-cols-[1fr_auto] items-center gap-2">
-                        <Progress
-                          value={attachmentQueueSummary.overallProgress}
-                          className="h-1.5 rounded-full bg-[#E7EEFF] dark:bg-muted"
-                        />
-                        <span className="min-w-[3rem] text-right text-[11px] font-semibold tabular-nums text-foreground/90 dark:text-slate-100">
-                          {attachmentQueueSummary.overallProgress}%
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  {isAttachmentQueueExpanded && (
-                    <div className="mt-3 space-y-2 border-t border-[#E1E9FF] pt-3 dark:border-border">
-                      <div
-                        className={cn(
-                          'space-y-2',
-                          attachmentQueueMaxHeightClass && attachmentQueueMaxHeightClass,
-                          shouldCompactAttachmentQueue && 'overflow-y-auto pr-1'
-                        )}
-                      >
-                        {files.map((file) => {
-                          const extension = getFileExtension(file.name);
-                          const isPreviewable = isAttachmentPreviewable(file);
-                          const isUploading = Boolean(file.uploading);
-                          const hasUploadError = Boolean(file.error);
-                          const uploadProgress = Math.max(0, Math.min(100, Number(file.progress ?? 0)));
+                  </button>
 
-                          return (
-                            <div
-                              key={file.id}
-                              className={cn(
-                                queuePanelRowClass,
-                                isPreviewable &&
-                                  'cursor-pointer transition-colors hover:border-[#C9D9FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted/80'
-                              )}
-                              onClick={() => {
-                                if (!isPreviewable) return;
-                                setAttachmentPreviewFile(file);
-                              }}
-                              onKeyDown={(event) => {
-                                if (!isPreviewable) return;
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault();
-                                  setAttachmentPreviewFile(file);
-                                }
-                              }}
-                              role={isPreviewable ? 'button' : undefined}
-                              tabIndex={isPreviewable ? 0 : -1}
-                              aria-label={isPreviewable ? `Preview ${file.name}` : undefined}
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex min-w-0 items-center gap-3">
-                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:border dark:border-border dark:bg-muted dark:text-foreground">
-                                    {extension}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <span className="block truncate text-xs font-medium text-foreground">
-                                      {file.name}
-                                    </span>
-                                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                                      <span className={hasUploadError ? 'text-destructive' : 'text-muted-foreground'}>
-                                        {isUploading ? 'Uploading' : hasUploadError ? 'Needs attention' : 'Completed'}
-                                      </span>
-                                      <span className="text-muted-foreground">{formatFileSize(file.size)}</span>
-                                      {isUploading && (
-                                        <span className="font-medium tabular-nums text-muted-foreground">
-                                          {uploadProgress}%
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex shrink-0 items-center gap-2">
-                                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                    {hasUploadError && (
-                                      <>
-                                        <AlertTriangle className="h-4 w-4 text-red-500" />
-                                        <span className="font-semibold text-red-500">Failed</span>
-                                      </>
-                                    )}
-                                    {isUploading && (
-                                      <>
-                                        <RotateCw className="h-4 w-4 animate-spin text-[#7D8FB8] dark:text-slate-300" />
-                                        <span className="font-semibold uppercase tracking-[0.08em] text-[#7D8FB8] dark:text-slate-300">
-                                          Uploading
-                                        </span>
-                                      </>
-                                    )}
-                                    {!isUploading && !hasUploadError && (
-                                      <>
-                                        <Check className="h-4 w-4 text-primary" />
-                                        <span className="font-semibold tabular-nums text-primary">100%</span>
-                                      </>
-                                    )}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      removeFile(file.id);
-                                    }}
-                                    className={queueIconButtonClass}
-                                    aria-label={`Remove ${file.name}`}
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              </div>
-                              {hasUploadError ? (
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <p className="text-xs text-destructive">{file.error}</p>
-                                  {shouldPromptDriveReconnect(file.error) && (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-6 px-2 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white"
-                                      onClick={async (e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        try {
-                                          await openDriveReconnectWindow();
-                                        } catch (error) {
-                                          const message = error instanceof Error ? error.message : 'Failed to get auth URL';
-                                          toast.error('Drive reconnect failed', { description: message });
-                                        }
-                                      }}
-                                    >
-                                      Connect
-                                    </Button>
-                                  )}
-                                </div>
-                              ) : null}
-                              {isUploading && (
-                                <div className="mt-2 flex items-center gap-2">
-                                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#D7E3FF]/90 dark:bg-slate-800/90">
-                                    <div
-                                      className="h-full rounded-full bg-primary transition-all duration-300"
-                                      style={{ width: `${uploadProgress}%` }}
-                                    />
-                                  </div>
-                                  <span className="w-9 text-right text-[11px] font-medium tabular-nums text-muted-foreground">
-                                    {uploadProgress}%
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{attachmentQueueFooterText}</p>
-                    </div>
-                  )}
+                  {index < BUILDER_STEPS.length - 1 ? (
+                    <div className="hidden h-px flex-1 bg-[#D7E4FF] xl:block" />
+                  ) : null}
                 </div>
-              </div>
-            )}
+              );
+            })}
           </div>
+        </section>
 
-          {/* Submit Button */}
-          <div className="flex items-center justify-end gap-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" disabled={isSubmitting}>
-                  Save Draft
-                  <ChevronDown className="ml-2 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[180px]">
-                <DropdownMenuItem onSelect={() => handleSaveDraft()}>
-                  Save Draft
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive focus:bg-destructive/10 focus:text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive"
-                  onSelect={handleCancelRequest}
-                >
-                  Cancel Request
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button type="submit" disabled={!isFormValid() || isSubmitting}>
-              {isSubmitting ? 'Submitting...' : 'Submit Request'}
-            </Button>
-          </div>
-        </form>
-        ) : null}
-      </div>
-      <AttachmentPreviewDialog
-        file={attachmentPreviewFile}
-        open={Boolean(attachmentPreviewFile)}
-        onOpenChange={(open) => {
-          if (!open) {
-            resetAttachmentPreviewTransform();
-            setAttachmentPreviewFile(null);
-          }
-        }}
-        description="Previewing uploaded attachment"
-      />
-      <Dialog open={showCancelDraftDialog} onOpenChange={setShowCancelDraftDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Leave this request?</DialogTitle>
-            <DialogDescription>
-              You have unsaved changes. You can save this form as a draft and continue later, or
-              discard it and leave now.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="ghost" onClick={() => setShowCancelDraftDialog(false)}>
-              Continue Editing
-            </Button>
-            <Button type="button" variant="outline" onClick={handleDiscardAndExit}>
-              Discard
-            </Button>
-            <Button type="button" onClick={() => handleSaveDraft({ navigateAfter: true })}>
-              Save Draft
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={showThankYou} onOpenChange={(open) => (!open ? handleThankYouClose() : null)}>
-        <DialogContent className="max-w-md overflow-hidden p-0">
-          <div className="relative h-44 bg-primary/10">
-            {thankYouAnimation && (
-              <Lottie
-                animationData={thankYouAnimation}
-                loop={10}
-                className="h-full w-full"
-              />
-            )}
-          </div>
-          <div className="px-7 pb-7 pt-5 text-center">
-            <DialogHeader className="text-center sm:text-center">
-              <DialogTitle className="text-2xl font-bold text-foreground premium-headline">Thank you!</DialogTitle>
-              <DialogDescription className="mt-2.5 text-sm text-muted-foreground">
-                Your request has been successfully submitted.
-                <br />
-                Our design team will review it shortly.
-              </DialogDescription>
-            </DialogHeader>
-            <Button className="mt-8 w-full" onClick={handleThankYouClose}>
-              Close
-            </Button>
-            <div className="mt-6 border-t border-border/60 pt-4 pb-2 text-center text-[11px] text-muted-foreground">
-              For assistance, please contact the coordinator at{' '}
-              <a href="tel:+919360960019" className="font-medium text-foreground/80 hover:text-foreground">
-                +91 9360960019
-              </a>{' '}
-              or{' '}
-              <a
-                href="mailto:design@smvec.ac.in"
-                className="font-medium text-foreground/80 hover:text-foreground"
-              >
-                design@smvec.ac.in
-              </a>
-              .
+        <section className="overflow-hidden rounded-[36px] border border-[#D7E4FF] bg-white/95 shadow-[0_30px_80px_rgba(15,23,42,0.08)] dark:border-border dark:bg-card/95">
+          <div className="border-b border-[#E8EEF9] px-6 py-5 dark:border-border">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold text-foreground">
+                  {BUILDER_STEPS[currentStepIndex]?.title}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {BUILDER_STEPS[currentStepIndex]?.description}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary" className="rounded-full px-3 py-1">
+                  {summary.taskCategory}
+                </Badge>
+                <Badge variant="outline" className="rounded-full px-3 py-1">
+                  {summary.urgency}
+                </Badge>
+                <Badge variant="outline" className="rounded-full px-3 py-1">
+                  {summary.effectiveDeadline
+                    ? format(summary.effectiveDeadline, 'dd MMM yyyy')
+                    : 'Deadline pending'}
+                </Badge>
+              </div>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
 
-      {/* Task Buddy AI Modal */}
-      <TaskBuddyModal
-        isOpen={isTaskBuddyOpen}
-        onClose={() => setIsTaskBuddyOpen(false)}
-        onTaskCreated={handleTaskBuddyDraft}
-        onOpenUploader={openExistingUploader}
-        hasAttachments={readyAttachments.length > 0}
-        attachmentContext={taskBuddyAttachmentContext}
-        attachmentFiles={readyAttachments}
-        isDeadlineAvailable={isDateSuggestionAvailable}
-        freeDateSuggestions={freeDateSuggestions}
-      />
-    </DashboardLayout >
+          <div className="px-6 py-6">{renderStepContent()}</div>
+
+          <div className="border-t border-[#E8EEF9] bg-[#FBFDFF] px-6 py-5 dark:border-border dark:bg-slate-950/30">
+            <div
+              className={cn(
+                'mb-4 rounded-2xl border px-4 py-3 text-sm',
+                validationMessages[currentStep]
+                  ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-200'
+              )}
+            >
+              {footerNote}
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={saveDraft}>
+                  Save as draft
+                </Button>
+                {currentStepIndex > 0 ? (
+                  <Button type="button" variant="ghost" onClick={handlePreviousStep}>
+                    <ChevronLeft className="mr-2 h-4 w-4" />
+                    Back
+                  </Button>
+                ) : null}
+              </div>
+
+              {currentStep === 'review' ? (
+                <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
+                  {isSubmitting ? 'Submitting...' : 'Submit Campaign Request'}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              ) : (
+                <Button type="button" onClick={handleNextStep}>
+                  Next step
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <CollateralPresetDialog
+          open={isPresetDialogOpen}
+          onOpenChange={setIsPresetDialogOpen}
+          onSelect={(preset) => {
+            setCollaterals((previous) => [
+              ...previous,
+              createCollateralDraftFromPreset(preset, deadlineMode, commonDeadline),
+            ]);
+            setIsPresetDialogOpen(false);
+            toast.success(`${preset.label} added.`);
+          }}
+        />
+      </div>
+    </DashboardLayout>
   );
 }

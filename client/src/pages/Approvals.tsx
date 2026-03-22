@@ -17,6 +17,7 @@ import { Link } from 'react-router-dom';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { DESIGN_GOVERNANCE_NOTICE_POLICY } from '@/lib/designGovernance';
+import { hydrateTask } from '@/lib/taskHydration';
 
 import { API_URL, authFetch } from '@/lib/api';
 
@@ -38,27 +39,7 @@ export default function Approvals() {
           throw new Error('Failed to load tasks');
         }
         const data = await response.json();
-        const hydrated = data.map((task: any) => ({
-          ...task,
-          id: task.id || task._id,
-          deadline: new Date(task.deadline),
-          createdAt: new Date(task.createdAt),
-          updatedAt: new Date(task.updatedAt),
-          proposedDeadline: task.proposedDeadline ? new Date(task.proposedDeadline) : undefined,
-          deadlineApprovedAt: task.deadlineApprovedAt ? new Date(task.deadlineApprovedAt) : undefined,
-          files: task.files?.map((file: any) => ({
-            ...file,
-            uploadedAt: new Date(file.uploadedAt),
-          })),
-          comments: task.comments?.map((comment: any) => ({
-            ...comment,
-            createdAt: new Date(comment.createdAt),
-          })),
-          changeHistory: task.changeHistory?.map((entry: any) => ({
-            ...entry,
-            createdAt: new Date(entry.createdAt),
-          })),
-        }));
+        const hydrated = data.map((task: any) => hydrateTask({ ...task, id: task.id || task._id }));
         setTasks(hydrated);
       } catch (error) {
         toast.error('Failed to load approvals');
