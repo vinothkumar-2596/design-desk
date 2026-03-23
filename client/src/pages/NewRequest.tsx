@@ -496,12 +496,6 @@ export default function NewRequest() {
         ? 2
         : 3;
 
-  const footerNote = validationMessages[currentStep]
-    ? validationMessages[currentStep]
-    : currentStep === 'review'
-      ? 'Everything looks ready. Submit the request to create one parent campaign with structured collateral items.'
-      : 'Current step is complete. Continue to the next step.';
-
   const saveDraft = () => {
     const payload: RequestDraftPayload = {
       title: requestTitle,
@@ -706,97 +700,69 @@ export default function NewRequest() {
     }
   };
 
+  const glassInputClass =
+    'border-input bg-background shadow-none focus-visible:ring-ring/30 focus-visible:ring-offset-0';
+  const glassCardClass =
+    'rounded-[24px] border border-[#CEDBFF]/35 bg-[linear-gradient(135deg,rgba(255,255,255,0.12),rgba(243,247,255,0.16),rgba(231,239,255,0.12))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(243,247,255,0.12),rgba(231,239,255,0.08))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:backdrop-blur-[24px]';
+  const glassStatCardClass =
+    'rounded-2xl border border-[#D7E2FF]/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.66),rgba(245,248,255,0.76))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.44),rgba(245,248,255,0.56))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:supports-[backdrop-filter]:bg-sidebar-accent/62 dark:backdrop-blur-[24px]';
+  const builderSurfaceClass =
+    'rounded-[24px] border border-border/70 bg-white dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:backdrop-blur-[24px]';
+  const builderInsetCardClass =
+    'rounded-2xl border border-border/70 bg-background/70 dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:supports-[backdrop-filter]:bg-sidebar-accent/62 dark:backdrop-blur-[24px]';
+  const builderFooterClass =
+    'relative border-t border-[#D7E3FF]/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.34),rgba(239,245,255,0.56))] px-5 py-3 supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.24),rgba(239,245,255,0.42))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar-accent/70 dark:supports-[backdrop-filter]:bg-sidebar-accent/58 dark:backdrop-blur-[24px]';
+
   const renderStepContent = () => {
     if (currentStep === 'campaign') {
       return (
-        <section className="space-y-6">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
-              <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <BriefcaseBusiness className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">Campaign Details</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Define the shared request context once before adding collateral items.
-                  </p>
-                </div>
-              </div>
+        <section className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 md:col-span-2">
+              <Label>Campaign Title</Label>
+              <Input
+                value={requestTitle}
+                onChange={(event) => setRequestTitle(event.target.value)}
+                placeholder="Admissions Drive 2026 / Annual Day / Product Launch Campaign"
+                className="placeholder:text-xs"
+              />
+            </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Campaign Title</Label>
-                  <Input
-                    value={requestTitle}
-                    onChange={(event) => setRequestTitle(event.target.value)}
-                    placeholder="Admissions Drive 2026 / Annual Day / Product Launch Campaign"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Department / Requester</Label>
-                  <div className="relative">
-                    <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={department}
-                      onChange={(event) => setDepartment(event.target.value)}
-                      placeholder="Marketing / HR / Admin"
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Contact Number</Label>
-                  <div className="relative">
-                    <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={requesterPhone}
-                      onChange={(event) => setRequesterPhone(formatIndianPhoneInput(event.target.value))}
-                      placeholder="+91 9876543210"
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-2">
-                <Label>Overall Brief</Label>
-                <Textarea
-                  value={overallBrief}
-                  onChange={(event) => setOverallBrief(event.target.value)}
-                  className="min-h-[180px]"
-                  placeholder="Describe the campaign objective, audience, message hierarchy, mandatory copy, visual tone, logos, language, and approval context."
+            <div className="space-y-2">
+              <Label>Department / Requester</Label>
+              <div className="relative">
+                <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={department}
+                  onChange={(event) => setDepartment(event.target.value)}
+                  placeholder="Marketing / HR / Admin"
+                  className="pl-9 placeholder:text-xs"
                 />
               </div>
             </div>
 
-            <div className="rounded-[30px] border border-[#D7E4FF] bg-gradient-to-br from-[#0F172A] via-[#132042] to-[#1D3260] p-6 text-white shadow-xl">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/65">Step Guidance</p>
-              <h3 className="mt-4 text-xl font-semibold">Set the campaign story first</h3>
-              <p className="mt-3 text-sm text-white/72">
-                This step should answer what the campaign is, who is requesting it, and what the
-                design team needs to understand before opening any collateral item.
-              </p>
-
-              <div className="mt-6 grid gap-3">
-                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.16em] text-white/60">Request Mode</p>
-                  <p className="mt-1 text-base font-semibold">Campaign Request Builder</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.16em] text-white/60">Collaterals</p>
-                  <p className="mt-1 text-base font-semibold">{summary.collateralCount || 0} planned</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.16em] text-white/60">Required</p>
-                  <p className="mt-1 text-sm font-medium text-white/82">
-                    Title, department, phone, and one strong brief.
-                  </p>
-                </div>
+            <div className="space-y-2">
+              <Label>Contact Number</Label>
+              <div className="relative">
+                <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={requesterPhone}
+                  onChange={(event) => setRequesterPhone(formatIndianPhoneInput(event.target.value))}
+                  placeholder="+91 9876543210"
+                  className="pl-9 placeholder:text-xs"
+                />
               </div>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Overall Brief</Label>
+            <Textarea
+              value={overallBrief}
+              onChange={(event) => setOverallBrief(event.target.value)}
+              className="min-h-[152px] placeholder:text-xs"
+              placeholder="Describe the campaign objective, audience, message hierarchy, mandatory copy, visual tone, logos, language, and approval context."
+            />
           </div>
         </section>
       );
@@ -804,130 +770,70 @@ export default function NewRequest() {
 
     if (currentStep === 'timeline') {
       return (
-        <section className="space-y-6">
-          <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
-            <div className="mb-5 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <CalendarRange className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">Deadline Strategy</h2>
-                <p className="text-sm text-muted-foreground">
-                  Choose one campaign deadline or switch to individual deadlines per collateral item.
-                </p>
-              </div>
+        <section className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-start">
+            <div className="space-y-2">
+              <Label>Deadline Mode</Label>
+              <Select
+                value={deadlineMode}
+                onValueChange={(value) => setDeadlineMode(value as 'common' | 'itemized')}
+              >
+                <SelectTrigger className="h-10 text-sm">
+                  <SelectValue placeholder="Select deadline mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="common">One common deadline</SelectItem>
+                  <SelectItem value="itemized">Individual item deadlines</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-[240px_minmax(0,1fr)] md:items-end">
-              <div className="space-y-2">
-                <Label>Deadline Mode</Label>
-                <Select
-                  value={deadlineMode}
-                  onValueChange={(value) => setDeadlineMode(value as 'common' | 'itemized')}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select deadline mode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="common">One common deadline</SelectItem>
-                    <SelectItem value="itemized">Individual item deadlines</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Common Deadline</Label>
-                <Input
-                  type="date"
-                  min={minDeadlineInputValue}
-                  value={toDateValue(commonDeadline)}
-                  disabled={deadlineMode !== 'common'}
-                  onChange={(event) =>
-                    setCommonDeadline(
-                      event.target.value ? new Date(`${event.target.value}T00:00:00`) : undefined
-                    )
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  Delivery dates must be at least 3 working days from today.
-                </p>
-              </div>
+            <div className="space-y-2">
+              <Label>Common Deadline</Label>
+              <Input
+                type="date"
+                min={minDeadlineInputValue}
+                value={toDateValue(commonDeadline)}
+                className="h-10 text-sm leading-none"
+                disabled={deadlineMode !== 'common'}
+                onChange={(event) =>
+                  setCommonDeadline(
+                    event.target.value ? new Date(`${event.target.value}T00:00:00`) : undefined
+                  )
+                }
+              />
             </div>
-          </section>
 
-          <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
-            <AttachmentUploadField
-              label="Master References / Attachments"
-              description="Upload campaign-level references shared across all collateral items: brand assets, approved copy, event brief, logos, prior creatives, or mandatory guidelines."
-              attachments={masterAttachments}
-              onChange={setMasterAttachments}
-              taskTitle={requestTitle || 'Campaign Request'}
-              taskSection="Campaign Master References"
-              emptyLabel="These files stay at request level and remain visible across the full campaign request."
-            />
-          </section>
+            <p className="mt-0.5 text-[11px] leading-[14px] text-muted-foreground md:col-start-2">
+              Delivery dates must be at least 3 working days from today.
+            </p>
+          </div>
+
+          <AttachmentUploadField
+            label="Master References / Attachments"
+            description="Upload campaign-level references shared across all collateral items: brand assets, approved copy, event brief, logos, prior creatives, or mandatory guidelines."
+            attachments={masterAttachments}
+            onChange={setMasterAttachments}
+            taskTitle={requestTitle || 'Campaign Request'}
+            taskSection="Campaign Master References"
+            emptyLabel="These files stay at request level and remain visible across the full campaign request."
+          />
         </section>
       );
     }
 
     if (currentStep === 'collaterals') {
       return (
-        <section className="space-y-6">
-          <section className="rounded-[30px] border border-[#D7E4FF] bg-gradient-to-br from-white via-[#FBFDFF] to-[#EEF4FF] p-6 shadow-sm dark:border-border dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="max-w-2xl">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <Layers3 className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">Collateral Builder</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Add preset-based collateral items. Each item keeps its own brief, platform,
-                      references, deadline, and status.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <Button type="button" onClick={() => setIsPresetDialogOpen(true)} className="rounded-full">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Collateral
-              </Button>
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Badge variant="secondary" className="rounded-full px-3 py-1">
-                {summary.collateralCount} items
-              </Badge>
-              <Badge variant="outline" className="rounded-full px-3 py-1">
-                {summary.taskCategory}
-              </Badge>
-              <Badge variant="outline" className="rounded-full px-3 py-1">
-                {summary.urgency}
-              </Badge>
-            </div>
-          </section>
-
+        <section className="space-y-3">
           {collaterals.length === 0 ? (
-            <div className="rounded-[30px] border border-dashed border-[#CFE0FF] bg-[#F8FBFF] px-6 py-14 text-center dark:border-border dark:bg-slate-900/40">
-              <Layers3 className="mx-auto h-10 w-10 text-primary/70" />
-              <h3 className="mt-4 text-lg font-semibold text-foreground">No collaterals added yet</h3>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Start with presets like Instagram Post, Standee, Flyer, LED Backdrop, Invitation,
-                Certificate, or WhatsApp Creative.
+            <div className="rounded-[24px] border border-dashed border-[#D2DFFF]/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.6),rgba(243,247,255,0.72))] px-5 py-5 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.42),rgba(243,247,255,0.54))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar-accent/80">
+              <h3 className="text-base font-semibold text-foreground">No collaterals added yet</h3>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                Choose a preset to add the first collateral item for this request.
               </p>
-              <Button
-                type="button"
-                onClick={() => setIsPresetDialogOpen(true)}
-                className="mt-5 rounded-full"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Choose First Preset
-              </Button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {collaterals.map((collateral) => (
                 <CollateralEditorCard
                   key={collateral.id}
@@ -953,29 +859,29 @@ export default function NewRequest() {
 
     return (
       <section className="space-y-6">
-        <section className="rounded-[30px] border border-[#D7E4FF] bg-gradient-to-br from-[#0F172A] via-[#132042] to-[#1D3260] p-6 text-white shadow-xl">
+        <section className={cn(glassCardClass, 'p-6')}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-2xl">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/65">Review Summary</p>
-              <h2 className="mt-3 text-2xl font-semibold">{requestTitle.trim() || 'Campaign request'}</h2>
-              <p className="mt-3 text-sm text-white/72">
+              <p className="text-xs uppercase tracking-[0.18em] text-primary">Review Summary</p>
+              <h2 className="mt-3 text-2xl font-semibold text-foreground">{requestTitle.trim() || 'Campaign request'}</h2>
+              <p className="mt-3 text-sm text-muted-foreground">
                 This submission will create one parent campaign request with separate collateral
                 items for designers to track and update individually.
               </p>
             </div>
 
             <div className="grid w-full gap-3 sm:grid-cols-3 lg:max-w-xl">
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.16em] text-white/60">Collaterals</p>
-                <p className="mt-1 text-xl font-semibold">{summary.collateralCount}</p>
+              <div className={cn(glassStatCardClass, 'px-4 py-3')}>
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Collaterals</p>
+                <p className="mt-1 text-xl font-semibold text-foreground">{summary.collateralCount}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.16em] text-white/60">References</p>
-                <p className="mt-1 text-xl font-semibold">{summary.totalReferenceCount}</p>
+              <div className={cn(glassStatCardClass, 'px-4 py-3')}>
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">References</p>
+                <p className="mt-1 text-xl font-semibold text-foreground">{summary.totalReferenceCount}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.16em] text-white/60">Deadline</p>
-                <p className="mt-1 text-sm font-semibold">
+              <div className={cn(glassStatCardClass, 'px-4 py-3')}>
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Deadline</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">
                   {summary.effectiveDeadline
                     ? format(summary.effectiveDeadline, 'EEE, dd MMM yyyy')
                     : 'Not set'}
@@ -987,7 +893,7 @@ export default function NewRequest() {
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-6">
-            <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+            <section className={cn(glassCardClass, 'p-6')}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">Campaign Details</h3>
@@ -1001,32 +907,32 @@ export default function NewRequest() {
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Title</p>
                   <p className="mt-2 text-sm font-medium text-foreground">{requestTitle || '-'}</p>
                 </div>
-                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Department</p>
                   <p className="mt-2 text-sm font-medium text-foreground">{department || '-'}</p>
                 </div>
-                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Contact Number</p>
                   <p className="mt-2 text-sm font-medium text-foreground">{requesterPhone || '-'}</p>
                 </div>
-                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Deadline Mode</p>
                   <p className="mt-2 text-sm font-medium capitalize text-foreground">
                     {deadlineMode === 'common' ? 'One common deadline' : 'Individual item deadlines'}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 md:col-span-2 dark:border-border dark:bg-slate-900/50">
+                <div className={cn(glassStatCardClass, 'px-4 py-3 md:col-span-2')}>
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Overall Brief</p>
                   <p className="mt-2 text-sm leading-6 text-foreground">{overallBrief || '-'}</p>
                 </div>
               </div>
             </section>
 
-            <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+            <section className={cn(glassCardClass, 'p-6')}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">Collateral Queue</h3>
@@ -1043,7 +949,7 @@ export default function NewRequest() {
                 {collaterals.map((collateral) => (
                   <div
                     key={collateral.id}
-                    className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-4 dark:border-border dark:bg-slate-900/50"
+                    className={cn(glassStatCardClass, 'px-4 py-4')}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -1093,7 +999,7 @@ export default function NewRequest() {
           </div>
 
           <aside className="space-y-6">
-            <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+            <section className={cn(glassCardClass, 'p-6')}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">Files & Timing</h3>
@@ -1107,7 +1013,7 @@ export default function NewRequest() {
               </div>
 
               <div className="mt-5 grid gap-3">
-                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Effective Deadline</p>
                   <p className="mt-2 text-sm font-medium text-foreground">
                     {summary.effectiveDeadline
@@ -1115,13 +1021,13 @@ export default function NewRequest() {
                       : 'Not set'}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Master References</p>
                   <p className="mt-2 text-sm font-medium text-foreground">
                     {summary.masterReferenceCount} uploaded
                   </p>
                 </div>
-                <div className="rounded-2xl border border-[#E2EBFF] bg-[#F9FBFF] px-4 py-3 dark:border-border dark:bg-slate-900/50">
+                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Item References</p>
                   <p className="mt-2 text-sm font-medium text-foreground">
                     {summary.collateralReferenceCount} uploaded
@@ -1130,7 +1036,7 @@ export default function NewRequest() {
               </div>
             </section>
 
-            <section className="rounded-[30px] border border-[#D7E4FF] bg-white/90 p-6 shadow-sm dark:border-border dark:bg-card/80">
+            <section className={cn(glassCardClass, 'p-6')}>
               <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <Paperclip className="h-4 w-4 text-primary" />
                 Final Checks
@@ -1147,20 +1053,187 @@ export default function NewRequest() {
     );
   };
 
+  const renderStepSidebar = () => {
+    if (currentStep === 'review') return null;
+
+    const stepNotes: Record<Exclude<BuilderStepId, 'review'>, string> = {
+      campaign: 'Set the shared request context here. These details will carry across every collateral item.',
+      timeline:
+        'Choose the deadline model and attach master references that designers should always see.',
+      collaterals:
+        'Each collateral becomes its own trackable design item after submission, with separate status updates.',
+    };
+
+    return (
+      <aside className="space-y-4 xl:sticky xl:top-24">
+        <section className={cn(builderSurfaceClass, 'p-5')}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              {(() => {
+                const ActiveIcon = BUILDER_STEPS[currentStepIndex]?.icon || BriefcaseBusiness;
+                return <ActiveIcon className="h-4 w-4" />;
+              })()}
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Current Step</p>
+              <h3 className="text-base font-semibold text-foreground">
+                {BUILDER_STEPS[currentStepIndex]?.title}
+              </h3>
+            </div>
+          </div>
+
+          <p className="mt-4 text-sm leading-6 text-muted-foreground">
+            {stepNotes[currentStep as Exclude<BuilderStepId, 'review'>]}
+          </p>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <div className={cn(builderInsetCardClass, 'px-4 py-3')}>
+              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Campaign</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {requestTitle.trim() || 'Untitled request'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{department.trim() || 'Department not set'}</p>
+            </div>
+
+            <div className={cn(builderInsetCardClass, 'px-4 py-3')}>
+              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Deadline</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {summary.effectiveDeadline
+                  ? format(summary.effectiveDeadline, 'dd MMM yyyy')
+                  : deadlineMode === 'itemized'
+                    ? 'Item-wise dates'
+                    : 'Not set'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {deadlineMode === 'common' ? 'One shared deadline' : 'Individual collateral deadlines'}
+              </p>
+            </div>
+
+            <div className={cn(builderInsetCardClass, 'px-4 py-3')}>
+              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Collaterals</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{summary.collateralCount} planned</p>
+              <p className="mt-1 text-xs text-muted-foreground">Preset-based items in this request</p>
+            </div>
+
+            <div className={cn(builderInsetCardClass, 'px-4 py-3')}>
+              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">References</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{summary.totalReferenceCount} uploaded</p>
+              <p className="mt-1 text-xs text-muted-foreground">Master and item-level files combined</p>
+            </div>
+          </div>
+        </section>
+
+        <section className={cn(builderSurfaceClass, 'p-5')}>
+          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Workflow Progress</p>
+          <div className="mt-4 space-y-3">
+            {BUILDER_STEPS.map((step, index) => {
+              const isCurrent = step.id === currentStep;
+              const isComplete = index < currentStepIndex && !validationMessages[step.id];
+              const statusText = isComplete ? 'Completed' : isCurrent ? 'In progress' : 'Upcoming';
+
+              return (
+                <div key={step.id} className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold',
+                      isCurrent || isComplete
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-background text-muted-foreground'
+                    )}
+                  >
+                    {isComplete ? <Check className="h-3.5 w-3.5" /> : step.label}
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{step.title}</p>
+                    <p className="text-xs text-muted-foreground">{statusText}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </aside>
+    );
+  };
+
+  const stepPanel = (
+    <section className={cn(builderSurfaceClass, 'overflow-hidden')}>
+      <div className="border-b border-border/70 px-5 py-3.5 dark:border-[#253D78]/90">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-[24px] font-semibold text-foreground">
+              {BUILDER_STEPS[currentStepIndex]?.title}
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {BUILDER_STEPS[currentStepIndex]?.description}
+            </p>
+          </div>
+
+          {currentStep === 'collaterals' ? (
+            <Button type="button" onClick={() => setIsPresetDialogOpen(true)} className="h-10 w-full sm:w-auto">
+              <Plus className="mr-2 h-4 w-4" />
+              Add Collateral
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="px-5 py-4">{renderStepContent()}</div>
+
+      <div className={builderFooterClass}>
+        {validationMessages[currentStep] ? (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+            {validationMessages[currentStep]}
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-h-10 items-center">
+            {currentStepIndex > 0 ? (
+              <Button type="button" variant="ghost" onClick={handlePreviousStep} className="px-2 text-muted-foreground">
+                <ChevronLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <Button type="button" variant="outline" onClick={saveDraft}>
+              Save as draft
+            </Button>
+
+            {currentStep === 'review' ? (
+              <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting...' : 'Submit Campaign Request'}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            ) : (
+              <Button type="button" onClick={handleNextStep}>
+                Next step
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-6xl space-y-6 pb-8">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto max-w-6xl space-y-4 pb-6">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
-            <Badge variant="secondary" className="mb-3 rounded-full px-3 py-1">
+            <Badge variant="outline" className="mb-3 rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-sidebar-border dark:bg-sidebar-accent/80">
               Campaign Request Builder
             </Badge>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            <h1 className="text-[30px] font-bold tracking-tight text-foreground">
               Build one campaign request with structured collateral items
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Modern step-by-step builder: complete the campaign basics first, then move into
-              deadline planning, collateral setup, and final review.
+              Structured internal request flow for campaign details, timelines, collateral items,
+              and final review.
             </p>
           </div>
 
@@ -1171,152 +1244,110 @@ export default function NewRequest() {
           </div>
         </div>
 
-        <section className="rounded-[32px] border border-[#D7E4FF] bg-white/90 p-5 shadow-sm dark:border-border dark:bg-card/80">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
-                Step {currentStepIndex + 1} of {BUILDER_STEPS.length}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Complete the current block, then move to the next one.
-              </p>
-            </div>
+        <section className="relative overflow-hidden rounded-[22px] border border-[#C9D8FF]/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.52),rgba(241,246,255,0.62),rgba(224,235,255,0.54))] px-4 py-3 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.34),rgba(241,246,255,0.42),rgba(224,235,255,0.36))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:supports-[backdrop-filter]:bg-sidebar/96 dark:backdrop-blur-[24px]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(87,118,255,0.07),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(56,85,190,0.07),transparent_30%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(59,91,190,0.14),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,91,190,0.1),transparent_24%)]" />
+          <div className="overflow-x-auto">
+            <ol className="relative flex min-w-[760px] items-center">
+              {BUILDER_STEPS.map((step, index) => {
+                const isCurrent = step.id === currentStep;
+                const isComplete = index < currentStepIndex && !validationMessages[step.id];
+                const isUnlocked = index <= furthestUnlockedStepIndex;
+                const StepIcon = step.icon;
+                const trackingLabel = isComplete ? 'Completed' : isCurrent ? 'Current step' : 'Upcoming';
 
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="rounded-full px-3 py-1">
-                {summary.collateralCount} collaterals
-              </Badge>
-              <Badge variant="outline" className="rounded-full px-3 py-1">
-                {summary.totalReferenceCount} references
-              </Badge>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-            {BUILDER_STEPS.map((step, index) => {
-              const isCurrent = step.id === currentStep;
-              const isComplete = index < currentStepIndex && !validationMessages[step.id];
-              const isUnlocked = index <= furthestUnlockedStepIndex;
-              const StepIcon = step.icon;
-
-              return (
-                <div key={step.id} className="flex flex-1 items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleStepChange(step.id)}
-                    className={cn(
-                      'flex w-full items-start gap-3 rounded-[24px] border px-4 py-4 text-left transition',
-                      isCurrent &&
-                        'border-primary/40 bg-primary/[0.06] shadow-[0_10px_30px_rgba(43,87,255,0.08)]',
-                      !isCurrent && isUnlocked && 'border-[#D7E4FF] bg-[#F8FBFF] hover:border-primary/30',
-                      !isUnlocked && 'cursor-not-allowed border-[#E8EDF9] bg-[#FAFBFD] opacity-60'
-                    )}
-                    disabled={!isUnlocked}
-                  >
-                    <div
+                return (
+                  <li key={step.id} className="flex min-w-0 flex-1 items-center">
+                    <button
+                      type="button"
+                      onClick={() => handleStepChange(step.id)}
                       className={cn(
-                        'flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm font-semibold',
-                        isCurrent && 'border-primary bg-primary text-white',
-                        isComplete && 'border-emerald-500 bg-emerald-500 text-white',
-                        !isCurrent && !isComplete && 'border-[#D7E4FF] bg-white text-foreground'
+                        'flex min-w-0 flex-1 items-center gap-3 rounded-[18px] px-3 py-2.5 text-left backdrop-blur-md transition-all duration-150',
+                        isCurrent &&
+                          'bg-[linear-gradient(135deg,rgba(255,255,255,0.32),rgba(234,241,255,0.42),rgba(212,225,255,0.24))] shadow-[inset_0_0_0_1px_rgba(67,97,204,0.12)] dark:border dark:border-sidebar-ring/40 dark:bg-sidebar-primary dark:[background-image:none] dark:text-sidebar-primary-foreground dark:shadow-[0_18px_40px_-28px_rgba(29,78,216,0.42)]',
+                        isComplete &&
+                          'bg-[linear-gradient(135deg,rgba(255,255,255,0.26),rgba(240,245,255,0.34))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)] dark:border dark:border-sidebar-border dark:bg-sidebar-accent dark:[background-image:none] dark:text-sidebar-foreground',
+                        !isCurrent &&
+                          !isComplete &&
+                          'bg-white/18 dark:border dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:text-sidebar-foreground',
+                        isUnlocked ? 'hover:bg-white/30 dark:hover:border-sidebar-ring/30 dark:hover:bg-sidebar-accent' : 'cursor-not-allowed opacity-70'
                       )}
+                      disabled={!isUnlocked}
                     >
-                      {isComplete ? <Check className="h-4 w-4" /> : step.label}
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <StepIcon className="h-4 w-4 text-primary" />
-                        <p className="text-sm font-semibold text-foreground">{step.title}</p>
+                      <div
+                        className={cn(
+                          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold backdrop-blur-sm',
+                          isCurrent && 'border-primary bg-primary text-primary-foreground dark:border-sidebar-primary dark:bg-sidebar-primary dark:text-sidebar-primary-foreground',
+                          isComplete && 'border-primary bg-primary text-primary-foreground dark:border-sidebar-primary dark:bg-sidebar-primary dark:text-sidebar-primary-foreground',
+                          !isCurrent &&
+                            !isComplete &&
+                            'border-white/70 bg-white/70 text-muted-foreground dark:border-sidebar-border dark:bg-sidebar-accent dark:text-sidebar-foreground'
+                        )}
+                      >
+                        {isComplete ? <Check className="h-4 w-4" /> : step.label}
                       </div>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {step.description}
-                      </p>
-                    </div>
-                  </button>
 
-                  {index < BUILDER_STEPS.length - 1 ? (
-                    <div className="hidden h-px flex-1 bg-[#D7E4FF] xl:block" />
-                  ) : null}
-                </div>
-              );
-            })}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <StepIcon
+                            className={cn(
+                              'h-3.5 w-3.5 shrink-0',
+                              isCurrent || isComplete
+                                ? 'text-primary dark:text-sidebar-primary-foreground'
+                                : 'text-muted-foreground dark:text-sidebar-foreground/70'
+                            )}
+                          />
+                          <p
+                            className={cn(
+                              'truncate text-[13px] font-semibold text-foreground',
+                              isCurrent ? 'dark:text-sidebar-primary-foreground' : 'dark:text-sidebar-foreground'
+                            )}
+                          >
+                            {step.title}
+                          </p>
+                        </div>
+                        <p
+                          className={cn(
+                            'mt-0.5 text-[10.5px] leading-4 text-muted-foreground',
+                            isCurrent ? 'dark:text-sidebar-primary-foreground/75' : 'dark:text-sidebar-foreground/60'
+                          )}
+                        >
+                          {trackingLabel}
+                        </p>
+                      </div>
+                    </button>
+
+                    {index < BUILDER_STEPS.length - 1 ? (
+                      <div className="mx-2 h-px w-10 flex-none bg-[#D8E3FF]/90 lg:w-14 dark:bg-sidebar-border">
+                        <div
+                          className={cn(
+                            'h-full w-full',
+                            index < currentStepIndex
+                              ? 'bg-[linear-gradient(90deg,rgba(56,85,190,0.95),rgba(96,124,255,0.92))] dark:bg-sidebar-primary dark:[background-image:none]'
+                              : 'bg-[#D8E3FF]/90 dark:bg-sidebar-border'
+                          )}
+                        />
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-[36px] border border-[#D7E4FF] bg-white/95 shadow-[0_30px_80px_rgba(15,23,42,0.08)] dark:border-border dark:bg-card/95">
-          <div className="border-b border-[#E8EEF9] px-6 py-5 dark:border-border">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <h2 className="text-2xl font-semibold text-foreground">
-                  {BUILDER_STEPS[currentStepIndex]?.title}
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {BUILDER_STEPS[currentStepIndex]?.description}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary" className="rounded-full px-3 py-1">
-                  {summary.taskCategory}
-                </Badge>
-                <Badge variant="outline" className="rounded-full px-3 py-1">
-                  {summary.urgency}
-                </Badge>
-                <Badge variant="outline" className="rounded-full px-3 py-1">
-                  {summary.effectiveDeadline
-                    ? format(summary.effectiveDeadline, 'dd MMM yyyy')
-                    : 'Deadline pending'}
-                </Badge>
-              </div>
-            </div>
+        {currentStep === 'review' ? (
+          stepPanel
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)]">
+            {stepPanel}
+            {renderStepSidebar()}
           </div>
-
-          <div className="px-6 py-6">{renderStepContent()}</div>
-
-          <div className="border-t border-[#E8EEF9] bg-[#FBFDFF] px-6 py-5 dark:border-border dark:bg-slate-950/30">
-            <div
-              className={cn(
-                'mb-4 rounded-2xl border px-4 py-3 text-sm',
-                validationMessages[currentStep]
-                  ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200'
-                  : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-200'
-              )}
-            >
-              {footerNote}
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={saveDraft}>
-                  Save as draft
-                </Button>
-                {currentStepIndex > 0 ? (
-                  <Button type="button" variant="ghost" onClick={handlePreviousStep}>
-                    <ChevronLeft className="mr-2 h-4 w-4" />
-                    Back
-                  </Button>
-                ) : null}
-              </div>
-
-              {currentStep === 'review' ? (
-                <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
-                  {isSubmitting ? 'Submitting...' : 'Submit Campaign Request'}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              ) : (
-                <Button type="button" onClick={handleNextStep}>
-                  Next step
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </div>
-        </section>
+        )}
 
         <CollateralPresetDialog
           open={isPresetDialogOpen}
           onOpenChange={setIsPresetDialogOpen}
+          variant="dark"
           onSelect={(preset) => {
             setCollaterals((previous) => [
               ...previous,
@@ -1324,6 +1355,16 @@ export default function NewRequest() {
             ]);
             setIsPresetDialogOpen(false);
             toast.success(`${preset.label} added.`);
+          }}
+          onSelectMany={(presets) => {
+            setCollaterals((previous) => [
+              ...previous,
+              ...presets.map((preset) =>
+                createCollateralDraftFromPreset(preset, deadlineMode, commonDeadline)
+              ),
+            ]);
+            setIsPresetDialogOpen(false);
+            toast.success(`${presets.length} presets added.`);
           }}
         />
       </div>

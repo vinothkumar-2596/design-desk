@@ -1,8 +1,18 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import Lottie from 'lottie-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Paperclip, Trash2, Upload, AlertTriangle, Loader2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  ExternalLink,
+  FileText,
+  Loader2,
+  Paperclip,
+  RotateCw,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { API_URL, authFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { BuilderAttachment } from '@/components/request-builder/types';
@@ -29,6 +39,24 @@ const formatFileSize = (bytes?: number) => {
   return `${value} B`;
 };
 
+let uploadAnimationCache: object | null = null;
+let uploadAnimationPromise: Promise<object | null> | null = null;
+
+const loadUploadAnimation = async () => {
+  if (uploadAnimationCache) return uploadAnimationCache;
+  if (!uploadAnimationPromise) {
+    uploadAnimationPromise = fetch('/lottie/upload-file.json')
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = (await response.json()) as object;
+        uploadAnimationCache = data;
+        return data;
+      })
+      .catch(() => null);
+  }
+  return uploadAnimationPromise;
+};
+
 export function AttachmentUploadField({
   label,
   description,
@@ -39,7 +67,37 @@ export function AttachmentUploadField({
   emptyLabel = 'No files uploaded yet.',
 }: AttachmentUploadFieldProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadAnimation, setUploadAnimation] = useState<object | null>(uploadAnimationCache);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const activeUploadRequestsRef = useRef(new Map<string, XMLHttpRequest>());
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (uploadAnimationCache) {
+      setUploadAnimation(uploadAnimationCache);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    void loadUploadAnimation().then((data) => {
+      if (mounted && data) {
+        setUploadAnimation(data);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      activeUploadRequestsRef.current.forEach((xhr) => xhr.abort());
+      activeUploadRequestsRef.current.clear();
+    };
+  }, []);
 
   const updateAttachment = (attachmentId: string, next: Partial<BuilderAttachment>) => {
     onChange((previous) =>
@@ -56,50 +114,96 @@ export function AttachmentUploadField({
       name: file.name,
       size: file.size,
       uploading: true,
+      progress: 0,
     };
     onChange((previous) => [...previous, draft]);
 
     if (!API_URL) {
       updateAttachment(tempId, {
         uploading: false,
+        progress: 100,
         url: URL.createObjectURL(file),
       });
       return;
     }
 
-    const payload = new FormData();
-    payload.append('file', file);
-    payload.append('taskTitle', taskTitle || 'Campaign Request');
-    payload.append('taskSection', taskSection);
-
     try {
-      const response = await authFetch(`${API_URL}/api/files/upload`, {
-        method: 'POST',
-        body: payload,
-      });
-      const data = await response.json().catch(() => null);
+      await new Promise<void>((resolve, reject) => {
+        const payload = new FormData();
+        payload.append('file', file);
+        payload.append('taskTitle', taskTitle || 'Campaign Request');
+        payload.append('taskSection', taskSection);
 
-      if (!response.ok) {
-        throw new Error(
-          data && typeof data.error === 'string' && data.error.trim()
-            ? data.error.trim()
-            : 'Upload failed.'
-        );
-      }
+        const xhr = new XMLHttpRequest();
+        activeUploadRequestsRef.current.set(tempId, xhr);
 
-      updateAttachment(tempId, {
-        id: String(data?.id || tempId),
-        uploading: false,
-        url: String(data?.webViewLink || ''),
-        driveId: String(data?.id || ''),
-        webViewLink: String(data?.webViewLink || ''),
-        webContentLink: String(data?.webContentLink || ''),
-        thumbnailUrl: String(data?.thumbnailLink || ''),
+        xhr.open('POST', `${API_URL}/api/files/upload`);
+
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+          const nextProgress = Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100)));
+          updateAttachment(tempId, {
+            progress: nextProgress,
+            uploading: nextProgress < 100,
+          });
+        };
+
+        xhr.onload = () => {
+          activeUploadRequestsRef.current.delete(tempId);
+
+          let data: any = null;
+          try {
+            data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+          } catch {
+            data = null;
+          }
+
+          if (xhr.status < 200 || xhr.status >= 300) {
+            const errorMessage =
+              data && typeof data.error === 'string' && data.error.trim()
+                ? data.error.trim()
+                : xhr.status === 401
+                  ? 'Please sign in to upload files.'
+                  : `Upload failed (HTTP ${xhr.status}).`;
+            reject(new Error(errorMessage));
+            return;
+          }
+
+          updateAttachment(tempId, {
+            id: String(data?.id || tempId),
+            uploading: false,
+            progress: 100,
+            url: String(data?.webViewLink || ''),
+            driveId: String(data?.id || ''),
+            webViewLink: String(data?.webViewLink || ''),
+            webContentLink: String(data?.webContentLink || ''),
+            thumbnailUrl: String(data?.thumbnailLink || ''),
+          });
+          resolve();
+        };
+
+        xhr.onerror = () => {
+          activeUploadRequestsRef.current.delete(tempId);
+          reject(new Error('Network error while uploading the file.'));
+        };
+
+        xhr.onabort = () => {
+          activeUploadRequestsRef.current.delete(tempId);
+          reject(new Error('Upload cancelled.'));
+        };
+
+        xhr.send(payload);
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Upload failed.';
+      if (message === 'Upload cancelled.') {
+        onChange((previous) => previous.filter((item) => item.id !== tempId));
+        return;
+      }
       updateAttachment(tempId, {
         uploading: false,
-        error: error instanceof Error ? error.message : 'Upload failed.',
+        progress: 0,
+        error: message,
       });
     }
   };
@@ -112,6 +216,18 @@ export function AttachmentUploadField({
     }
   };
 
+  const readyCount = attachments.filter((attachment) => !attachment.uploading && !attachment.error).length;
+  const uploadingCount = attachments.filter((attachment) => attachment.uploading).length;
+  const failedCount = attachments.filter((attachment) => attachment.error).length;
+  const removeAttachment = (attachmentId: string) => {
+    const xhr = activeUploadRequestsRef.current.get(attachmentId);
+    if (xhr) {
+      xhr.abort();
+      activeUploadRequestsRef.current.delete(attachmentId);
+    }
+    onChange((previous) => previous.filter((item) => item.id !== attachmentId));
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-3">
@@ -119,16 +235,6 @@ export function AttachmentUploadField({
           <p className="text-sm font-semibold text-foreground">{label}</p>
           {description ? <p className="mt-1 text-xs text-muted-foreground">{description}</p> : null}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => inputRef.current?.click()}
-          className="rounded-full"
-        >
-          <Upload className="mr-2 h-4 w-4" />
-          Upload
-        </Button>
       </div>
 
       <Input
@@ -144,11 +250,20 @@ export function AttachmentUploadField({
 
       <div
         className={cn(
-          'rounded-2xl border border-dashed px-4 py-5 transition-colors',
+          'rounded-2xl border border-dashed px-4 py-3 transition-colors supports-[backdrop-filter]:backdrop-blur-md',
           isDragging
-            ? 'border-primary bg-primary/5'
-            : 'border-[#CFE0FF] bg-[#F8FBFF] dark:border-border dark:bg-card/60'
+            ? 'border-primary bg-primary/[0.08] dark:border-sidebar-ring/35 dark:bg-sidebar-primary/16'
+            : 'border-white/12 bg-white/48 dark:border-sidebar-border dark:bg-sidebar/96'
         )}
+        role="button"
+        tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
         onDragOver={(event) => {
           event.preventDefault();
           setIsDragging(true);
@@ -160,58 +275,159 @@ export function AttachmentUploadField({
           void handleFiles(event.dataTransfer.files);
         }}
       >
-        {attachments.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 text-center">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-primary shadow-sm dark:bg-muted">
-              <Paperclip className="h-5 w-5" />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/12 bg-white/38 dark:border-sidebar-border dark:bg-sidebar-primary/38">
+              {uploadAnimation ? (
+                <Lottie animationData={uploadAnimation} loop className="h-10 w-10" />
+              ) : (
+                <Paperclip className="h-5 w-5 text-primary" />
+              )}
             </div>
-            <p className="text-sm font-medium text-foreground">Drop files here or upload from device</p>
-            <p className="text-xs text-muted-foreground">{emptyLabel}</p>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold leading-5 text-foreground">
+                Upload files or drag them here
+              </p>
+              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                Stored directly in Drive and linked to this request.
+              </p>
+              <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                {emptyLabel}
+              </p>
+            </div>
           </div>
-        ) : (
-          <div className="space-y-2">
-            {attachments.map((attachment) => (
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={(event) => {
+              event.stopPropagation();
+              inputRef.current?.click();
+            }}
+            className="h-9 shrink-0 rounded-lg px-4 dark:border-sidebar-border dark:bg-sidebar dark:text-sidebar-foreground dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-primary/38 dark:hover:text-white"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Browse files
+          </Button>
+        </div>
+
+        {attachments.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+            <span className="rounded-full border border-border/70 bg-white px-2.5 py-1 text-foreground dark:border-sidebar-border dark:bg-sidebar-accent dark:text-sidebar-foreground">
+              {readyCount} ready
+            </span>
+            <span className="rounded-full border border-border/70 bg-white px-2.5 py-1 text-foreground dark:border-sidebar-border dark:bg-sidebar-accent dark:text-sidebar-foreground">
+              {uploadingCount} uploading
+            </span>
+            <span className="rounded-full border border-border/70 bg-white px-2.5 py-1 text-foreground dark:border-sidebar-border dark:bg-sidebar-accent dark:text-sidebar-foreground">
+              {failedCount} issues
+            </span>
+          </div>
+        ) : null}
+      </div>
+
+      {attachments.length > 0 ? (
+        <div className="space-y-2">
+          {attachments.map((attachment) => {
+            const fileUrl = attachment.webViewLink || attachment.url || attachment.webContentLink || '';
+            const uploadProgress = Math.max(0, Math.min(100, Number(attachment.progress ?? 0)));
+
+            return (
               <div
                 key={attachment.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-white/70 bg-white/90 px-3 py-2.5 shadow-sm dark:border-border dark:bg-card"
+                className="rounded-xl border border-border/70 bg-white px-4 py-3 dark:border-sidebar-border dark:bg-sidebar-accent"
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-medium text-foreground">{attachment.name}</p>
-                    {attachment.uploading ? (
-                      <Badge variant="secondary" className="gap-1">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Uploading
-                      </Badge>
-                    ) : attachment.error ? (
-                      <Badge variant="destructive" className="gap-1">
-                        <AlertTriangle className="h-3 w-3" />
-                        Failed
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">Ready</Badge>
-                    )}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-primary dark:bg-sidebar/96">
+                      {attachment.uploading ? (
+                        <RotateCw className="h-4 w-4 animate-spin" />
+                      ) : attachment.error ? (
+                        <AlertTriangle className="h-4 w-4 text-destructive" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-medium leading-5 text-foreground">
+                          {attachment.name}
+                        </p>
+                        {attachment.uploading ? (
+                          <Badge variant="secondary" className="gap-1">
+                            <RotateCw className="h-3 w-3 animate-spin" />
+                            Uploading
+                          </Badge>
+                        ) : attachment.error ? (
+                          <Badge variant="destructive" className="gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            Failed
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">Stored in Drive</Badge>
+                        )}
+                      </div>
+
+                      <p className="mt-1 text-xs leading-4 text-muted-foreground">
+                        {[
+                          formatFileSize(attachment.size),
+                          attachment.uploading ? `${uploadProgress}% uploaded` : '',
+                          attachment.error,
+                        ]
+                          .filter(Boolean)
+                          .join(' | ')}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {[formatFileSize(attachment.size), attachment.error].filter(Boolean).join(' • ')}
-                  </p>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    {fileUrl && !attachment.uploading && !attachment.error ? (
+                      <a
+                        href={fileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={cn(
+                          'inline-flex h-8 items-center gap-1 rounded-lg border border-border/70 px-2.5 text-xs font-medium text-muted-foreground transition-colors',
+                          'hover:border-primary/40 hover:text-primary dark:border-sidebar-border dark:bg-sidebar dark:text-sidebar-foreground dark:hover:border-sidebar-ring/40 dark:hover:bg-sidebar-primary/38 dark:hover:text-white'
+                        )}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        Open
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-lg"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removeAttachment(attachment.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-full"
-                  onClick={() =>
-                    onChange((previous) => previous.filter((item) => item.id !== attachment.id))
-                  }
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+
+                {attachment.uploading ? (
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted dark:bg-sidebar/88">
+                    <div
+                      className="h-full rounded-full bg-primary transition-[width] duration-200"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                ) : null}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
