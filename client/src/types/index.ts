@@ -246,6 +246,12 @@ export interface CollateralItem {
   updatedAt?: Date;
 }
 
+export interface TaskViewState {
+  userId: string;
+  userName?: string;
+  readAt: Date;
+}
+
 export interface Task {
   id: string;
   _id?: string;
@@ -295,6 +301,7 @@ export interface Task {
   finalDeliverableReviewNote?: string;
   campaign?: CampaignRequestDetails;
   collaterals?: CollateralItem[];
+  viewerReadAt?: Date;
   comments: TaskComment[];
   createdAt: Date;
   updatedAt: Date;

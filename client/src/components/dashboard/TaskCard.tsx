@@ -130,12 +130,7 @@ export function TaskCard({
     normalizedAssignedName && emailPrefix && normalizedAssignedName.includes(emailPrefix);
   const isAssignedToUser =
     Boolean(user) && (assignedToId === user?.id || nameMatches || emailMatches);
-  const viewedKey =
-    user && taskId ? `designhub.task.viewed.${user.id}.${taskId}` : '';
-  const hasViewed =
-    typeof window !== 'undefined' && viewedKey
-      ? localStorage.getItem(viewedKey) === 'true'
-      : false;
+  const hasViewed = Boolean(task.viewerReadAt);
   const isHighlighted = Boolean(user) && !hasViewed;
   const hasAssignAction = Boolean(showAssignDesignerButton && onAssignDesigner);
 

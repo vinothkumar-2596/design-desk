@@ -29,6 +29,9 @@ type AttachmentUploadFieldProps = {
   taskTitle?: string;
   taskSection: string;
   emptyLabel?: string;
+  uploadTitle?: string;
+  uploadDescription?: string;
+  buttonLabel?: string;
 };
 
 const formatFileSize = (bytes?: number) => {
@@ -65,6 +68,9 @@ export function AttachmentUploadField({
   taskTitle,
   taskSection,
   emptyLabel = 'No files uploaded yet.',
+  uploadTitle = 'Drag and drop files here, or upload from your device',
+  uploadDescription = 'Files will be securely stored and linked to this request.',
+  buttonLabel = 'Upload Files',
 }: AttachmentUploadFieldProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadAnimation, setUploadAnimation] = useState<object | null>(uploadAnimationCache);
@@ -277,24 +283,26 @@ export function AttachmentUploadField({
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] border border-[#D7E3FF]/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(235,242,255,0.82))] text-[#4362B6] shadow-[0_14px_26px_-22px_rgba(59,99,204,0.34)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(235,242,255,0.56))] dark:border-sidebar-border dark:bg-sidebar-primary/38 dark:text-sidebar-primary-foreground">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[20px] border border-[#D7E3FF]/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(235,242,255,0.82))] text-[#4362B6] shadow-[0_14px_26px_-22px_rgba(59,99,204,0.34)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(235,242,255,0.56))] dark:border-sidebar-border dark:bg-sidebar-primary/38 dark:text-sidebar-primary-foreground">
               {uploadAnimation ? (
-                <Lottie animationData={uploadAnimation} loop className="h-10 w-10" />
+                <Lottie animationData={uploadAnimation} loop className="h-20 w-20" />
               ) : (
-                <Paperclip className="h-5 w-5 text-primary" />
+                <Paperclip className="h-8 w-8 text-primary" />
               )}
             </div>
 
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold leading-5 text-foreground">
-                Upload files or drag them here
+                {uploadTitle}
               </p>
               <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                Stored directly in Drive and linked to this request.
+                {uploadDescription}
               </p>
-              <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-                {emptyLabel}
-              </p>
+              {emptyLabel ? (
+                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                  {emptyLabel}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -309,7 +317,7 @@ export function AttachmentUploadField({
             className="h-10 shrink-0 rounded-[14px] border-[#D7E3FF]/85 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(242,246,255,0.92))] px-4 text-[13px] font-semibold text-[#223067] shadow-[0_12px_24px_-20px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.76),rgba(242,246,255,0.68))] backdrop-blur-md transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF]/92 hover:text-[#1E2A5A] hover:shadow-[0_16px_32px_-22px_rgba(59,99,204,0.28)] dark:border-sidebar-border dark:bg-sidebar dark:text-sidebar-foreground dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-primary/38 dark:hover:text-white"
           >
             <Upload className="mr-2 h-4 w-4" />
-            Browse files
+            {buttonLabel}
           </Button>
         </div>
 

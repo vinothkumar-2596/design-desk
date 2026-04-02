@@ -1,5 +1,6 @@
 import express from "express";
 import Task from "../models/Task.js";
+import TaskView from "../models/TaskView.js";
 import mongoose from "mongoose";
 import { getDriveClient } from "../lib/drive.js";
 import Activity from "../models/Activity.js";
@@ -31,6 +32,9 @@ const TASK_ROLES = ["staff", "designer", "treasurer", "admin", "other", "manager
 router.use(requireRole(TASK_ROLES));
 
 const getUserId = (req) => (req.user?._id ? req.user._id.toString() : "");
+const getViewerId = (viewer) =>
+  String(viewer?._id || viewer?.id || viewer?.userId || "").trim();
+const getTaskDocumentId = (task) => String(task?.id || task?._id || "").trim();
 const normalizeValue = (value) => (value ? String(value).trim().toLowerCase() : "");
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const EMPTY_ID_VALUES = new Set([
@@ -1229,7 +1233,28 @@ const resolveFinalDeliverableReviewState = (task) => {
   };
 };
 
-const buildTaskPayloadForViewer = (task, viewer) => {
+const buildTaskViewLookup = async (tasks, viewer) => {
+  const viewerId = getViewerId(viewer);
+  const taskIds = Array.from(
+    new Set(
+      (Array.isArray(tasks) ? tasks : [])
+        .map((task) => getTaskDocumentId(task))
+        .filter(Boolean)
+    )
+  );
+  if (!viewerId || taskIds.length === 0) return new Map();
+
+  const entries = await TaskView.find({
+    userId: viewerId,
+    taskId: { $in: taskIds },
+  }).select("taskId readAt");
+
+  return new Map(
+    entries.map((entry) => [String(entry.taskId || "").trim(), entry.readAt || undefined])
+  );
+};
+
+const buildTaskPayloadForViewer = (task, viewer, options = {}) => {
   const payload = typeof task?.toJSON === "function" ? task.toJSON() : { ...(task || {}) };
   payload.files = Array.isArray(payload.files)
     ? payload.files.map((file) => normalizeTaskFileLinks(file))
@@ -1268,6 +1293,7 @@ const buildTaskPayloadForViewer = (task, viewer) => {
   payload.finalDeliverableReviewedBy = reviewState.reviewedBy;
   payload.finalDeliverableReviewedAt = reviewState.reviewedAt;
   payload.finalDeliverableReviewNote = reviewState.reviewNote;
+  payload.viewerReadAt = options.viewerReadAt || task?.viewerReadAt || undefined;
 
   const viewerRole = normalizeTaskRole(viewer?.role);
   if (viewerRole === "staff") {
@@ -1810,6 +1836,8 @@ const ensureTaskAccess = async (req, res, next) => {
       req.method === "POST" && requestPath.endsWith("/accept");
     const isCommentsSeenWrite =
       req.method === "POST" && requestPath.endsWith("/comments/seen");
+    const isTaskViewedWrite =
+      req.method === "POST" && requestPath.endsWith("/viewed");
     const usesAssignedAccessRules = hasAssignedDesignerAccessMetadata(task);
 
     if (usesAssignedAccessRules) {
@@ -1872,8 +1900,11 @@ const ensureTaskAccess = async (req, res, next) => {
         ["treasurer", "admin"].includes(userRole) &&
         hasManagerApprovalChanges &&
         hasOnlyManagerApprovalUpdates;
-      const canVisibleUserCommentWrite =
-        (isCommentWrite || isCommentMutationWrite || isCommentsSeenWrite) &&
+      const canVisibleUserReadWrite =
+        (isCommentWrite ||
+          isCommentMutationWrite ||
+          isCommentsSeenWrite ||
+          isTaskViewedWrite) &&
         accessContext.mode !== "none";
       const completionWriteFields = new Set(["status"]);
       const completionWriteUpdateKeys = new Set(["status", "updatedAt"]);
@@ -1940,7 +1971,7 @@ const ensureTaskAccess = async (req, res, next) => {
         return next();
       }
 
-      if (canVisibleUserCommentWrite) {
+      if (canVisibleUserReadWrite) {
         req.task = task;
         req.taskAccessMode = accessContext.mode;
         req.taskAccessContext = accessContext;
@@ -1988,7 +2019,8 @@ const ensureTaskAccess = async (req, res, next) => {
         isFinalDeliverablesReviewWrite ||
         isFinalDeliverableNoteWrite ||
         isAcceptWrite ||
-        isCommentsSeenWrite)
+        isCommentsSeenWrite ||
+        isTaskViewedWrite)
     ) {
       req.task = task;
       req.taskAccessMode = "full";
@@ -2155,7 +2187,14 @@ router.get("/", globalLimiter, async (req, res) => {
           )
         ).filter(Boolean)
         : tasks;
-    res.json(filteredTasks.map((task) => buildTaskPayloadForViewer(task, req.user)));
+    const taskViewLookup = await buildTaskViewLookup(filteredTasks, req.user);
+    res.json(
+      filteredTasks.map((task) =>
+        buildTaskPayloadForViewer(task, req.user, {
+          viewerReadAt: taskViewLookup.get(getTaskDocumentId(task)),
+        })
+      )
+    );
   } catch (error) {
     res.status(500).json({ error: "Failed to load tasks." });
   }
@@ -2819,9 +2858,12 @@ router.get("/:id", ensureTaskAccess, async (req, res) => {
     let task = req.task;
     task = await hydrateMissingFileMeta(task);
     task = await repairMissingFinalDeliverableFiles(task);
+    const taskViewLookup = await buildTaskViewLookup([task], req.user);
     const accessContext =
       req.taskAccessContext || await resolveTaskAccessContext(task, req.user);
-    const payload = buildTaskPayloadForViewer(task, req.user);
+    const payload = buildTaskPayloadForViewer(task, req.user, {
+      viewerReadAt: taskViewLookup.get(getTaskDocumentId(task)),
+    });
     payload.accessMode = req.taskAccessMode || accessContext?.mode || "full";
     payload.viewOnly = payload.accessMode === "view_only";
     if (accessContext?.assignedDesignerEmail) {
@@ -2834,6 +2876,54 @@ router.get("/:id", ensureTaskAccess, async (req, res) => {
     res.json(payload);
   } catch (error) {
     res.status(400).json({ error: "Invalid task id." });
+  }
+});
+
+router.post("/:id/viewed", ensureTaskAccess, async (req, res) => {
+  try {
+    const task = req.task;
+    const viewerId = String(getUserId(req) || "").trim();
+    const taskId = getTaskDocumentId(task);
+    if (!task) {
+      return res.status(404).json({ error: "Task not found." });
+    }
+    if (!viewerId) {
+      return res.status(401).json({ error: "Missing user identity." });
+    }
+    if (!taskId) {
+      return res.status(400).json({ error: "Invalid task id." });
+    }
+
+    const view = await TaskView.findOneAndUpdate(
+      { taskId, userId: viewerId },
+      {
+        $setOnInsert: {
+          taskId,
+          userId: viewerId,
+          userName: String(req.user?.name || "").trim(),
+          readAt: new Date(),
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+      }
+    );
+
+    const payload = buildTaskPayloadForViewer(task, req.user, {
+      viewerReadAt: view?.readAt || undefined,
+    });
+    const io = getSocket();
+    if (io) {
+      io.to(viewerId).emit("task:updated", {
+        taskId,
+        task: payload,
+      });
+    }
+
+    res.json(payload);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update task read status." });
   }
 });
 

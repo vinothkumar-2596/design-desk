@@ -507,6 +507,7 @@ export default function TaskDetail() {
     getStatusSelectValue(initialTask?.status)
   );
   const [changeCount, setChangeCount] = useState(initialTask?.changeCount ?? 0);
+  const lastMarkedViewedTaskRef = useRef('');
   const initialApprovalStatus: ApprovalStatus | undefined =
     initialTask?.approvalStatus ?? ((initialTask?.changeCount ?? 0) >= 3 ? 'pending' : undefined);
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus | undefined>(
@@ -753,11 +754,43 @@ export default function TaskDetail() {
   const compareLeft = designVersions.find((version) => version.id === compareLeftId);
   const compareRight = designVersions.find((version) => version.id === compareRightId);
   useEffect(() => {
-    if (!user || typeof window === 'undefined') return;
+    if (!apiUrl || !user?.id) return;
     const taskKey = taskState?.id || id;
-    if (!taskKey) return;
-    localStorage.setItem(`designhub.task.viewed.${user.id}.${taskKey}`, 'true');
-  }, [user, taskState?.id, id]);
+    if (!taskKey || taskState?.viewerReadAt) return;
+
+    const requestKey = `${user.id}:${taskKey}`;
+    if (lastMarkedViewedTaskRef.current === requestKey) return;
+    lastMarkedViewedTaskRef.current = requestKey;
+
+    let isActive = true;
+    authFetch(`${apiUrl}/api/tasks/${taskKey}/viewed`, {
+      method: 'POST',
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error('Failed to update task read status.');
+        }
+        const data = await response.json();
+        if (!isActive) return;
+        const hydrated = hydrateTask(data);
+        setTaskState((prev) => {
+          if (!prev) return hydrated;
+          const prevId = prev.id || prev._id;
+          const nextId = hydrated?.id || hydrated?._id;
+          if (!prevId || !nextId || prevId !== nextId) return prev;
+          return { ...prev, viewerReadAt: hydrated?.viewerReadAt };
+        });
+        window.dispatchEvent(new CustomEvent('designhub:task:updated', { detail: hydrated }));
+      })
+      .catch((error) => {
+        lastMarkedViewedTaskRef.current = '';
+        console.error('Failed to persist task read state:', error);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [apiUrl, id, taskState?.id, taskState?.viewerReadAt, user?.id]);
 
   useEffect(() => {
     let isActive = true;
@@ -911,6 +944,9 @@ export default function TaskDetail() {
       deadlineApprovedAt: raw.deadlineApprovedAt ? toDate(raw.deadlineApprovedAt as unknown as string) : undefined,
       emergencyApprovedAt: raw.emergencyApprovedAt ? toDate(raw.emergencyApprovedAt as unknown as string) : undefined,
       emergencyRequestedAt: raw.emergencyRequestedAt ? toDate(raw.emergencyRequestedAt as unknown as string) : undefined,
+      viewerReadAt: raw.viewerReadAt
+        ? toDate(raw.viewerReadAt as unknown as string)
+        : taskState?.viewerReadAt,
       finalDeliverableReviewedAt: raw.finalDeliverableReviewedAt
         ? toDate(raw.finalDeliverableReviewedAt as unknown as string)
         : undefined,
@@ -1329,12 +1365,19 @@ export default function TaskDetail() {
 
     socket.on('task:updated', (payload: any) => {
       if (!payload || payload.taskId !== roomId || !payload.task) return;
-      const hydrated = withAccessMetadata(hydrateTask(payload.task));
-      setTaskState(hydrated);
-      setChangeHistory(hydrated?.changeHistory ?? []);
-      setChangeCount(hydrated?.changeCount ?? 0);
-      setApprovalStatus(hydrated?.approvalStatus);
-      persistTask(hydrated);
+      setTaskState((prev) => {
+        const hydrated = withAccessMetadata(
+          hydrateTask({
+            ...payload.task,
+            viewerReadAt: payload.task?.viewerReadAt ?? prev?.viewerReadAt,
+          })
+        );
+        setChangeHistory(hydrated?.changeHistory ?? []);
+        setChangeCount(hydrated?.changeCount ?? 0);
+        setApprovalStatus(hydrated?.approvalStatus);
+        persistTask(hydrated);
+        return hydrated;
+      });
     });
 
 

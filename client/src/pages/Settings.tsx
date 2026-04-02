@@ -53,6 +53,9 @@ const normalizeIndianPhone = (value?: string) => {
   return INDIAN_MOBILE_REGEX.test(normalized) ? normalized : '';
 };
 
+const settingsSurfaceClass =
+  'overflow-hidden rounded-[24px] border border-[#CEDBFF]/35 bg-[linear-gradient(135deg,rgba(255,255,255,0.12),rgba(243,247,255,0.16),rgba(231,239,255,0.12))] shadow-[0_14px_28px_-26px_rgba(59,99,204,0.1)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(243,247,255,0.12),rgba(231,239,255,0.08))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:backdrop-blur-[24px]';
+
 export default function Settings() {
   const { user, updateUser, logout } = useAuth();
   const navigate = useNavigate();
@@ -230,7 +233,10 @@ export default function Settings() {
         </div>
 
         {/* Profile Section */}
-        <div id="profile" className="bg-card border border-border/70 rounded-2xl p-5 shadow-none animate-slide-up">
+        <div
+          id="profile"
+          className={cn(settingsSurfaceClass, 'animate-slide-up p-5')}
+        >
           <h2 className="text-lg font-semibold text-foreground premium-heading mb-4 flex items-center gap-2">
             <User className="h-5 w-5" />
             Profile
@@ -339,7 +345,10 @@ export default function Settings() {
           </div>
         </div>
 
-        <div id="security" className="bg-card border border-border/70 rounded-2xl p-5 shadow-none animate-slide-up">
+        <div
+          id="security"
+          className={cn(settingsSurfaceClass, 'animate-slide-up p-5')}
+        >
           <h2 className="text-lg font-semibold text-foreground premium-heading mb-4 flex items-center gap-2">
             <Shield className="h-5 w-5" />
             Security
@@ -385,7 +394,7 @@ export default function Settings() {
 
         {/* Request Defaults (Designer only) */}
         {showRequestDefaults && (
-          <div className="bg-card border border-border/70 rounded-2xl p-5 shadow-card animate-slide-up">
+          <div className={cn(settingsSurfaceClass, 'animate-slide-up p-5')}>
             <h2 className="text-lg font-semibold text-foreground premium-heading mb-4 flex items-center gap-2">
               <Briefcase className="h-5 w-5" />
               Request Defaults

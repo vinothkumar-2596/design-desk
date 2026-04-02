@@ -55,6 +55,8 @@ const App = () => (
                   <Route path="/reset-password" element={<ResetPassword />} />
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/new-request" element={<NewRequest />} />
+                  <Route path="/new-request/quick-design" element={<NewRequest />} />
+                  <Route path="/new-request/campaign-suite" element={<NewRequest />} />
                   <Route path="/tasks" element={<Tasks />} />
                   <Route path="/designer-availability" element={<DesignerAvailability />} />
                   <Route path="/my-requests" element={<MyRequests />} />

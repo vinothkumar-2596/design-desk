@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import BoringAvatar from 'boring-avatars';
 import { toast } from '@/components/ui/sonner';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Calendar as DateCalendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { AttachmentUploadField } from '@/components/request-builder/AttachmentUploadField';
 import { CollateralEditorCard } from '@/components/request-builder/CollateralEditorCard';
 import { CollateralPresetDialog } from '@/components/request-builder/CollateralPresetDialog';
@@ -41,7 +41,7 @@ import {
 import { loadLocalTaskList, upsertLocalTask } from '@/lib/taskStorage';
 import { cn } from '@/lib/utils';
 import { addOfficeOpenDays } from '@/lib/officeCalendar';
-import type { Task } from '@/types';
+import type { RequestType, Task, TaskCategory, TaskUrgency } from '@/types';
 import {
   AlertTriangle,
   ArrowRight,
@@ -53,15 +53,19 @@ import {
   Check,
   ChevronLeft,
   ClipboardCheck,
+  FileImage,
+  FileText,
   GraduationCap,
   Layers3,
   Landmark,
   ListChecks,
   Megaphone,
+  Monitor,
   Paperclip,
   Phone,
   Plus,
   ShieldCheck,
+  Tv,
   UsersRound,
   Wrench,
 } from 'lucide-react';
@@ -95,6 +99,7 @@ type TourSpotlight = {
   radius: number;
   card: TourCardPosition;
 };
+
 type BriefAvatarVariant =
   | 'marble'
   | 'beam'
@@ -238,31 +243,99 @@ const BUILDER_STEPS: Array<{
     id: 'campaign',
     label: '01',
     title: 'Campaign Details',
-    description: 'Set the request basics and campaign brief.',
+    description: 'Add the request details and brief.',
     icon: BriefcaseBusiness,
   },
   {
     id: 'timeline',
     label: '02',
     title: 'Timeline & Files',
-    description: 'Choose deadline mode and upload master references.',
+    description: 'Set deadlines and upload shared files.',
     icon: CalendarRange,
   },
   {
     id: 'collaterals',
     label: '03',
     title: 'Collateral Builder',
-    description: 'Add preset-based collateral items and item briefs.',
+    description: 'Add collateral items and item briefs.',
     icon: Layers3,
   },
   {
     id: 'review',
     label: '04',
     title: 'Review & Submit',
-    description: 'Check the full request before sending it to design.',
+    description: 'Review the request before submission.',
     icon: ListChecks,
   },
 ];
+
+const REQUEST_TYPE_OPTIONS: Array<{
+  value: RequestType;
+  tag: string;
+  label: string;
+  description: string;
+  cta: string;
+  icon: typeof BriefcaseBusiness;
+}> = [
+  {
+    value: 'single_task',
+    tag: 'Single',
+    label: 'Quick Design',
+    description: 'Request a single design deliverable.',
+    cta: 'Start Request',
+    icon: ClipboardCheck,
+  },
+  {
+    value: 'campaign_request',
+    tag: 'Multi-item',
+    label: 'Campaign Suite',
+    description: 'Request multiple related deliverables under one campaign.',
+    cta: 'Start Campaign',
+    icon: Layers3,
+  },
+];
+
+const SINGLE_REQUEST_CATEGORY_OPTIONS: Array<{
+  value: TaskCategory;
+  label: string;
+  icon: typeof Layers3;
+}> = [
+  { value: 'campaign_or_others', label: 'Campaign or others', icon: Layers3 },
+  { value: 'social_media_creative', label: 'Social Media Creative', icon: Megaphone },
+  { value: 'banner', label: 'Banner', icon: FileImage },
+  { value: 'flyer', label: 'Flyer', icon: FileText },
+  { value: 'brochure', label: 'Brochure', icon: BookOpen },
+  { value: 'website_assets', label: 'Website Assets', icon: Monitor },
+  { value: 'ui_ux', label: 'UI / UX', icon: Monitor },
+  { value: 'led_backdrop', label: 'LED Backdrop', icon: Tv },
+];
+
+const SINGLE_REQUEST_URGENCY_OPTIONS: Array<{ value: TaskUrgency; label: string }> = [
+  { value: 'low', label: 'Low' },
+  { value: 'intermediate', label: 'Intermediate' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'urgent', label: 'Urgent' },
+];
+
+const TASK_CATEGORY_LABELS: Record<TaskCategory, string> = {
+  banner: 'Banner',
+  campaign_or_others: 'Campaign or others',
+  social_media_creative: 'Social Media Creative',
+  website_assets: 'Website Assets',
+  ui_ux: 'UI / UX',
+  led_backdrop: 'LED Backdrop',
+  brochure: 'Brochure',
+  flyer: 'Flyer',
+};
+
+const TASK_URGENCY_LABELS: Record<TaskUrgency, string> = {
+  low: 'Low',
+  intermediate: 'Intermediate',
+  normal: 'Normal',
+  urgent: 'Urgent',
+};
+
+const HEADER_TITLE_MAX_LENGTH = 60;
 
 const INDIAN_MOBILE_REGEX = /^\+91[6-9]\d{9}$/;
 const NEW_REQUEST_TOUR_STORAGE_KEY_PREFIX = 'designhub:new-request:tour-seen';
@@ -285,6 +358,12 @@ const normalizeIndianPhone = (value?: string) => {
   if (local.length !== 10) return '';
   const normalized = `+91${local}`;
   return INDIAN_MOBILE_REGEX.test(normalized) ? normalized : '';
+};
+
+const truncateHeaderTitle = (value: string, maxLength = HEADER_TITLE_MAX_LENGTH) => {
+  const normalized = String(value || '').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}â€¦`;
 };
 
 const minDeadlineDate = startOfDay(addOfficeOpenDays(new Date(), 3));
@@ -495,6 +574,41 @@ const validateBuilder = ({
   validateCollateralsStep({ deadlineMode, commonDeadline, collaterals }) ||
   validateReferenceCoverage({ collaterals, masterAttachments });
 
+const validateSingleRequest = ({
+  title,
+  department,
+  requesterPhone,
+  brief,
+  category,
+  deadline,
+  attachments,
+}: {
+  title: string;
+  department: string;
+  requesterPhone: string;
+  brief: string;
+  category: TaskCategory | '';
+  deadline?: Date;
+  attachments: BuilderAttachment[];
+}) => {
+  if (!title.trim()) return 'Creative title is required.';
+  if (!department.trim()) return 'Department is required.';
+  if (!brief.trim()) return 'Creative brief is required.';
+  if (!category) return 'Select a creative category.';
+  if (!normalizeIndianPhone(requesterPhone)) return 'Enter a valid 10-digit contact number.';
+  if (!deadline) return 'Set a deadline for this request.';
+  if (startOfDay(deadline) < minDeadlineDate) {
+    return 'Deadline must be at least 3 working days from today.';
+  }
+  if (hasUploadingFiles(attachments)) {
+    return 'Wait for file uploads to finish before submitting.';
+  }
+  if (hasErroredFiles(attachments)) {
+    return 'Resolve file upload errors before submitting.';
+  }
+  return '';
+};
+
 const resolveWizardStep = ({
   title,
   department,
@@ -522,20 +636,33 @@ const resolveWizardStep = ({
 
 export default function NewRequest() {
   const { user } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
+  const routeRequestType = useMemo<RequestType | null>(() => {
+    if (location.pathname === '/new-request/quick-design') return 'single_task';
+    if (location.pathname === '/new-request/campaign-suite') return 'campaign_request';
+    return null;
+  }, [location.pathname]);
+  const [selectedRequestType, setSelectedRequestType] = useState<RequestType | null>(routeRequestType);
   const [requestTitle, setRequestTitle] = useState('');
   const [department, setDepartment] = useState(user?.department || '');
   const [requesterPhone, setRequesterPhone] = useState(formatIndianPhoneInput(user?.phone));
   const [overallBrief, setOverallBrief] = useState('');
+  const [singleCategory, setSingleCategory] = useState<TaskCategory | ''>('');
+  const [singleUrgency, setSingleUrgency] = useState<TaskUrgency>('normal');
+  const [singleDeadline, setSingleDeadline] = useState<Date | undefined>(minDeadlineDate);
+  const [singleDeadlineCalendarOpen, setSingleDeadlineCalendarOpen] = useState(false);
   const [deadlineMode, setDeadlineMode] = useState<'common' | 'itemized'>('common');
   const [commonDeadline, setCommonDeadline] = useState<Date | undefined>(minDeadlineDate);
   const [commonDeadlineCalendarOpen, setCommonDeadlineCalendarOpen] = useState(false);
   const [masterAttachments, setMasterAttachments] = useState<BuilderAttachment[]>([]);
   const [collaterals, setCollaterals] = useState<CollateralDraft[]>([]);
+  const [expandedCollateralId, setExpandedCollateralId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<BuilderStepId>('campaign');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPresetDialogOpen, setIsPresetDialogOpen] = useState(false);
   const [isDepartmentSuggestionOpen, setIsDepartmentSuggestionOpen] = useState(false);
+  const [shouldRevealSingleValidation, setShouldRevealSingleValidation] = useState(false);
   const [revealedValidationSteps, setRevealedValidationSteps] = useState<
     Partial<Record<BuilderStepId, boolean>>
   >({});
@@ -571,11 +698,11 @@ export default function NewRequest() {
       {
         id: 'form',
         eyebrow: 'Step 2 of 4',
-        title: 'Capture the brief clearly',
+        title: 'Add the core brief',
         description:
-          'Define the campaign title, requester context, contact number, and the core brief here.',
+          'Add the campaign title, requester details, contact number, and brief.',
         detail:
-          'Keep it concrete: audience, message priority, approvals, and references.',
+          'Keep it clear: audience, message, approvals, and references.',
         align: 'right',
         icon: ClipboardCheck,
       },
@@ -595,9 +722,9 @@ export default function NewRequest() {
         eyebrow: 'Step 4 of 4',
         title: 'Save or continue',
         description:
-          'Save your progress as a draft or continue once the step is clear enough for design.',
+          'Save a draft or continue when the required details are ready.',
         detail:
-          'Validation only appears when you try to continue with missing inputs.',
+          'Validation appears only when required fields are missing.',
         align: 'right',
         icon: ArrowRight,
       },
@@ -709,44 +836,83 @@ export default function NewRequest() {
   }, [user?.department, user?.phone]);
 
   useEffect(() => {
+    if (!routeRequestType) return;
+    setSelectedRequestType(routeRequestType);
+    if (routeRequestType === 'campaign_request') {
+      setCurrentStep('campaign');
+    }
+  }, [routeRequestType]);
+
+  useEffect(() => {
     const draft = loadRequestDraft(user);
-    if (!draft || draft.requestType !== 'campaign_request') return;
+    if (!draft) return;
     setDidRestoreDraft(true);
 
     const draftTitle = draft.title || '';
     const draftDepartment = draft.requesterDepartment || user?.department || '';
     const draftPhone = draft.requesterPhone || formatIndianPhoneInput(user?.phone);
     const draftBrief = draft.description || '';
-    const draftDeadlineMode = draft.deadlineMode || 'common';
-    const draftCommonDeadline = draft.commonDeadline ? new Date(draft.commonDeadline) : minDeadlineDate;
     const draftAttachments = (draft.files || []).map((file) => ({
       ...file,
       uploading: false,
     }));
-    const draftCollaterals = (draft.collaterals || []).map(hydrateDraftCollateral);
 
     setRequestTitle(draftTitle);
     setDepartment(draftDepartment);
     setRequesterPhone(draftPhone);
     setOverallBrief(draftBrief);
-    setDeadlineMode(draftDeadlineMode);
-    setCommonDeadline(draftCommonDeadline);
     setMasterAttachments(draftAttachments);
-    setCollaterals(draftCollaterals);
-    setCurrentStep(
-      resolveWizardStep({
-        title: draftTitle,
-        department: draftDepartment,
-        requesterPhone: draftPhone,
-        brief: draftBrief,
-        deadlineMode: draftDeadlineMode,
-        commonDeadline: draftCommonDeadline,
-        collaterals: draftCollaterals,
-        masterAttachments: draftAttachments,
-      })
-    );
+
+    const resolvedRequestType = routeRequestType || draft.requestType;
+
+    if (resolvedRequestType === 'single_task') {
+      const draftDeadline =
+        draft.requestType === 'single_task' && draft.deadline
+          ? new Date(draft.deadline)
+          : minDeadlineDate;
+      setSelectedRequestType('single_task');
+      setSingleCategory(draft.requestType === 'single_task' ? draft.category || '' : '');
+      setSingleUrgency(draft.requestType === 'single_task' ? draft.urgency || 'normal' : 'normal');
+      setSingleDeadline(draftDeadline);
+      setDeadlineMode('common');
+      setCommonDeadline(minDeadlineDate);
+      setCollaterals([]);
+      setCurrentStep('campaign');
+    } else {
+      const draftDeadlineMode =
+        draft.requestType === 'campaign_request' ? draft.deadlineMode || 'common' : 'common';
+      const draftCommonDeadline =
+        draft.requestType === 'campaign_request' && draft.commonDeadline
+          ? new Date(draft.commonDeadline)
+          : minDeadlineDate;
+      const draftCollaterals =
+        draft.requestType === 'campaign_request'
+          ? (draft.collaterals || []).map(hydrateDraftCollateral)
+          : [];
+
+      setSelectedRequestType('campaign_request');
+      setDeadlineMode(draftDeadlineMode);
+      setCommonDeadline(draftCommonDeadline);
+      setCollaterals(draftCollaterals);
+      setSingleCategory('');
+      setSingleUrgency('normal');
+      setSingleDeadline(minDeadlineDate);
+      setCurrentStep(
+        resolveWizardStep({
+          title: draftTitle,
+          department: draftDepartment,
+          requesterPhone: draftPhone,
+          brief: draftBrief,
+          deadlineMode: draftDeadlineMode,
+          commonDeadline: draftCommonDeadline,
+          collaterals: draftCollaterals,
+          masterAttachments: draftAttachments,
+        })
+      );
+    }
+
     toast.message('Draft restored.');
-  }, [user?.department, user?.email, user?.id, user?.phone]);
+  }, [routeRequestType, user?.department, user?.email, user?.id, user?.phone]);
 
   const completeTour = useCallback(() => {
     setIsTourOpen(false);
@@ -781,7 +947,12 @@ export default function NewRequest() {
   );
 
   const syncTourSpotlight = useCallback(() => {
-    if (!isTourOpen || !activeTourStep || typeof window === 'undefined') {
+    if (
+      selectedRequestType !== 'campaign_request' ||
+      !isTourOpen ||
+      !activeTourStep ||
+      typeof window === 'undefined'
+    ) {
       setTourSpotlight(null);
       return;
     }
@@ -855,9 +1026,10 @@ export default function NewRequest() {
       radius,
       card: { top: cardTop, left: cardLeft, arrowSide, arrowOffset },
     });
-  }, [activeTourStep, isTourOpen, resolveTourTarget]);
+  }, [activeTourStep, isTourOpen, resolveTourTarget, selectedRequestType]);
 
   useEffect(() => {
+    if (selectedRequestType !== 'campaign_request') return;
     if (typeof window === 'undefined' || didRestoreDraft) return;
     if (window.localStorage.getItem(tourStorageKey) === '1') return;
 
@@ -867,9 +1039,10 @@ export default function NewRequest() {
     }, 480);
 
     return () => window.clearTimeout(timeoutId);
-  }, [didRestoreDraft, tourStorageKey]);
+  }, [didRestoreDraft, selectedRequestType, tourStorageKey]);
 
   useEffect(() => {
+    if (selectedRequestType !== 'campaign_request') return;
     if (!isTourOpen || !activeTourStep || typeof window === 'undefined') return;
 
     const target = resolveTourTarget(activeTourStep.id);
@@ -881,9 +1054,14 @@ export default function NewRequest() {
 
     const frameId = window.requestAnimationFrame(syncTourSpotlight);
     return () => window.cancelAnimationFrame(frameId);
-  }, [activeTourStep, isTourOpen, resolveTourTarget, syncTourSpotlight]);
+  }, [activeTourStep, isTourOpen, resolveTourTarget, selectedRequestType, syncTourSpotlight]);
 
   useEffect(() => {
+    if (selectedRequestType !== 'campaign_request') {
+      setIsTourOpen(false);
+      setTourSpotlight(null);
+      return;
+    }
     if (!isTourOpen || typeof window === 'undefined') return;
 
     const update = () => window.requestAnimationFrame(syncTourSpotlight);
@@ -913,7 +1091,13 @@ export default function NewRequest() {
       document.removeEventListener('scroll', update, true);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [builderTourSteps.length, completeTour, isTourOpen, syncTourSpotlight]);
+  }, [
+    builderTourSteps.length,
+    completeTour,
+    isTourOpen,
+    selectedRequestType,
+    syncTourSpotlight,
+  ]);
 
   const summary = useMemo(() => {
     const effectiveDeadline = deriveEffectiveDeadline(collaterals, {
@@ -992,6 +1176,28 @@ export default function NewRequest() {
     ]
   );
 
+  const singleValidationMessage = useMemo(
+    () =>
+      validateSingleRequest({
+        title: requestTitle,
+        department,
+        requesterPhone,
+        brief: overallBrief,
+        category: singleCategory,
+        deadline: singleDeadline,
+        attachments: masterAttachments,
+      }),
+    [
+      department,
+      masterAttachments,
+      overallBrief,
+      requestTitle,
+      requesterPhone,
+      singleCategory,
+      singleDeadline,
+    ]
+  );
+
   const validationMessages: Record<BuilderStepId, string> = {
     campaign: campaignValidationMessage,
     timeline: timelineValidationMessage,
@@ -1012,6 +1218,39 @@ export default function NewRequest() {
         : 3;
 
   const saveDraft = () => {
+    if (!selectedRequestType) {
+      toast.error('Choose a request type first.');
+      return;
+    }
+
+    if (selectedRequestType === 'single_task') {
+      saveRequestDraft(user, {
+        title: requestTitle,
+        description: overallBrief,
+        category: singleCategory,
+        urgency: singleUrgency,
+        deadline: singleDeadline?.toISOString() || '',
+        hasDeadlineInteracted: Boolean(singleDeadline),
+        isEmergency: false,
+        requesterPhone,
+        files: masterAttachments.map((file) => ({
+          id: file.id,
+          name: file.name,
+          size: file.size,
+          driveId: file.driveId,
+          url: file.url,
+          webViewLink: file.webViewLink,
+          webContentLink: file.webContentLink,
+          thumbnailUrl: file.thumbnailUrl,
+        })),
+        requestType: 'single_task',
+        requesterDepartment: department,
+        savedAt: new Date().toISOString(),
+      });
+      toast.success('Draft saved.');
+      return;
+    }
+
     const payload: RequestDraftPayload = {
       title: requestTitle,
       description: overallBrief,
@@ -1049,16 +1288,15 @@ export default function NewRequest() {
       return;
     }
 
-    const blockingStep = BUILDER_STEPS[Math.max(0, targetIndex - 1)].id;
+    const blockingStep = BUILDER_STEPS[furthestUnlockedStepIndex].id;
+    setCurrentStep(blockingStep);
     setRevealedValidationSteps((previous) => ({ ...previous, [blockingStep]: true }));
-    toast.error(validationMessages[blockingStep] || 'Complete the previous step first.');
   };
 
   const handleNextStep = () => {
     const validationMessage = validationMessages[currentStep];
     if (validationMessage) {
       setRevealedValidationSteps((previous) => ({ ...previous, [currentStep]: true }));
-      toast.error(validationMessage);
       return;
     }
 
@@ -1076,6 +1314,122 @@ export default function NewRequest() {
   };
 
   const handleSubmit = async () => {
+    if (!selectedRequestType) {
+      toast.error('Choose a request type first.');
+      return;
+    }
+
+    if (selectedRequestType === 'single_task') {
+      const validationMessage = validateSingleRequest({
+        title: requestTitle,
+        department,
+        requesterPhone,
+        brief: overallBrief,
+        category: singleCategory,
+        deadline: singleDeadline,
+        attachments: masterAttachments,
+      });
+
+      if (validationMessage) {
+        setShouldRevealSingleValidation(true);
+        return;
+      }
+
+      const normalizedPhone = normalizeIndianPhone(requesterPhone);
+      const payload = {
+        requestType: 'single_task' as const,
+        title: requestTitle.trim(),
+        description: overallBrief.trim(),
+        category: singleCategory,
+        urgency: singleUrgency,
+        status: 'pending' as const,
+        deadline: singleDeadline,
+        requesterId: user?.id || '',
+        requesterName: user?.name || '',
+        requesterEmail: user?.email || '',
+        requesterPhone: normalizedPhone,
+        requesterDepartment: department.trim(),
+        isEmergency: false,
+        designVersions: [],
+        files: toBuilderAttachmentRecord(masterAttachments, user?.id),
+      };
+
+      setIsSubmitting(true);
+      try {
+        if (!API_URL) {
+          throw new Error('API unavailable');
+        }
+        const response = await authFetch(`${API_URL}/api/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(
+            data && typeof data.error === 'string' && data.error.trim()
+              ? data.error.trim()
+              : 'Failed to create request.'
+          );
+        }
+        window.dispatchEvent(new CustomEvent('designhub:request:new', { detail: data }));
+        clearRequestDraft(user);
+        toast.success('Single creative request submitted.');
+        navigate('/my-requests');
+        return;
+      } catch (error) {
+        const now = new Date();
+        const fallbackTask: Task = {
+          id: crypto.randomUUID(),
+          requestType: 'single_task',
+          title: requestTitle.trim(),
+          description: overallBrief.trim(),
+          category: singleCategory || 'campaign_or_others',
+          urgency: singleUrgency,
+          status: 'pending',
+          requesterId: user?.id || '',
+          requesterName: user?.name || 'Staff',
+          requesterEmail: user?.email,
+          requesterPhone: normalizedPhone,
+          requesterDepartment: department.trim(),
+          deadline: singleDeadline || minDeadlineDate,
+          isModification: false,
+          changeCount: 0,
+          changeHistory: [
+            {
+              id: crypto.randomUUID(),
+              type: 'status',
+              field: 'created',
+              newValue: 'Created',
+              note: `Single creative request submitted by ${user?.name || 'Staff'}`,
+              userId: user?.id || '',
+              userName: user?.name || 'Staff',
+              userRole: user?.role || 'staff',
+              createdAt: now,
+            },
+          ],
+          designVersions: [],
+          files: toBuilderAttachmentRecord(masterAttachments, user?.id),
+          comments: [],
+          createdAt: now,
+          updatedAt: now,
+        };
+        upsertLocalTask(fallbackTask);
+        clearRequestDraft(user);
+        window.dispatchEvent(new CustomEvent('designhub:request:new', { detail: fallbackTask }));
+        toast.success(
+          error instanceof Error && error.message !== 'API unavailable'
+            ? `${error.message} Saved locally instead.`
+            : 'API unavailable. Request saved locally instead.'
+        );
+        navigate('/my-requests');
+      } finally {
+        setIsSubmitting(false);
+      }
+
+      return;
+    }
+
     const validationMessage = validateBuilder({
       title: requestTitle,
       department,
@@ -1088,8 +1442,21 @@ export default function NewRequest() {
     });
 
     if (validationMessage) {
-      setRevealedValidationSteps((previous) => ({ ...previous, [currentStep]: true }));
-      toast.error(validationMessage);
+      const blockingStep = resolveWizardStep({
+        title: requestTitle,
+        department,
+        requesterPhone,
+        brief: overallBrief,
+        deadlineMode,
+        commonDeadline,
+        collaterals,
+        masterAttachments,
+      });
+      setCurrentStep(blockingStep);
+      setRevealedValidationSteps((previous) => ({
+        ...previous,
+        [blockingStep]: true,
+      }));
       return;
     }
 
@@ -1238,9 +1605,194 @@ export default function NewRequest() {
     'absolute left-0 top-[calc(100%+0.5rem)] z-40 w-full overflow-hidden rounded-2xl border border-[#D9E6FF]/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(244,248,255,0.74))] p-2.5 shadow-[0_24px_54px_-30px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(244,248,255,0.3))] backdrop-blur-[22px] ring-1 ring-white/55 animate-dropdown sm:min-w-[23rem] dark:border-[#253D78]/90 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.96),rgba(10,22,49,0.92),rgba(12,27,59,0.88))] dark:ring-white/5 dark:shadow-[0_24px_60px_-34px_rgba(2,8,23,0.95)] dark:supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(8,16,39,0.82),rgba(10,22,49,0.72),rgba(12,27,59,0.66))]';
   const suggestionItemClass =
     'group flex w-full items-center gap-2 rounded-[18px] border px-3.5 py-3 text-left transition-all duration-200';
+  const requestFieldClass =
+    'h-11 rounded-xl border-[#D9E6FF] bg-white/90 px-3 text-sm text-[#1E2A44] shadow-none transition-colors placeholder:text-[13px] placeholder:text-[#8090B2] focus-visible:border-[#BDD0FF] focus-visible:ring-0 dark:border-border dark:bg-card/90 dark:text-slate-100';
+  const requestFieldWithIconClass = cn(
+    requestFieldClass,
+    'pl-12 pr-3.5'
+  );
+  const requestFieldIconClass =
+    'pointer-events-none absolute left-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200';
+  const requestSelectTriggerClass =
+    'h-11 rounded-xl border-[#D9E6FF] bg-white/90 px-3 text-left text-sm text-[#1E2A44] shadow-none transition-colors focus:ring-0 dark:border-border dark:bg-card/90 dark:text-slate-100';
+  const requestSelectContentClass =
+    'rounded-xl border-[#D9E6FF] bg-white/95 p-1.5 shadow-lg dark:border-border dark:bg-card/95';
+  const requestSelectItemClass =
+    'rounded-lg pl-9 pr-3 data-[state=checked]:bg-primary/15 data-[state=checked]:text-[#1E2A5A] data-[state=checked]:font-semibold';
+  const requestTextareaClass =
+    'min-h-[132px] rounded-xl border-[#D9E6FF] bg-white/90 px-4 py-3 text-sm text-[#1E2A44] shadow-none transition-colors placeholder:text-[13px] placeholder:text-[#8090B2] focus-visible:border-[#BDD0FF] focus-visible:ring-0 dark:border-border dark:bg-card/90 dark:text-slate-100';
   const phoneFieldShellClass =
-    'group flex h-11 items-center gap-2 rounded-[14px] border border-[#D7E2FF]/78 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(244,247,255,0.9))] px-2.5 shadow-[0_14px_34px_-28px_rgba(37,99,235,0.3)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(244,247,255,0.64))] backdrop-blur-md transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-[#BFD1FF] focus-within:bg-[#F8FAFF]/90 focus-within:shadow-[0_18px_42px_-28px_rgba(37,99,235,0.35)] dark:border-sidebar-border dark:bg-sidebar-accent/78 dark:supports-[backdrop-filter]:bg-sidebar-accent/64 dark:focus-within:border-sidebar-ring/40 dark:focus-within:bg-sidebar-accent/86';
+    'group flex h-11 items-center gap-2 rounded-xl border border-[#D9E6FF] bg-white/90 px-3 shadow-none transition-colors duration-200 focus-within:border-[#BDD0FF] dark:border-border dark:bg-card/90';
   const requesterPhoneLocal = getIndianPhoneLocalDigits(requesterPhone);
+  const selectedSingleCategoryOption = SINGLE_REQUEST_CATEGORY_OPTIONS.find(
+    (option) => option.value === singleCategory
+  );
+  const SelectedSingleCategoryIcon = selectedSingleCategoryOption?.icon || Layers3;
+  const selectedSingleUrgencyOption = SINGLE_REQUEST_URGENCY_OPTIONS.find(
+    (option) => option.value === singleUrgency
+  );
+  const selectedDeadlineModeLabel =
+    deadlineMode === 'itemized' ? 'Individual item deadlines' : 'Common deadline';
+
+  const handleRequestTypeSelect = (nextType: RequestType) => {
+    setSelectedRequestType(nextType);
+    setShouldRevealSingleValidation(false);
+    navigate(
+      nextType === 'single_task' ? '/new-request/quick-design' : '/new-request/campaign-suite'
+    );
+    if (nextType === 'campaign_request') {
+      setCurrentStep('campaign');
+    } else {
+      setIsPresetDialogOpen(false);
+      setIsTourOpen(false);
+      setTourSpotlight(null);
+    }
+  };
+
+  const resetRequestTypeSelection = () => {
+    setSelectedRequestType(null);
+    setShouldRevealSingleValidation(false);
+    setIsPresetDialogOpen(false);
+    setIsTourOpen(false);
+    setTourSpotlight(null);
+    navigate('/new-request');
+  };
+
+  const renderDepartmentRequesterField = () => (
+    <div className="space-y-2">
+      <Label>Department / Requester</Label>
+      <div className="relative">
+        <span className={requestFieldIconClass}>
+          <Building2 className="h-4 w-4" />
+        </span>
+        <Input
+          value={department}
+          onChange={(event) => {
+            setDepartment(event.target.value);
+            setIsDepartmentSuggestionOpen(Boolean(event.target.value.trim()));
+          }}
+          onFocus={handleDepartmentInputFocus}
+          onBlur={handleDepartmentInputBlur}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setIsDepartmentSuggestionOpen(false);
+              return;
+            }
+            if (event.key === 'ArrowDown') {
+              if (departmentSuggestions.length > 0) {
+                setIsDepartmentSuggestionOpen(true);
+              }
+              return;
+            }
+            if (event.key !== 'Enter') return;
+
+            const exactMatch = resolveDepartmentHeadMatch(event.currentTarget.value);
+            const suggestedMatch = exactMatch || departmentSuggestions[0];
+            if (!suggestedMatch) return;
+
+            if (exactMatch || departmentSuggestions.length === 1) {
+              event.preventDefault();
+              handleDepartmentHeadSelection(suggestedMatch);
+            }
+          }}
+          autoComplete="off"
+          placeholder="Type department or requester name"
+          className={cn(requestFieldWithIconClass, 'py-0 leading-[2.25rem]')}
+        />
+        {shouldShowDepartmentSuggestions && (
+          <div className={suggestionPopoverClass}>
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(164,190,255,0.24),transparent_32%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.32),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.2),rgba(255,255,255,0))] dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.2),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]" />
+            <div className="relative max-h-56 space-y-1.5 overflow-auto scrollbar-none">
+              {departmentSuggestions.map((entry, index) => {
+                const isSelected =
+                  normalizeLookupToken(department) === normalizeLookupToken(entry.headName);
+                const DepartmentIcon = getDepartmentIcon(entry.department);
+                return (
+                  <div key={`${entry.department}-${entry.headName}`}>
+                    <button
+                      type="button"
+                      onMouseDown={(mouseEvent) => mouseEvent.preventDefault()}
+                      onClick={() => handleDepartmentHeadSelection(entry)}
+                      className={cn(
+                        suggestionItemClass,
+                        isSelected
+                          ? 'border-[#D4E2FF] bg-[linear-gradient(135deg,rgba(243,247,255,0.98),rgba(234,241,255,0.92))] shadow-[0_16px_30px_-24px_rgba(59,99,204,0.28)] dark:border-sidebar-ring/30 dark:bg-sidebar-accent/82 dark:shadow-none'
+                          : 'border-transparent bg-transparent hover:border-[#C9DBFF] hover:bg-[linear-gradient(135deg,rgba(243,247,255,0.9),rgba(232,240,255,0.82))] hover:shadow-[0_14px_28px_-24px_rgba(59,99,204,0.22)] dark:hover:border-sidebar-border dark:hover:bg-sidebar-accent/74 dark:hover:shadow-none'
+                      )}
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.86),rgba(240,245,255,0.74),rgba(233,240,255,0.68))] text-[#5A74B7] shadow-[0_12px_24px_-20px_rgba(59,99,204,0.22)] ring-1 ring-white/55 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.58),rgba(240,245,255,0.42),rgba(233,240,255,0.36))] backdrop-blur-md dark:border-white/10 dark:bg-sidebar/78 dark:text-slate-300 dark:ring-white/10 dark:shadow-none">
+                        <DepartmentIcon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <span
+                          title={entry.headName}
+                          className="block truncate pr-1 text-[14px] font-semibold leading-[1.25] tracking-[-0.01em] text-[#1E2A44] dark:text-slate-100"
+                        >
+                          {entry.headName}
+                        </span>
+                        <span className="inline-flex rounded-full bg-[#EEF4FF]/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7087BC] dark:bg-sidebar-accent dark:text-slate-400">
+                          {entry.department}
+                        </span>
+                      </div>
+                      {isSelected ? (
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.88),rgba(241,246,255,0.74))] text-[#4A65A8] ring-1 ring-white/55 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.62),rgba(241,246,255,0.5))] backdrop-blur-sm dark:border-white/10 dark:bg-sidebar dark:text-white dark:ring-white/10">
+                          <Check className="h-4 w-4" />
+                        </div>
+                      ) : null}
+                    </button>
+                    {index < departmentSuggestions.length - 1 ? (
+                      <div className="mx-3 h-px bg-[linear-gradient(90deg,transparent,rgba(199,214,255,0.9),transparent)] dark:bg-[linear-gradient(90deg,transparent,rgba(92,119,198,0.5),transparent)]" />
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {isDepartmentSuggestionOpen && department.trim() && departmentSuggestions.length === 0 && (
+          <div
+            className={cn(
+              suggestionPopoverClass,
+              'border-dashed px-4 py-3 text-xs text-muted-foreground backdrop-blur-xl'
+            )}
+          >
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(164,190,255,0.24),transparent_32%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.32),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.2),rgba(255,255,255,0))] dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.2),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]" />
+            <div className="relative">
+              No matching department head found. Press Enter to keep the typed value.
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderPhoneField = () => (
+    <div className="space-y-2">
+      <Label>Contact Number</Label>
+      <div className={phoneFieldShellClass}>
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200">
+          <Phone className="h-4 w-4" />
+        </div>
+        <div className="h-5 w-px shrink-0 bg-[#D8E2FF] dark:bg-sidebar-border" />
+        <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#DCE6FF] bg-[#F8FAFF] px-2.5 py-1 text-[12px] font-semibold tracking-[0.08em] text-[#415896] dark:border-sidebar-border dark:bg-sidebar/74 dark:text-slate-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#5E7BDA] dark:bg-slate-300" />
+          +91
+        </div>
+        <input
+          type="tel"
+          inputMode="numeric"
+          autoComplete="tel-national"
+          maxLength={10}
+          value={requesterPhoneLocal}
+          onChange={(event) =>
+            setRequesterPhone(formatIndianPhoneInput(`+91 ${event.target.value}`))
+          }
+          placeholder="9876543210"
+          className="min-w-0 flex-1 border-0 bg-transparent px-1 py-0 text-sm font-medium tracking-[0.01em] text-[#1E2A44] outline-none placeholder:text-[13px] placeholder:font-normal placeholder:text-[#8090B2] selection:bg-transparent autofill:bg-transparent autofill:shadow-[inset_0_0_0px_1000px_transparent] autofill:[-webkit-text-fill-color:#1E2A44] dark:text-slate-100 dark:autofill:[-webkit-text-fill-color:#F8FAFC]"
+        />
+      </div>
+    </div>
+  );
 
   const renderStepContent = () => {
     if (currentStep === 'campaign') {
@@ -1249,141 +1801,20 @@ export default function NewRequest() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
               <Label>Campaign Title</Label>
-              <Input
-                value={requestTitle}
-                onChange={(event) => setRequestTitle(event.target.value)}
-                placeholder="Admissions Drive 2026 / Annual Day / Product Launch Campaign"
-                className="placeholder:text-xs"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Department / Requester</Label>
               <div className="relative">
-                <Building2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <span className={requestFieldIconClass}>
+                  <FileText className="h-4 w-4" />
+                </span>
                 <Input
-                  value={department}
-                  onChange={(event) => {
-                    setDepartment(event.target.value);
-                    setIsDepartmentSuggestionOpen(Boolean(event.target.value.trim()));
-                  }}
-                  onFocus={handleDepartmentInputFocus}
-                  onBlur={handleDepartmentInputBlur}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Escape') {
-                      setIsDepartmentSuggestionOpen(false);
-                      return;
-                    }
-                    if (event.key === 'ArrowDown') {
-                      if (departmentSuggestions.length > 0) {
-                        setIsDepartmentSuggestionOpen(true);
-                      }
-                      return;
-                    }
-                    if (event.key !== 'Enter') return;
-
-                    const exactMatch = resolveDepartmentHeadMatch(event.currentTarget.value);
-                    const suggestedMatch = exactMatch || departmentSuggestions[0];
-                    if (!suggestedMatch) return;
-
-                    if (exactMatch || departmentSuggestions.length === 1) {
-                      event.preventDefault();
-                      handleDepartmentHeadSelection(suggestedMatch);
-                    }
-                  }}
-                  autoComplete="off"
-                  placeholder="Type department or requester name"
-                  className={cn(
-                    glassInputClass,
-                    'h-10 py-0 pl-11 pr-3.5 text-sm leading-[2.25rem] placeholder:text-[13px]'
-                  )}
+                  value={requestTitle}
+                  onChange={(event) => setRequestTitle(event.target.value)}
+                  placeholder="Admissions Drive 2026 / Annual Day / Product Launch Campaign"
+                  className={requestFieldWithIconClass}
                 />
-                {shouldShowDepartmentSuggestions && (
-                  <div className={cn(suggestionPopoverClass, 'relative')}>
-                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(164,190,255,0.24),transparent_32%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.32),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.2),rgba(255,255,255,0))] dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.2),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]" />
-                    <div className="relative max-h-56 space-y-1.5 overflow-auto scrollbar-none">
-                      {departmentSuggestions.map((entry, index) => {
-                        const isSelected =
-                          normalizeLookupToken(department) === normalizeLookupToken(entry.headName);
-                        const DepartmentIcon = getDepartmentIcon(entry.department);
-                        return (
-                          <div key={`${entry.department}-${entry.headName}`}>
-                            <button
-                              type="button"
-                              onMouseDown={(mouseEvent) => mouseEvent.preventDefault()}
-                              onClick={() => handleDepartmentHeadSelection(entry)}
-                              className={cn(
-                                suggestionItemClass,
-                                isSelected
-                                  ? 'border-[#D4E2FF] bg-[linear-gradient(135deg,rgba(243,247,255,0.98),rgba(234,241,255,0.92))] shadow-[0_16px_30px_-24px_rgba(59,99,204,0.28)] dark:border-sidebar-ring/30 dark:bg-sidebar-accent/82 dark:shadow-none'
-                                  : 'border-transparent bg-transparent hover:border-[#C9DBFF] hover:bg-[linear-gradient(135deg,rgba(243,247,255,0.9),rgba(232,240,255,0.82))] hover:shadow-[0_14px_28px_-24px_rgba(59,99,204,0.22)] dark:hover:border-sidebar-border dark:hover:bg-sidebar-accent/74 dark:hover:shadow-none'
-                              )}
-                            >
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.86),rgba(240,245,255,0.74),rgba(233,240,255,0.68))] text-[#5A74B7] shadow-[0_12px_24px_-20px_rgba(59,99,204,0.22)] ring-1 ring-white/55 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.58),rgba(240,245,255,0.42),rgba(233,240,255,0.36))] backdrop-blur-md dark:border-white/10 dark:bg-sidebar/78 dark:text-slate-300 dark:ring-white/10 dark:shadow-none">
-                                <DepartmentIcon className="h-4 w-4" />
-                              </div>
-                              <div className="min-w-0 flex-1 space-y-1.5">
-                                <span
-                                  title={entry.headName}
-                                  className="block truncate pr-1 text-[14px] font-semibold leading-[1.25] tracking-[-0.01em] text-[#1E2A44] dark:text-slate-100"
-                                >
-                                  {entry.headName}
-                                </span>
-                                <span className="inline-flex rounded-full bg-[#EEF4FF]/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7087BC] dark:bg-sidebar-accent dark:text-slate-400">
-                                  {entry.department}
-                                </span>
-                              </div>
-                              {isSelected ? (
-                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.88),rgba(241,246,255,0.74))] text-[#4A65A8] ring-1 ring-white/55 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.62),rgba(241,246,255,0.5))] backdrop-blur-sm dark:border-white/10 dark:bg-sidebar dark:text-white dark:ring-white/10">
-                                  <Check className="h-4 w-4" />
-                                </div>
-                              ) : null}
-                            </button>
-                            {index < departmentSuggestions.length - 1 ? (
-                              <div className="mx-3 h-px bg-[linear-gradient(90deg,transparent,rgba(199,214,255,0.9),transparent)] dark:bg-[linear-gradient(90deg,transparent,rgba(92,119,198,0.5),transparent)]" />
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                {isDepartmentSuggestionOpen &&
-                  department.trim() &&
-                  departmentSuggestions.length === 0 && (
-                    <div className={cn(suggestionPopoverClass, 'relative border-dashed px-4 py-3 text-xs text-muted-foreground backdrop-blur-xl')}>
-                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(164,190,255,0.24),transparent_32%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.32),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.2),rgba(255,255,255,0))] dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.2),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]" />
-                      <div className="relative">No matching department head found. Press Enter to keep the typed value.</div>
-                    </div>
-                  )}
               </div>
             </div>
-
-            <div className="space-y-2">
-              <Label>Contact Number</Label>
-              <div className="space-y-2">
-                <div className={phoneFieldShellClass}>
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(236,242,255,0.82))] text-[#4A65A8] shadow-[0_10px_24px_-20px_rgba(59,99,204,0.44)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.7),rgba(236,242,255,0.58))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar/80 dark:text-slate-300">
-                    <Phone className="h-4 w-4" />
-                  </div>
-                  <div className="h-5 w-px shrink-0 bg-[#D8E2FF] dark:bg-sidebar-border" />
-                  <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#DCE6FF]/85 bg-white/78 px-2.5 py-1 text-[12px] font-semibold tracking-[0.08em] text-[#415896] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] supports-[backdrop-filter]:bg-white/62 backdrop-blur-sm dark:border-sidebar-border dark:bg-sidebar/74 dark:text-slate-300">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#5E7BDA] dark:bg-slate-300" />
-                    +91
-                  </div>
-                  <input
-                    type="tel"
-                    inputMode="numeric"
-                    autoComplete="tel-national"
-                    maxLength={10}
-                    value={requesterPhoneLocal}
-                    onChange={(event) => setRequesterPhone(formatIndianPhoneInput(`+91 ${event.target.value}`))}
-                    placeholder="9876543210"
-                    className="min-w-0 flex-1 border-0 bg-transparent px-1 py-0 text-sm font-semibold tracking-[0.01em] text-foreground outline-none placeholder:text-xs placeholder:font-normal placeholder:text-muted-foreground/90"
-                  />
-                </div>
-              </div>
-            </div>
+            {renderDepartmentRequesterField()}
+            {renderPhoneField()}
           </div>
 
           <div className="space-y-2">
@@ -1391,7 +1822,7 @@ export default function NewRequest() {
             <Textarea
               value={overallBrief}
               onChange={(event) => setOverallBrief(event.target.value)}
-              className="min-h-[220px] placeholder:text-xs"
+              className={requestTextareaClass}
               placeholder="Describe the campaign objective, audience, message hierarchy, mandatory copy, visual tone, logos, language, and approval context."
             />
           </div>
@@ -1409,12 +1840,21 @@ export default function NewRequest() {
                 value={deadlineMode}
                 onValueChange={(value) => setDeadlineMode(value as 'common' | 'itemized')}
               >
-                <SelectTrigger className="h-10 text-sm">
-                  <SelectValue placeholder="Select deadline mode" />
+                <SelectTrigger className={requestSelectTriggerClass}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200">
+                      <CalendarRange className="h-4 w-4" />
+                    </span>
+                    <span className="block truncate font-medium">{selectedDeadlineModeLabel}</span>
+                  </div>
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="common">Common deadline</SelectItem>
-                  <SelectItem value="itemized">Individual item deadlines</SelectItem>
+                <SelectContent className={requestSelectContentClass}>
+                  <SelectItem value="common" className={requestSelectItemClass}>
+                    Common deadline
+                  </SelectItem>
+                  <SelectItem value="itemized" className={requestSelectItemClass}>
+                    Individual item deadlines
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1434,22 +1874,21 @@ export default function NewRequest() {
                     variant="outline"
                     disabled={deadlineMode !== 'common'}
                     className={cn(
-                      glassInputClass,
-                      'h-11 w-full justify-between rounded-[14px] px-3 text-left text-sm font-semibold shadow-none',
+                      requestSelectTriggerClass,
+                      'w-full justify-between font-medium disabled:opacity-60',
                       !commonDeadline && 'text-muted-foreground'
                     )}
-                  >
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[#D7E2FF]/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(236,242,255,0.82))] text-[#4863B7] dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:text-slate-300">
-                        <Calendar className="h-4 w-4" />
+                    >
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200">
+                          <Calendar className="h-4 w-4" />
+                        </span>
+                        <span className="truncate">
+                          {commonDeadline ? format(commonDeadline, 'PPP') : 'Pick deadline date'}
+                        </span>
                       </span>
-                      <span className="truncate">
-                        {commonDeadline ? format(commonDeadline, 'PPP') : 'Pick deadline date'}
-                      </span>
-                    </span>
-                    <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </Button>
-                </PopoverTrigger>
+                    </Button>
+                  </PopoverTrigger>
                 <PopoverContent
                   align="start"
                   className="w-auto border-[#C9D7FF] bg-[#F2F6FF]/95 p-2 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:supports-[backdrop-filter]:bg-slate-900/70"
@@ -1470,19 +1909,27 @@ export default function NewRequest() {
               </Popover>
             </div>
 
-            <p className="mt-0.5 text-[11px] leading-[14px] text-muted-foreground md:col-start-2">
-              Delivery dates must be at least 3 working days from today.
-            </p>
+            {deadlineMode === 'itemized' ? (
+              <p className="mt-0.5 text-[11px] leading-[14px] text-primary md:col-start-2">
+                Each collateral item has its own deadline — set it inside each item in the next step.
+              </p>
+            ) : (
+              <p className="mt-0.5 text-[11px] leading-[14px] text-muted-foreground md:col-start-2">
+                Delivery dates must be at least 3 working days from today.
+              </p>
+            )}
           </div>
 
           <AttachmentUploadField
-            label="Master References / Attachments"
-            description="Upload campaign-level references shared across all collateral items: brand assets, approved copy, event brief, logos, prior creatives, or mandatory guidelines."
+            label="Master References"
+            description="Upload shared campaign assets (logos, copy, guidelines)."
             attachments={masterAttachments}
             onChange={setMasterAttachments}
-            taskTitle={requestTitle || 'Campaign Request'}
+            taskTitle={requestTitle || 'Campaign Suite'}
             taskSection="Campaign Master References"
-            emptyLabel="These files stay at request level and remain visible across the full campaign request."
+            uploadTitle="Drag and drop files or upload"
+            uploadDescription="Securely stored and available across the campaign."
+            emptyLabel=""
           />
         </section>
       );
@@ -1504,6 +1951,12 @@ export default function NewRequest() {
                 <CollateralEditorCard
                   key={collateral.id}
                   collateral={collateral}
+                  expanded={expandedCollateralId === collateral.id}
+                  onToggle={() =>
+                    setExpandedCollateralId((prev) =>
+                      prev === collateral.id ? null : collateral.id
+                    )
+                  }
                   useCommonDeadline={deadlineMode === 'common'}
                   commonDeadline={commonDeadline}
                   minDeadline={minDeadlineInputValue}
@@ -1512,9 +1965,10 @@ export default function NewRequest() {
                       previous.map((item) => (item.id === collateral.id ? next : item))
                     )
                   }
-                  onRemove={() =>
-                    setCollaterals((previous) => previous.filter((item) => item.id !== collateral.id))
-                  }
+                  onRemove={() => {
+                    setCollaterals((previous) => previous.filter((item) => item.id !== collateral.id));
+                    if (expandedCollateralId === collateral.id) setExpandedCollateralId(null);
+                  }}
                 />
               ))}
             </div>
@@ -1531,7 +1985,7 @@ export default function NewRequest() {
               <p className="text-xs uppercase tracking-[0.18em] text-primary">Review Summary</p>
               <h2 className="mt-3 text-2xl font-semibold text-foreground">{requestTitle.trim() || 'Campaign request'}</h2>
               <p className="mt-3 text-sm text-muted-foreground">
-                This submission will create one parent campaign request with separate collateral
+                This submission will create one parent campaign suite with separate collateral
                 items for designers to track and update individually.
               </p>
             </div>
@@ -1738,23 +2192,23 @@ export default function NewRequest() {
         body:
           'This is where the designer understands the campaign goal, requester context, and message direction. A clear brief gets the concept closer to approval in the first round.',
         quote:
-          'A clear brief doesn’t just guide the work. It accelerates great outcomes.',
+          "A clear brief doesn't just guide the work. It accelerates great outcomes.",
       },
       timeline: {
-        eyebrow: 'Production Readiness',
-        title: 'Deadlines and files decide how polished the output can be.',
+        eyebrow: 'Planning',
+        title: 'Deadlines and files shape delivery.',
         body:
-          'This step sets the production window for design. Shared references, approved copy, and a realistic deadline protect the quality of the final artwork.',
+          'Set a practical timeline and upload the files needed to complete the work without delays.',
         quote:
-          'A strong designer can move fast. A prepared requester helps them move in the right direction.',
+          'Good inputs support better delivery.',
       },
       collaterals: {
-        eyebrow: 'Campaign System',
-        title: 'Every asset should feel like part of one campaign, not random separate requests.',
+        eyebrow: 'Consistency',
+        title: 'Keep each asset aligned to the same campaign.',
         body:
-          'This step converts the campaign into clear production items. Each collateral needs its own message, platform logic, and references for consistent execution across formats.',
+          'Add each collateral with its own brief, format, and references so execution stays consistent.',
         quote:
-          'Consistency is not repeating the same layout. It is repeating the same idea in the right format every time.',
+          'Consistency helps review and execution.',
       },
     };
     const activeContent = sidebarContent[activeSidebarStep];
@@ -1845,7 +2299,7 @@ export default function NewRequest() {
                   <div className="flex items-center gap-2">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#83ABFF]" />
                     <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8EA5D8]">
-                      Why It Matters
+                      Note
                     </p>
                   </div>
                   <p className="mt-3 max-w-[18.5rem] text-[13.5px] leading-[1.55] text-[#B8C7E4]">
@@ -1861,6 +2315,283 @@ export default function NewRequest() {
     );
   };
 
+  const requestTypeSelectionPanel = (
+    <section className={cn(builderSurfaceClass, 'animate-fade-in overflow-hidden')}>
+      <div className="border-b border-border/70 px-8 py-6 dark:border-[#253D78]/90">
+        <Badge
+          variant="outline"
+          className="rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-sidebar-border dark:bg-sidebar-accent/80"
+        >
+          Request Type
+        </Badge>
+        <h2 className="mt-3 text-[24px] font-semibold text-foreground">
+          Select a Request Type
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Choose the option that best matches your requirement.
+        </p>
+      </div>
+
+      <div className="grid gap-5 px-8 py-6 md:grid-cols-2">
+        {REQUEST_TYPE_OPTIONS.map((option, index) => {
+          const OptionIcon = option.icon;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => handleRequestTypeSelect(option.value)}
+              className={cn(
+                'animate-slide-up group relative h-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white p-5 text-left shadow-[0_12px_28px_-24px_rgba(30,42,90,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#F8FBFF] hover:shadow-[0_18px_36px_-22px_rgba(30,42,90,0.22)] dark:border-sidebar-border dark:bg-sidebar-accent/78 dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-accent/84'
+              )}
+              style={{ animationDelay: `${index * 90}ms` }}
+            >
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.08),transparent_34%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.12),transparent_30%)]" />
+              <div className="relative flex min-h-[188px] flex-col">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#DDE7FF] bg-[#F7FAFF] text-primary transition-transform duration-300 group-hover:-translate-y-0.5 dark:border-sidebar-border dark:bg-sidebar/84 dark:text-slate-200">
+                    <OptionIcon className="h-5 w-5" />
+                  </div>
+                  <span className="inline-flex rounded-full border border-[#DCE6FF] bg-[#FAFCFF] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5B73B2] dark:border-sidebar-border dark:bg-sidebar/72 dark:text-slate-300">
+                    {option.tag}
+                  </span>
+                </div>
+
+                <div className="mt-4 flex-1 space-y-2">
+                  <h3 className="text-[17px] font-semibold tracking-[-0.02em] text-[#1E2A5A] dark:text-slate-100">
+                    {option.label}
+                  </h3>
+                  <p className="text-[14px] font-medium text-foreground/90 dark:text-slate-200">
+                    {option.description}
+                  </p>
+                </div>
+
+                <div className="mt-4 flex items-center justify-end border-t border-[#E8EEFF] pt-4 dark:border-sidebar-border/80">
+                  <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-primary">
+                    {option.cta}
+                    <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+
+  const singleRequestPanel = (
+    <div className="mx-auto w-full max-w-4xl space-y-3">
+      <section
+        className={cn(
+          glassCardClass,
+          'overflow-hidden shadow-[0_28px_64px_-42px_rgba(59,99,204,0.28)]'
+        )}
+      >
+        <div className="border-b border-border/70 px-5 py-4 dark:border-[#253D78]/90">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="text-[24px] font-semibold text-foreground">Quick Design</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Add the details for one design request.
+              </p>
+            </div>
+
+            <Button type="button" variant="outline" onClick={resetRequestTypeSelection}>
+              Change request type
+            </Button>
+          </div>
+        </div>
+
+        <div className="px-5 py-4">
+          <section className="space-y-5">
+            <div className="grid items-start gap-x-5 gap-y-4 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.2fr)_minmax(0,1.2fr)]">
+              <div className="space-y-2">
+                <Label>Creative Title</Label>
+                <div className="relative">
+                  <span className={requestFieldIconClass}>
+                    <FileText className="h-4 w-4" />
+                  </span>
+                  <Input
+                    value={requestTitle}
+                    onChange={(event) => setRequestTitle(event.target.value)}
+                    placeholder="Annual Day Poster / Admissions Flyer / Event Banner / Instagram Post"
+                    className={requestFieldWithIconClass}
+                  />
+                </div>
+              </div>
+
+              {renderDepartmentRequesterField()}
+              {renderPhoneField()}
+            </div>
+
+            <div className="grid items-start gap-x-5 gap-y-4 md:w-[80%] md:grid-cols-[minmax(0,0.85fr)_minmax(0,0.55fr)_minmax(0,0.6fr)]">
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <Select
+                  value={singleCategory}
+                  onValueChange={(value) => setSingleCategory(value as TaskCategory)}
+                >
+                  <SelectTrigger className={requestSelectTriggerClass}>
+                    <div className="flex min-w-0 items-center">
+                      <span className="block truncate font-medium">
+                        {selectedSingleCategoryOption?.label || 'Select category'}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent className={requestSelectContentClass}>
+                    {SINGLE_REQUEST_CATEGORY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value} className={requestSelectItemClass}>
+                        <div className="flex items-center gap-2">
+                          <option.icon className="h-4 w-4 text-muted-foreground" />
+                          <span>{option.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <Select
+                  value={singleUrgency}
+                  onValueChange={(value) => setSingleUrgency(value as TaskUrgency)}
+                >
+                  <SelectTrigger className={requestSelectTriggerClass}>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200">
+                        <ListChecks className="h-4 w-4" />
+                      </span>
+                      <span className="block truncate font-medium">
+                        {selectedSingleUrgencyOption?.label || 'Select priority'}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent className={requestSelectContentClass}>
+                    {SINGLE_REQUEST_URGENCY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value} className={requestSelectItemClass}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Deadline</Label>
+                <Popover
+                  open={singleDeadlineCalendarOpen}
+                  onOpenChange={setSingleDeadlineCalendarOpen}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={cn(
+                        requestSelectTriggerClass,
+                        'w-full justify-between font-medium',
+                        !singleDeadline && 'text-muted-foreground'
+                      )}
+                    >
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200">
+                          <Calendar className="h-4 w-4" />
+                        </span>
+                        <span className="truncate">
+                          {singleDeadline ? format(singleDeadline, 'PPP') : 'Pick deadline date'}
+                        </span>
+                      </span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="w-auto border-[#C9D7FF] bg-[#F2F6FF]/95 p-2 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:supports-[backdrop-filter]:bg-slate-900/70"
+                  >
+                    <DateCalendar
+                      mode="single"
+                      selected={singleDeadline}
+                      onSelect={(date) => {
+                        if (!date) return;
+                        setSingleDeadline(date);
+                        setSingleDeadlineCalendarOpen(false);
+                      }}
+                      disabled={(date) => startOfDay(date) < minDeadlineDate}
+                      initialFocus
+                      className="rounded-lg border border-[#D9E6FF] bg-white/75 p-2 dark:border-slate-700/60 dark:bg-slate-900/60"
+                    />
+                  </PopoverContent>
+                </Popover>
+                <p className="mt-1 text-[10px] leading-4 text-muted-foreground/75">
+                  Minimum 3 working days.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Creative Brief</Label>
+              <Textarea
+                value={overallBrief}
+                onChange={(event) => setOverallBrief(event.target.value)}
+                className={requestTextareaClass}
+                placeholder="Describe the exact output needed, audience, message, mandatory copy, size references, logos, visual tone, language, and approvals."
+              />
+            </div>
+
+            <AttachmentUploadField
+              label="Attachments & References"
+              description="Upload supporting files to help the designer clearly understand and execute your request — such as logos, brand guidelines, content documents, screenshots, or reference designs."
+              attachments={masterAttachments}
+              onChange={setMasterAttachments}
+              taskTitle={requestTitle || 'Quick Design Request'}
+              taskSection="Quick Design References"
+              emptyLabel=""
+              uploadTitle="Drag and drop files here, or upload from your device"
+              uploadDescription="Files will be securely stored and linked to this request."
+              buttonLabel="Upload Files"
+            />
+          </section>
+        </div>
+
+        <div className={builderFooterClass}>
+          {shouldRevealSingleValidation && singleValidationMessage ? (
+            <div className={builderValidationClass}>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-[#D9E6FF]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(236,243,255,0.86))] text-[#4863B7] shadow-[0_12px_24px_-18px_rgba(59,99,204,0.26)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(236,243,255,0.6))] backdrop-blur-sm dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:text-slate-300 dark:shadow-none">
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+              <span className="flex min-h-8 items-center leading-6 text-foreground/90 dark:text-slate-100">
+                {singleValidationMessage}
+              </span>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-h-10 items-center">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={resetRequestTypeSelection}
+                className={cn(builderSecondaryActionClass, 'justify-start gap-2.5')}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </Button>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+              <Button type="button" variant="outline" onClick={saveDraft}>
+                Save as draft
+              </Button>
+              <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting...' : 'Submit Quick Design'}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  );
   const stepPanel = (
     <section ref={formPanelTourRef} className={cn(builderSurfaceClass, 'overflow-hidden xl:flex xl:h-full xl:flex-col')}>
       <div className="border-b border-border/70 px-5 py-3.5 dark:border-[#253D78]/90">
@@ -1919,7 +2650,7 @@ export default function NewRequest() {
 
             {currentStep === 'review' ? (
               <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
-                {isSubmitting ? 'Submitting...' : 'Submit Campaign Request'}
+                {isSubmitting ? 'Submitting...' : 'Submit Campaign Suite'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
@@ -1934,138 +2665,183 @@ export default function NewRequest() {
     </section>
   );
 
+  const headerBadgeText =
+    selectedRequestType === 'single_task'
+      ? 'Quick Design'
+      : selectedRequestType === 'campaign_request'
+        ? 'Campaign Suite'
+        : '';
+  const trimmedRequestTitle = requestTitle.trim();
+  const fallbackHeaderTitle =
+    selectedRequestType === 'single_task'
+      ? 'Create a quick design request'
+      : selectedRequestType === 'campaign_request'
+        ? 'Create a campaign suite'
+        : 'Create a New Design Request';
+  const headerTitle =
+    trimmedRequestTitle ? truncateHeaderTitle(trimmedRequestTitle) : fallbackHeaderTitle;
+  const headerDescription =
+    selectedRequestType === 'single_task'
+      ? 'Use this flow for one design deliverable.'
+      : selectedRequestType === 'campaign_request'
+        ? ''
+        : 'Choose the type of request to get started.';
+
   return (
     <DashboardLayout fitContentHeight>
-      <div className="mx-auto max-w-6xl space-y-4 pb-6">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto max-w-6xl space-y-6 pb-8">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-[46rem]">
-            <Badge variant="outline" className="mb-3 rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-sidebar-border dark:bg-sidebar-accent/80">
-              Campaign Request Builder
-            </Badge>
-            <h1 className="max-w-[22ch] text-[30px] font-bold leading-[1.16] tracking-[-0.04em] text-foreground [text-wrap:balance]">
-              Build one campaign request with structured collateral items
+            {headerBadgeText ? (
+              <Badge variant="outline" className="mb-3 rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-sidebar-border dark:bg-sidebar-accent/80">
+                {headerBadgeText}
+              </Badge>
+            ) : null}
+            <h1 className="max-w-[22ch] text-[30px] font-bold leading-[1.16] tracking-[-0.04em] text-[#1E2A5A] dark:text-primary break-words [overflow-wrap:anywhere] [text-wrap:balance]">
+              {headerTitle}
             </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Structured internal request flow for campaign details, timelines, collateral items,
-              and final review.
-            </p>
+            {headerDescription ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {headerDescription}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => openTour(0)}>
-              <BookOpen className="mr-2 h-4 w-4" />
-              Quick tour
-            </Button>
+            {selectedRequestType === 'campaign_request' ? (
+              <Button type="button" variant="outline" onClick={() => openTour(0)}>
+                <BookOpen className="mr-2 h-4 w-4" />
+                Quick tour
+              </Button>
+            ) : null}
             <Button type="button" variant="outline" onClick={() => navigate('/my-requests')}>
               Cancel
             </Button>
           </div>
         </div>
 
-        <section ref={stepTrackerTourRef} className="relative overflow-hidden rounded-[22px] border border-[#C9D8FF]/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.52),rgba(241,246,255,0.62),rgba(224,235,255,0.54))] px-4 py-3 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.34),rgba(241,246,255,0.42),rgba(224,235,255,0.36))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:supports-[backdrop-filter]:bg-sidebar/96 dark:backdrop-blur-[24px]">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(87,118,255,0.07),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(56,85,190,0.07),transparent_30%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(59,91,190,0.14),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,91,190,0.1),transparent_24%)]" />
-          <div className="overflow-x-auto">
-            <ol className="relative flex min-w-[760px] items-center">
-              {BUILDER_STEPS.map((step, index) => {
-                const isCurrent = step.id === currentStep;
-                const isComplete = index < currentStepIndex && !validationMessages[step.id];
-                const isUnlocked = index <= furthestUnlockedStepIndex;
-                const StepIcon = step.icon;
-                const trackingLabel = isComplete ? 'Completed' : isCurrent ? 'Current step' : 'Upcoming';
+        {selectedRequestType === 'campaign_request' ? (
+          <>
+            <section ref={stepTrackerTourRef} className="relative overflow-hidden rounded-[22px] border border-[#C9D8FF]/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.52),rgba(241,246,255,0.62),rgba(224,235,255,0.54))] px-4 py-3 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.34),rgba(241,246,255,0.42),rgba(224,235,255,0.36))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:supports-[backdrop-filter]:bg-sidebar/96 dark:backdrop-blur-[24px]">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(87,118,255,0.07),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(56,85,190,0.07),transparent_30%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(59,91,190,0.14),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,91,190,0.1),transparent_24%)]" />
+              <div className="overflow-x-auto">
+                <ol className="relative flex min-w-[760px] items-center">
+                  {BUILDER_STEPS.map((step, index) => {
+                    const isCurrent = step.id === currentStep;
+                    const isComplete = index < currentStepIndex && !validationMessages[step.id];
+                    const isUnlocked = index <= furthestUnlockedStepIndex;
+                    const StepIcon = step.icon;
+                    const trackingLabel = isComplete
+                      ? 'Completed'
+                      : isCurrent
+                        ? 'Current step'
+                        : 'Upcoming';
 
-                return (
-                  <li key={step.id} className="flex min-w-0 flex-1 items-center">
-                    <button
-                      type="button"
-                      onClick={() => handleStepChange(step.id)}
-                      className={cn(
-                        'flex min-w-0 flex-1 items-center gap-3 rounded-[18px] px-3 py-2.5 text-left backdrop-blur-md transition-all duration-150',
-                        isCurrent &&
-                          'bg-[linear-gradient(135deg,rgba(255,255,255,0.32),rgba(234,241,255,0.42),rgba(212,225,255,0.24))] shadow-[inset_0_0_0_1px_rgba(67,97,204,0.12)] dark:border dark:border-sidebar-ring/40 dark:bg-sidebar-primary dark:[background-image:none] dark:text-sidebar-primary-foreground dark:shadow-[0_18px_40px_-28px_rgba(29,78,216,0.42)]',
-                        isComplete &&
-                          'bg-[linear-gradient(135deg,rgba(255,255,255,0.26),rgba(240,245,255,0.34))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)] dark:border dark:border-sidebar-border dark:bg-sidebar-accent dark:[background-image:none] dark:text-sidebar-foreground',
-                        !isCurrent &&
-                          !isComplete &&
-                          'bg-white/18 dark:border dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:text-sidebar-foreground',
-                        isUnlocked
-                          ? isCurrent
-                            ? 'hover:border-[#314a8e] hover:brightness-105'
-                            : 'hover:bg-white/30 dark:hover:border-sidebar-ring/30 dark:hover:bg-sidebar-accent'
-                          : 'cursor-not-allowed opacity-70'
-                      )}
-                      disabled={!isUnlocked}
-                    >
-                      <div
-                        className={cn(
-                          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold backdrop-blur-sm',
-                          isCurrent && 'border-primary bg-primary text-primary-foreground dark:border-sidebar-primary dark:bg-sidebar-primary dark:text-sidebar-primary-foreground',
-                          isComplete && 'border-primary bg-primary text-primary-foreground dark:border-sidebar-primary dark:bg-sidebar-primary dark:text-sidebar-primary-foreground',
-                          !isCurrent &&
-                            !isComplete &&
-                            'border-white/70 bg-white/70 text-muted-foreground dark:border-sidebar-border dark:bg-sidebar-accent dark:text-sidebar-foreground'
-                        )}
-                      >
-                        {isComplete ? <Check className="h-4 w-4" /> : step.label}
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <StepIcon
+                    return (
+                      <li key={step.id} className="flex min-w-0 flex-1 items-center">
+                        <button
+                          type="button"
+                          onClick={() => handleStepChange(step.id)}
+                          className={cn(
+                            'flex min-w-0 flex-1 items-center gap-3 rounded-[18px] px-3 py-2.5 text-left backdrop-blur-md transition-all duration-150',
+                            isCurrent &&
+                              'bg-[linear-gradient(135deg,rgba(255,255,255,0.32),rgba(234,241,255,0.42),rgba(212,225,255,0.24))] shadow-[inset_0_0_0_1px_rgba(67,97,204,0.12)] dark:border dark:border-sidebar-ring/40 dark:bg-sidebar-primary dark:[background-image:none] dark:text-sidebar-primary-foreground dark:shadow-[0_18px_40px_-28px_rgba(29,78,216,0.42)]',
+                            isComplete &&
+                              'bg-[linear-gradient(135deg,rgba(255,255,255,0.26),rgba(240,245,255,0.34))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)] dark:border dark:border-sidebar-border dark:bg-sidebar-accent dark:[background-image:none] dark:text-sidebar-foreground',
+                            !isCurrent &&
+                              !isComplete &&
+                              'bg-white/18 dark:border dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:text-sidebar-foreground',
+                            isUnlocked
+                              ? isCurrent
+                                ? 'hover:border-[#314a8e] hover:brightness-105'
+                                : 'hover:bg-white/30 dark:hover:border-sidebar-ring/30 dark:hover:bg-sidebar-accent'
+                              : 'cursor-not-allowed opacity-70'
+                          )}
+                          disabled={!isUnlocked}
+                        >
+                          <div
                             className={cn(
-                              'h-3.5 w-3.5 shrink-0',
-                              isCurrent
-                                ? 'text-primary dark:text-sidebar-primary-foreground'
-                                : isComplete
-                                ? 'text-primary dark:text-sidebar-primary-foreground'
-                                : 'text-muted-foreground dark:text-sidebar-foreground/70'
-                            )}
-                          />
-                          <p
-                            className={cn(
-                              'truncate text-[13px] font-semibold text-foreground',
-                              isCurrent ? 'dark:text-sidebar-primary-foreground' : 'dark:text-sidebar-foreground'
+                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold backdrop-blur-sm',
+                              isCurrent &&
+                                'border-primary bg-primary text-primary-foreground dark:border-sidebar-primary dark:bg-sidebar-primary dark:text-sidebar-primary-foreground',
+                              isComplete &&
+                                'border-primary bg-primary text-primary-foreground dark:border-sidebar-primary dark:bg-sidebar-primary dark:text-sidebar-primary-foreground',
+                              !isCurrent &&
+                                !isComplete &&
+                                'border-white/70 bg-white/70 text-muted-foreground dark:border-sidebar-border dark:bg-sidebar-accent dark:text-sidebar-foreground'
                             )}
                           >
-                            {step.title}
-                          </p>
-                        </div>
-                        <p
-                          className={cn(
-                            'mt-0.5 text-[10.5px] leading-4 text-muted-foreground',
-                            isCurrent ? 'dark:text-sidebar-primary-foreground/75' : 'dark:text-sidebar-foreground/60'
-                          )}
-                        >
-                          {trackingLabel}
-                        </p>
-                      </div>
-                    </button>
+                            {isComplete ? <Check className="h-4 w-4" /> : step.label}
+                          </div>
 
-                    {index < BUILDER_STEPS.length - 1 ? (
-                      <div className="mx-2 h-px w-10 flex-none bg-[#D8E3FF]/90 lg:w-14 dark:bg-sidebar-border">
-                        <div
-                          className={cn(
-                            'h-full w-full',
-                            index < currentStepIndex
-                              ? 'bg-[linear-gradient(90deg,rgba(56,85,190,0.95),rgba(96,124,255,0.92))] dark:bg-sidebar-primary dark:[background-image:none]'
-                              : 'bg-[#D8E3FF]/90 dark:bg-sidebar-border'
-                          )}
-                        />
-                      </div>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-        </section>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <StepIcon
+                                className={cn(
+                                  'h-3.5 w-3.5 shrink-0',
+                                  isCurrent
+                                    ? 'text-primary dark:text-sidebar-primary-foreground'
+                                    : isComplete
+                                      ? 'text-primary dark:text-sidebar-primary-foreground'
+                                      : 'text-muted-foreground dark:text-sidebar-foreground/70'
+                                )}
+                              />
+                              <p
+                                className={cn(
+                                  'truncate text-[13px] font-semibold text-foreground',
+                                  isCurrent
+                                    ? 'dark:text-sidebar-primary-foreground'
+                                    : 'dark:text-sidebar-foreground'
+                                )}
+                              >
+                                {step.title}
+                              </p>
+                            </div>
+                            <p
+                              className={cn(
+                                'mt-0.5 text-[10.5px] leading-4 text-muted-foreground',
+                                isCurrent
+                                  ? 'dark:text-sidebar-primary-foreground/75'
+                                  : 'dark:text-sidebar-foreground/60'
+                              )}
+                            >
+                              {trackingLabel}
+                            </p>
+                          </div>
+                        </button>
 
-        {currentStep === 'review' ? (
-          stepPanel
+                        {index < BUILDER_STEPS.length - 1 ? (
+                          <div className="mx-2 h-px w-10 flex-none bg-[#D8E3FF]/90 lg:w-14 dark:bg-sidebar-border">
+                            <div
+                              className={cn(
+                                'h-full w-full',
+                                index < currentStepIndex
+                                  ? 'bg-[linear-gradient(90deg,rgba(56,85,190,0.95),rgba(96,124,255,0.92))] dark:bg-sidebar-primary dark:[background-image:none]'
+                                  : 'bg-[#D8E3FF]/90 dark:bg-sidebar-border'
+                              )}
+                            />
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            </section>
+
+            {currentStep === 'review' ? (
+              stepPanel
+            ) : (
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] xl:items-stretch">
+                {stepPanel}
+                {renderStepSidebar()}
+              </div>
+            )}
+          </>
+        ) : selectedRequestType === 'single_task' ? (
+          singleRequestPanel
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] xl:items-stretch">
-            {stepPanel}
-            {renderStepSidebar()}
-          </div>
+          requestTypeSelectionPanel
         )}
 
         {isTourOpen && activeTourStep ? createPortal(
@@ -2247,22 +3023,21 @@ export default function NewRequest() {
         <CollateralPresetDialog
           open={isPresetDialogOpen}
           onOpenChange={setIsPresetDialogOpen}
-          variant="dark"
+          variant="auto"
+          existingCollateralTypes={collaterals.map((c) => c.collateralType)}
           onSelect={(preset) => {
-            setCollaterals((previous) => [
-              ...previous,
-              createCollateralDraftFromPreset(preset, deadlineMode, commonDeadline),
-            ]);
+            const draft = createCollateralDraftFromPreset(preset, deadlineMode, commonDeadline);
+            setCollaterals((previous) => [...previous, draft]);
+            setExpandedCollateralId(draft.id);
             setIsPresetDialogOpen(false);
             toast.success(`${preset.label} added.`);
           }}
           onSelectMany={(presets) => {
-            setCollaterals((previous) => [
-              ...previous,
-              ...presets.map((preset) =>
-                createCollateralDraftFromPreset(preset, deadlineMode, commonDeadline)
-              ),
-            ]);
+            const drafts = presets.map((preset) =>
+              createCollateralDraftFromPreset(preset, deadlineMode, commonDeadline)
+            );
+            setCollaterals((previous) => [...previous, ...drafts]);
+            setExpandedCollateralId(drafts[drafts.length - 1].id);
             setIsPresetDialogOpen(false);
             toast.success(`${presets.length} presets added.`);
           }}
@@ -2271,3 +3046,4 @@ export default function NewRequest() {
     </DashboardLayout>
   );
 }
+
