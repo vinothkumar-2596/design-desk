@@ -228,9 +228,41 @@
     animation: dropdownIn 240ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
+  .requester-marquee {
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .requester-marquee__track {
+    display: inline-flex;
+    min-width: max-content;
+    align-items: center;
+    gap: 1.75rem;
+    will-change: transform;
+  }
+
+  .requester-marquee__text {
+    display: inline-block;
+  }
+
+  .requester-marquee:hover .requester-marquee__track,
+  .requester-marquee:focus-within .requester-marquee__track {
+    animation: requesterNameMarquee 4.8s linear 1;
+  }
+
   .animate-word-swap {
     animation: wordSwap 1.8s cubic-bezier(0.22, 1, 0.36, 1);
     will-change: transform, opacity;
+  }
+
+  .brief-avatar-float {
+    animation: briefAvatarFloat 5.8s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  .brief-avatar-float--alt {
+    animation-name: briefAvatarFloatAlt;
   }
 
   .icon-draw {
@@ -1896,11 +1928,33 @@
   }
 }
 
+@keyframes briefAvatarFloat {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-7px) scale(1.03);
+  }
+}
+
+@keyframes briefAvatarFloatAlt {
+  0%,
+  100% {
+    transform: translateY(-2px) scale(1);
+  }
+  50% {
+    transform: translateY(5px) scale(0.98);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .icon-draw * {
     transition: none;
   }
 
+  .brief-avatar-float,
+  .brief-avatar-float--alt,
   .chat-composer-placeholder-icon,
   .chat-composer-placeholder-wordlist span,
   .chat-composer-placeholder-words::before {
@@ -1948,10 +2002,19 @@
   }
 }
 
+
 @media (prefers-reduced-motion: reduce) {
   .guideline-preview-card,
   .guideline-toggle-pulse,
   .guideline-shimmer::after {
     animation: none !important;
+  }
+}
+@keyframes requesterNameMarquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(calc(-50% - 0.875rem));
   }
 }
