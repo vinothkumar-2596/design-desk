@@ -228,29 +228,6 @@
     animation: dropdownIn 240ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .requester-marquee {
-    width: 100%;
-    overflow: hidden;
-    white-space: nowrap;
-  }
-
-  .requester-marquee__track {
-    display: inline-flex;
-    min-width: max-content;
-    align-items: center;
-    gap: 1.75rem;
-    will-change: transform;
-  }
-
-  .requester-marquee__text {
-    display: inline-block;
-  }
-
-  .requester-marquee:hover .requester-marquee__track,
-  .requester-marquee:focus-within .requester-marquee__track {
-    animation: requesterNameMarquee 4.8s linear 1;
-  }
-
   .animate-word-swap {
     animation: wordSwap 1.8s cubic-bezier(0.22, 1, 0.36, 1);
     will-change: transform, opacity;
@@ -263,6 +240,162 @@
 
   .brief-avatar-float--alt {
     animation-name: briefAvatarFloatAlt;
+  }
+
+  /* ── Tour overlay fade-in ── */
+  .tour-overlay-enter {
+    animation: tourOverlayIn 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes tourOverlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* ── SVG cutout morph transition ── */
+  .tour-cutout-morph {
+    transition:
+      x 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      y 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      width 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      height 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      rx 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      ry 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* ── Spotlight gradient border ring ── */
+  .tour-spotlight-ring {
+    position: fixed;
+    background: transparent;
+    box-shadow: 0 0 20px -4px rgba(99, 102, 241, 0.3);
+    transition:
+      top 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      left 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      width 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      height 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      border-radius 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .tour-spotlight-ring::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    padding: 2px;
+    background: conic-gradient(from var(--tour-border-angle, 0deg), #38bdf8, #6366f1, #f472b6, #38bdf8);
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    animation: tourBorderSpin 3s linear infinite;
+  }
+
+  .dark .tour-spotlight-ring {
+    box-shadow: 0 0 24px -4px rgba(99, 102, 241, 0.35);
+  }
+
+  @property --tour-border-angle {
+    syntax: "<angle>";
+    initial-value: 0deg;
+    inherits: false;
+  }
+
+  @keyframes tourBorderSpin {
+    to { --tour-border-angle: 360deg; }
+  }
+
+  /* ── Tour card entrance ── */
+  .tour-card-enter {
+    animation: tourCardIn 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes tourCardIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.97);
+      filter: blur(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  /* ── Tour card arrow ── */
+  .tour-card-arrow {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    transform: rotate(45deg);
+    z-index: -1;
+  }
+
+  .dark .tour-card-arrow {
+    background: rgb(15, 23, 42);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .tour-card-arrow[data-side="left"] {
+    left: -7px;
+    top: var(--arrow-offset, 32px);
+    border-right: none;
+    border-top: none;
+  }
+
+  .tour-card-arrow[data-side="right"] {
+    right: -7px;
+    top: var(--arrow-offset, 32px);
+    border-left: none;
+    border-bottom: none;
+  }
+
+  .tour-card-arrow[data-side="top"] {
+    top: -7px;
+    left: var(--arrow-offset, 32px);
+    border-bottom: none;
+    border-right: none;
+  }
+
+  .tour-card-arrow[data-side="bottom"] {
+    bottom: -7px;
+    left: var(--arrow-offset, 32px);
+    border-top: none;
+    border-left: none;
+  }
+
+  /* ── Progress dots ── */
+  .tour-progress-dot {
+    transition: width 300ms cubic-bezier(0.22, 1, 0.36, 1),
+                background-color 300ms ease;
+  }
+
+  /* ── Next button shimmer ── */
+  .tour-next-btn {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .tour-next-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    animation: tourBtnShimmer 3s ease-in-out infinite;
+  }
+
+  @keyframes tourBtnShimmer {
+    0%, 100% { left: -100%; }
+    50% { left: 150%; }
   }
 
   .icon-draw {
@@ -284,6 +417,25 @@
     position: relative;
     transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
       box-shadow 220ms ease, border-color 220ms ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tour-overlay-enter,
+    .tour-card-enter,
+    .tour-next-btn::after {
+      animation: none;
+    }
+
+    .tour-cutout-morph,
+    .tour-spotlight-ring,
+    .tour-progress-dot {
+      transition: none;
+    }
+
+    .tour-spotlight-ring {
+      animation: none;
+      opacity: 1;
+    }
   }
 
   .search-elastic::after {

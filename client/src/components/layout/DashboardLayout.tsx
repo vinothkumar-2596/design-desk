@@ -47,6 +47,7 @@ interface DashboardLayoutProps {
   background?: ReactNode;
   hideGrid?: boolean;
   allowContentOverflow?: boolean;
+  fitContentHeight?: boolean;
 }
 
 type NotificationItem = {
@@ -95,6 +96,7 @@ export function DashboardLayout({
   background,
   hideGrid = false,
   allowContentOverflow = false,
+  fitContentHeight = false,
 }: DashboardLayoutProps) {
   const { isAuthenticated, user } = useAuth();
   const { tasks: hydratedTasks } = useTasksContext();
@@ -1314,6 +1316,8 @@ export function DashboardLayout({
         contentScrollRef={contentScrollRef}
         keepHeaderPinned={keepHeaderPinned}
         hideGrid={hideGrid}
+        allowContentOverflow={allowContentOverflow}
+        fitContentHeight={fitContentHeight}
         onContentScroll={() => {
           if (previewTimeoutRef.current) {
             clearTimeout(previewTimeoutRef.current);
@@ -1446,6 +1450,7 @@ function DashboardShell({
   keepHeaderPinned = false,
   hideGrid = false,
   allowContentOverflow = false,
+  fitContentHeight = false,
 }: {
   children: ReactNode;
   userInitial: string;
@@ -1456,6 +1461,7 @@ function DashboardShell({
   keepHeaderPinned?: boolean;
   hideGrid?: boolean;
   allowContentOverflow?: boolean;
+  fitContentHeight?: boolean;
 }) {
   const { query, setQuery, items, scopeLabel } = useGlobalSearch();
   const { resolvedTheme } = useTheme();
@@ -1798,11 +1804,12 @@ function DashboardShell({
           />
           <AppSidebar />
         </div>
-        <main className="flex-1 min-w-0 flex justify-center">
+        <main className={cn('flex-1 min-w-0 flex justify-center', fitContentHeight && 'items-start')}>
           <div
             ref={shellCardRef}
             className={cn(
-              "w-full max-w-6xl h-full rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-none flex flex-col",
+              'w-full max-w-6xl rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-none flex flex-col',
+              fitContentHeight ? 'h-auto self-start' : 'h-full',
               allowContentOverflow ? "overflow-visible" : "overflow-hidden"
             )}
           >
@@ -1928,7 +1935,8 @@ function DashboardShell({
               ref={contentScrollRef}
               data-app-scroll-container="true"
               className={cn(
-                "relative flex-1 overflow-y-auto scrollbar-thin",
+                'relative scrollbar-thin',
+                fitContentHeight ? 'flex-none overflow-visible' : 'flex-1 overflow-y-auto',
                 allowContentOverflow ? "overflow-x-visible" : "overflow-x-hidden"
               )}
               onScroll={handleContentScroll}

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import BoringAvatar from 'boring-avatars';
@@ -66,9 +67,33 @@ import {
 } from 'lucide-react';
 
 type BuilderStepId = 'campaign' | 'timeline' | 'collaterals' | 'review';
+type BuilderTourStepId = 'tracker' | 'form' | 'sidebar' | 'actions';
 type DepartmentHeadDirectoryEntry = {
   department: string;
   headName: string;
+};
+type BuilderTourStep = {
+  id: BuilderTourStepId;
+  eyebrow: string;
+  title: string;
+  description: string;
+  detail: string;
+  align: 'left' | 'right';
+  icon: React.ComponentType<{ className?: string }>;
+};
+type TourCardPosition = {
+  top: number;
+  left: number;
+  arrowSide: 'left' | 'right' | 'top' | 'bottom';
+  arrowOffset: number;
+};
+type TourSpotlight = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  radius: number;
+  card: TourCardPosition;
 };
 type BriefAvatarVariant =
   | 'marble'
@@ -133,8 +158,6 @@ const normalizeLookupToken = (value: string) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ');
-
-const shouldAnimateSuggestionName = (value: string) => String(value || '').trim().length > 24;
 
 const getDepartmentIcon = (department: string) => {
   const token = normalizeLookupToken(department);
@@ -242,6 +265,7 @@ const BUILDER_STEPS: Array<{
 ];
 
 const INDIAN_MOBILE_REGEX = /^\+91[6-9]\d{9}$/;
+const NEW_REQUEST_TOUR_STORAGE_KEY_PREFIX = 'designhub:new-request:tour-seen';
 
 const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate());
 
@@ -512,6 +536,75 @@ export default function NewRequest() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPresetDialogOpen, setIsPresetDialogOpen] = useState(false);
   const [isDepartmentSuggestionOpen, setIsDepartmentSuggestionOpen] = useState(false);
+  const [revealedValidationSteps, setRevealedValidationSteps] = useState<
+    Partial<Record<BuilderStepId, boolean>>
+  >({});
+  const [didRestoreDraft, setDidRestoreDraft] = useState(false);
+  const [isTourOpen, setIsTourOpen] = useState(false);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
+  const [tourSpotlight, setTourSpotlight] = useState<TourSpotlight | null>(null);
+  const stepTrackerTourRef = useRef<HTMLElement | null>(null);
+  const formPanelTourRef = useRef<HTMLElement | null>(null);
+  const sidebarTourRef = useRef<HTMLElement | null>(null);
+  const footerActionsTourRef = useRef<HTMLDivElement | null>(null);
+
+  const tourStorageKey = useMemo(() => {
+    const userKey = String(
+      user?.id || (user as { _id?: string } | null)?._id || user?.email || 'guest'
+    );
+    return `${NEW_REQUEST_TOUR_STORAGE_KEY_PREFIX}:${userKey}`;
+  }, [user]);
+
+  const builderTourSteps = useMemo<BuilderTourStep[]>(
+    () => [
+      {
+        id: 'tracker',
+        eyebrow: 'Step 1 of 4',
+        title: 'Follow the request flow',
+        description:
+          'This builder is split into four stages so you always know what comes next.',
+        detail:
+          'Complete the active stage and the next one unlocks automatically.',
+        align: 'right',
+        icon: ListChecks,
+      },
+      {
+        id: 'form',
+        eyebrow: 'Step 2 of 4',
+        title: 'Capture the brief clearly',
+        description:
+          'Define the campaign title, requester context, contact number, and the core brief here.',
+        detail:
+          'Keep it concrete: audience, message priority, approvals, and references.',
+        align: 'right',
+        icon: ClipboardCheck,
+      },
+      {
+        id: 'sidebar',
+        eyebrow: 'Step 3 of 4',
+        title: 'Your design guide',
+        description:
+          'This panel explains what the design team needs and reduces vague requests.',
+        detail:
+          'It updates as the flow changes, coaching you without feeling heavy.',
+        align: 'left',
+        icon: BookOpen,
+      },
+      {
+        id: 'actions',
+        eyebrow: 'Step 4 of 4',
+        title: 'Save or continue',
+        description:
+          'Save your progress as a draft or continue once the step is clear enough for design.',
+        detail:
+          'Validation only appears when you try to continue with missing inputs.',
+        align: 'right',
+        icon: ArrowRight,
+      },
+    ],
+    []
+  );
+  const activeTourStep = builderTourSteps[tourStepIndex];
 
   const departmentHeadDirectory = useMemo(() => {
     const userDerived: DepartmentHeadDirectoryEntry[] =
@@ -618,6 +711,7 @@ export default function NewRequest() {
   useEffect(() => {
     const draft = loadRequestDraft(user);
     if (!draft || draft.requestType !== 'campaign_request') return;
+    setDidRestoreDraft(true);
 
     const draftTitle = draft.title || '';
     const draftDepartment = draft.requesterDepartment || user?.department || '';
@@ -653,6 +747,173 @@ export default function NewRequest() {
     );
     toast.message('Draft restored.');
   }, [user?.department, user?.email, user?.id, user?.phone]);
+
+  const completeTour = useCallback(() => {
+    setIsTourOpen(false);
+    setTourSpotlight(null);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(tourStorageKey, '1');
+    }
+  }, [tourStorageKey]);
+
+  const openTour = useCallback((nextStepIndex = 0) => {
+    setCurrentStep('campaign');
+    setTourStepIndex(nextStepIndex);
+    setIsTourOpen(true);
+  }, []);
+
+  const resolveTourTarget = useCallback(
+    (stepId: BuilderTourStepId) => {
+      switch (stepId) {
+        case 'tracker':
+          return stepTrackerTourRef.current;
+        case 'form':
+          return formPanelTourRef.current;
+        case 'sidebar':
+          return sidebarTourRef.current;
+        case 'actions':
+          return footerActionsTourRef.current;
+        default:
+          return null;
+      }
+    },
+    []
+  );
+
+  const syncTourSpotlight = useCallback(() => {
+    if (!isTourOpen || !activeTourStep || typeof window === 'undefined') {
+      setTourSpotlight(null);
+      return;
+    }
+
+    const target = resolveTourTarget(activeTourStep.id);
+    if (!target) return;
+
+    const rect = target.getBoundingClientRect();
+    // Tight padding that hugs the element closely
+    const pad = 6;
+    const spotW = Math.min(rect.width + pad * 2, window.innerWidth - 8);
+    const spotH = Math.min(rect.height + pad * 2, window.innerHeight - 8);
+    const spotL = Math.min(Math.max(4, rect.left - pad), window.innerWidth - spotW - 4);
+    const spotT = Math.min(Math.max(4, rect.top - pad), window.innerHeight - spotH - 4);
+
+    // Match the actual border-radius of each target element
+    const radiusMap: Record<BuilderTourStepId, number> = {
+      tracker: 22, // rounded-[22px]
+      form: 24,    // rounded-[24px] from builderSurfaceClass
+      sidebar: 32, // rounded-[32px] from aside > section
+      actions: 0,  // footer div has no border-radius
+    };
+    const radius = (radiusMap[activeTourStep.id] ?? 16) + pad;
+
+    // Compute card position adjacent to spotlight (Slack-style)
+    const cardW = 370;
+    const cardGap = 18;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let cardTop: number;
+    let cardLeft: number;
+    let arrowSide: TourCardPosition['arrowSide'];
+    let arrowOffset: number;
+
+    const spaceRight = vw - (spotL + spotW);
+    const spaceLeft = spotL;
+    const spaceBelow = vh - (spotT + spotH);
+
+    if (spaceRight >= cardW + cardGap + 12) {
+      // Place card to the right of spotlight
+      cardLeft = spotL + spotW + cardGap;
+      cardTop = Math.min(Math.max(16, spotT), vh - 320);
+      arrowSide = 'left';
+      arrowOffset = Math.min(Math.max(28, (spotT + spotH / 2) - cardTop), 280);
+    } else if (spaceLeft >= cardW + cardGap + 12) {
+      // Place card to the left of spotlight
+      cardLeft = spotL - cardW - cardGap;
+      cardTop = Math.min(Math.max(16, spotT), vh - 320);
+      arrowSide = 'right';
+      arrowOffset = Math.min(Math.max(28, (spotT + spotH / 2) - cardTop), 280);
+    } else if (spaceBelow >= 200) {
+      // Place card below spotlight
+      cardTop = spotT + spotH + cardGap;
+      cardLeft = Math.min(Math.max(16, spotL + spotW / 2 - cardW / 2), vw - cardW - 16);
+      arrowSide = 'top';
+      arrowOffset = Math.min(Math.max(28, (spotL + spotW / 2) - cardLeft), cardW - 28);
+    } else {
+      // Place card above spotlight
+      cardTop = Math.max(16, spotT - 300 - cardGap);
+      cardLeft = Math.min(Math.max(16, spotL + spotW / 2 - cardW / 2), vw - cardW - 16);
+      arrowSide = 'bottom';
+      arrowOffset = Math.min(Math.max(28, (spotL + spotW / 2) - cardLeft), cardW - 28);
+    }
+
+    setTourSpotlight({
+      top: spotT,
+      left: spotL,
+      width: spotW,
+      height: spotH,
+      radius,
+      card: { top: cardTop, left: cardLeft, arrowSide, arrowOffset },
+    });
+  }, [activeTourStep, isTourOpen, resolveTourTarget]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || didRestoreDraft) return;
+    if (window.localStorage.getItem(tourStorageKey) === '1') return;
+
+    const timeoutId = window.setTimeout(() => {
+      setTourStepIndex(0);
+      setIsTourOpen(true);
+    }, 480);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [didRestoreDraft, tourStorageKey]);
+
+  useEffect(() => {
+    if (!isTourOpen || !activeTourStep || typeof window === 'undefined') return;
+
+    const target = resolveTourTarget(activeTourStep.id);
+    target?.scrollIntoView({
+      behavior: 'smooth',
+      block: activeTourStep.id === 'tracker' ? 'nearest' : 'center',
+      inline: 'nearest',
+    });
+
+    const frameId = window.requestAnimationFrame(syncTourSpotlight);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeTourStep, isTourOpen, resolveTourTarget, syncTourSpotlight]);
+
+  useEffect(() => {
+    if (!isTourOpen || typeof window === 'undefined') return;
+
+    const update = () => window.requestAnimationFrame(syncTourSpotlight);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        completeTour();
+        return;
+      }
+
+      if (event.key === 'ArrowRight') {
+        setTourStepIndex((current) => Math.min(current + 1, builderTourSteps.length - 1));
+        return;
+      }
+
+      if (event.key === 'ArrowLeft') {
+        setTourStepIndex((current) => Math.max(current - 1, 0));
+      }
+    };
+
+    update();
+    window.addEventListener('resize', update);
+    document.addEventListener('scroll', update, true);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('resize', update);
+      document.removeEventListener('scroll', update, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [builderTourSteps.length, completeTour, isTourOpen, syncTourSpotlight]);
 
   const summary = useMemo(() => {
     const effectiveDeadline = deriveEffectiveDeadline(collaterals, {
@@ -737,6 +998,9 @@ export default function NewRequest() {
     collaterals: collateralValidationMessage,
     review: reviewValidationMessage,
   };
+  const currentStepValidationMessage = revealedValidationSteps[currentStep]
+    ? validationMessages[currentStep]
+    : '';
 
   const currentStepIndex = BUILDER_STEPS.findIndex((step) => step.id === currentStep);
   const furthestUnlockedStepIndex = campaignValidationMessage
@@ -786,12 +1050,14 @@ export default function NewRequest() {
     }
 
     const blockingStep = BUILDER_STEPS[Math.max(0, targetIndex - 1)].id;
+    setRevealedValidationSteps((previous) => ({ ...previous, [blockingStep]: true }));
     toast.error(validationMessages[blockingStep] || 'Complete the previous step first.');
   };
 
   const handleNextStep = () => {
     const validationMessage = validationMessages[currentStep];
     if (validationMessage) {
+      setRevealedValidationSteps((previous) => ({ ...previous, [currentStep]: true }));
       toast.error(validationMessage);
       return;
     }
@@ -822,6 +1088,7 @@ export default function NewRequest() {
     });
 
     if (validationMessage) {
+      setRevealedValidationSteps((previous) => ({ ...previous, [currentStep]: true }));
       toast.error(validationMessage);
       return;
     }
@@ -962,15 +1229,15 @@ export default function NewRequest() {
   const builderInsetCardClass =
     'rounded-2xl border border-border/70 bg-background/70 dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:supports-[backdrop-filter]:bg-sidebar-accent/62 dark:backdrop-blur-[24px]';
   const builderFooterClass =
-    'relative border-t border-[#D7E3FF]/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.34),rgba(239,245,255,0.56))] px-5 py-3 supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.24),rgba(239,245,255,0.42))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar-accent/70 dark:supports-[backdrop-filter]:bg-sidebar-accent/58 dark:backdrop-blur-[24px]';
+    'relative border-t border-[#E7EEFF]/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.56),rgba(243,247,255,0.74))] px-5 py-3 supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.34),rgba(243,247,255,0.5))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar-accent/70 dark:supports-[backdrop-filter]:bg-sidebar-accent/58 dark:backdrop-blur-[24px]';
   const builderSecondaryActionClass =
     'h-10 rounded-[14px] border border-[#D7E2FF]/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(242,246,255,0.92))] px-4 text-[13px] font-semibold text-[#223067] shadow-[0_12px_24px_-22px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.74),rgba(242,246,255,0.66))] backdrop-blur-md transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF]/92 hover:text-[#1E2A5A] hover:shadow-[0_16px_30px_-22px_rgba(59,99,204,0.28)] dark:border-sidebar-border dark:bg-sidebar-accent/80 dark:text-sidebar-foreground dark:supports-[backdrop-filter]:bg-sidebar-accent/66 dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-primary/28 dark:hover:text-white';
   const builderValidationClass =
     'mb-3 flex items-center gap-3 rounded-[18px] border border-[#D9E6FF]/75 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.16),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,249,255,0.92),rgba(236,243,255,0.84))] px-3.5 py-3 text-sm text-foreground shadow-[0_18px_45px_-30px_rgba(37,99,235,0.2)] supports-[backdrop-filter]:bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.78),rgba(245,249,255,0.72),rgba(236,243,255,0.62))] backdrop-blur-md ring-1 ring-white/70 dark:border-[#253D78]/90 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.16),transparent_30%),linear-gradient(135deg,rgba(8,16,39,0.96),rgba(10,22,49,0.92),rgba(12,27,59,0.88))] dark:text-slate-100 dark:ring-white/5 dark:shadow-[0_22px_56px_-32px_rgba(2,8,23,0.95)]';
   const suggestionPopoverClass =
-    'absolute left-0 right-0 top-[calc(100%+0.5rem)] z-40 overflow-hidden rounded-2xl border border-[#D9E6FF]/75 bg-white/94 p-2.5 supports-[backdrop-filter]:bg-white/82 backdrop-blur-md animate-dropdown dark:border-[#253D78]/90 dark:bg-[#081027]/96 dark:supports-[backdrop-filter]:bg-[#081027]/88';
+    'absolute left-0 top-[calc(100%+0.5rem)] z-40 w-full overflow-hidden rounded-2xl border border-[#D9E6FF]/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(244,248,255,0.74))] p-2.5 shadow-[0_24px_54px_-30px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(244,248,255,0.3))] backdrop-blur-[22px] ring-1 ring-white/55 animate-dropdown sm:min-w-[23rem] dark:border-[#253D78]/90 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.96),rgba(10,22,49,0.92),rgba(12,27,59,0.88))] dark:ring-white/5 dark:shadow-[0_24px_60px_-34px_rgba(2,8,23,0.95)] dark:supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(8,16,39,0.82),rgba(10,22,49,0.72),rgba(12,27,59,0.66))]';
   const suggestionItemClass =
-    'group flex w-full items-center gap-3 rounded-[18px] border px-3 py-2.5 text-left transition-all duration-200';
+    'group flex w-full items-center gap-2 rounded-[18px] border px-3.5 py-3 text-left transition-all duration-200';
   const phoneFieldShellClass =
     'group flex h-11 items-center gap-2 rounded-[14px] border border-[#D7E2FF]/78 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(244,247,255,0.9))] px-2.5 shadow-[0_14px_34px_-28px_rgba(37,99,235,0.3)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(244,247,255,0.64))] backdrop-blur-md transition-[border-color,box-shadow,background-color] duration-200 focus-within:border-[#BFD1FF] focus-within:bg-[#F8FAFF]/90 focus-within:shadow-[0_18px_42px_-28px_rgba(37,99,235,0.35)] dark:border-sidebar-border dark:bg-sidebar-accent/78 dark:supports-[backdrop-filter]:bg-sidebar-accent/64 dark:focus-within:border-sidebar-ring/40 dark:focus-within:bg-sidebar-accent/86';
   const requesterPhoneLocal = getIndianPhoneLocalDigits(requesterPhone);
@@ -993,7 +1260,7 @@ export default function NewRequest() {
             <div className="space-y-2">
               <Label>Department / Requester</Label>
               <div className="relative">
-                <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Building2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={department}
                   onChange={(event) => {
@@ -1026,70 +1293,56 @@ export default function NewRequest() {
                   }}
                   autoComplete="off"
                   placeholder="Type department or requester name"
-                  className={cn(glassInputClass, 'pl-9 placeholder:text-xs')}
+                  className={cn(
+                    glassInputClass,
+                    'h-10 py-0 pl-11 pr-3.5 text-sm leading-[2.25rem] placeholder:text-[13px]'
+                  )}
                 />
                 {shouldShowDepartmentSuggestions && (
-                  <div className={suggestionPopoverClass}>
-                    <div className="max-h-56 space-y-1.5 overflow-auto scrollbar-none">
-                      {departmentSuggestions.map((entry) => {
+                  <div className={cn(suggestionPopoverClass, 'relative')}>
+                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(164,190,255,0.24),transparent_32%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.32),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.2),rgba(255,255,255,0))] dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.2),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]" />
+                    <div className="relative max-h-56 space-y-1.5 overflow-auto scrollbar-none">
+                      {departmentSuggestions.map((entry, index) => {
                         const isSelected =
                           normalizeLookupToken(department) === normalizeLookupToken(entry.headName);
                         const DepartmentIcon = getDepartmentIcon(entry.department);
                         return (
-                          <button
-                            key={`${entry.department}-${entry.headName}`}
-                            type="button"
-                            onMouseDown={(mouseEvent) => mouseEvent.preventDefault()}
-                            onClick={() => handleDepartmentHeadSelection(entry)}
-                            className={cn(
-                              suggestionItemClass,
-                              isSelected
-                                ? 'border-[#D4E2FF] bg-[linear-gradient(135deg,rgba(243,247,255,0.98),rgba(234,241,255,0.92))] shadow-[0_16px_30px_-24px_rgba(59,99,204,0.28)] dark:border-sidebar-ring/30 dark:bg-sidebar-accent/82 dark:shadow-none'
-                                : 'border-transparent bg-transparent hover:border-[#E1E9F6] hover:bg-[#F8FAFF]/92 dark:hover:border-sidebar-border dark:hover:bg-sidebar-accent/74'
-                            )}
-                          >
-                            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#DCE6F5] bg-white/88 shadow-[0_10px_22px_-18px_rgba(59,99,204,0.28)] supports-[backdrop-filter]:bg-white/74 backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar/88 dark:shadow-none">
-                              <BoringAvatar
-                                size={34}
-                                name={`${entry.headName}-${entry.department}`}
-                                variant="beam"
-                                colors={['#0F172A', '#6D8FFF', '#DCE6FF', '#F4D4E3', '#EFF4FF']}
-                                title={false}
-                              />
-                              <span className="absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-white bg-[#EEF4FF] text-[#4A65A8] shadow-[0_6px_14px_-10px_rgba(59,99,204,0.35)] dark:border-sidebar dark:bg-sidebar-accent dark:text-slate-300 dark:shadow-none">
-                                <DepartmentIcon className="h-2.5 w-2.5" />
-                              </span>
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              {shouldAnimateSuggestionName(entry.headName) ? (
-                                <div className="requester-marquee">
-                                  <div className="requester-marquee__track">
-                                    <span className="requester-marquee__text text-[13.5px] font-semibold leading-5 tracking-[-0.01em] text-[#1E2A44] dark:text-slate-100">
-                                      {entry.headName}
-                                    </span>
-                                    <span
-                                      aria-hidden="true"
-                                      className="requester-marquee__text text-[13.5px] font-semibold leading-5 tracking-[-0.01em] text-[#1E2A44] dark:text-slate-100"
-                                    >
-                                      {entry.headName}
-                                    </span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="block truncate text-[13.5px] font-semibold leading-5 tracking-[-0.01em] text-[#1E2A44] dark:text-slate-100">
+                          <div key={`${entry.department}-${entry.headName}`}>
+                            <button
+                              type="button"
+                              onMouseDown={(mouseEvent) => mouseEvent.preventDefault()}
+                              onClick={() => handleDepartmentHeadSelection(entry)}
+                              className={cn(
+                                suggestionItemClass,
+                                isSelected
+                                  ? 'border-[#D4E2FF] bg-[linear-gradient(135deg,rgba(243,247,255,0.98),rgba(234,241,255,0.92))] shadow-[0_16px_30px_-24px_rgba(59,99,204,0.28)] dark:border-sidebar-ring/30 dark:bg-sidebar-accent/82 dark:shadow-none'
+                                  : 'border-transparent bg-transparent hover:border-[#C9DBFF] hover:bg-[linear-gradient(135deg,rgba(243,247,255,0.9),rgba(232,240,255,0.82))] hover:shadow-[0_14px_28px_-24px_rgba(59,99,204,0.22)] dark:hover:border-sidebar-border dark:hover:bg-sidebar-accent/74 dark:hover:shadow-none'
+                              )}
+                            >
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.86),rgba(240,245,255,0.74),rgba(233,240,255,0.68))] text-[#5A74B7] shadow-[0_12px_24px_-20px_rgba(59,99,204,0.22)] ring-1 ring-white/55 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.58),rgba(240,245,255,0.42),rgba(233,240,255,0.36))] backdrop-blur-md dark:border-white/10 dark:bg-sidebar/78 dark:text-slate-300 dark:ring-white/10 dark:shadow-none">
+                                <DepartmentIcon className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-1.5">
+                                <span
+                                  title={entry.headName}
+                                  className="block truncate pr-1 text-[14px] font-semibold leading-[1.25] tracking-[-0.01em] text-[#1E2A44] dark:text-slate-100"
+                                >
                                   {entry.headName}
                                 </span>
-                              )}
-                              <span className="mt-1 inline-flex rounded-full bg-[#EEF4FF]/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7087BC] dark:bg-sidebar-accent dark:text-slate-400">
-                                {entry.department}
-                              </span>
-                            </div>
-                            {isSelected ? (
-                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#D7E2FF] bg-white/86 text-[#4A65A8] dark:border-sidebar-border dark:bg-sidebar dark:text-white">
-                                <Check className="h-4 w-4" />
+                                <span className="inline-flex rounded-full bg-[#EEF4FF]/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7087BC] dark:bg-sidebar-accent dark:text-slate-400">
+                                  {entry.department}
+                                </span>
                               </div>
+                              {isSelected ? (
+                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.88),rgba(241,246,255,0.74))] text-[#4A65A8] ring-1 ring-white/55 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.62),rgba(241,246,255,0.5))] backdrop-blur-sm dark:border-white/10 dark:bg-sidebar dark:text-white dark:ring-white/10">
+                                  <Check className="h-4 w-4" />
+                                </div>
+                              ) : null}
+                            </button>
+                            {index < departmentSuggestions.length - 1 ? (
+                              <div className="mx-3 h-px bg-[linear-gradient(90deg,transparent,rgba(199,214,255,0.9),transparent)] dark:bg-[linear-gradient(90deg,transparent,rgba(92,119,198,0.5),transparent)]" />
                             ) : null}
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -1098,8 +1351,9 @@ export default function NewRequest() {
                 {isDepartmentSuggestionOpen &&
                   department.trim() &&
                   departmentSuggestions.length === 0 && (
-                    <div className={cn(suggestionPopoverClass, 'border-dashed px-4 py-3 text-xs text-muted-foreground backdrop-blur-xl')}>
-                      No matching department head found. Press Enter to keep the typed value.
+                    <div className={cn(suggestionPopoverClass, 'relative border-dashed px-4 py-3 text-xs text-muted-foreground backdrop-blur-xl')}>
+                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(164,190,255,0.24),transparent_32%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.32),transparent_22%),linear-gradient(180deg,rgba(255,255,255,0.2),rgba(255,255,255,0))] dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.2),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]" />
+                      <div className="relative">No matching department head found. Press Enter to keep the typed value.</div>
                     </div>
                   )}
               </div>
@@ -1137,7 +1391,7 @@ export default function NewRequest() {
             <Textarea
               value={overallBrief}
               onChange={(event) => setOverallBrief(event.target.value)}
-              className="min-h-[152px] placeholder:text-xs"
+              className="min-h-[220px] placeholder:text-xs"
               placeholder="Describe the campaign objective, audience, message hierarchy, mandatory copy, visual tone, logos, language, and approval context."
             />
           </div>
@@ -1510,30 +1764,39 @@ export default function NewRequest() {
       activeSidebarStep === 'campaign'
         ? "A clear brief doesn't just guide the work. It accelerates great outcomes."
         : activeContent.quote;
+    const headlineLines = activeContent.title.split('\n');
     return (
-      <aside className="self-start space-y-3 xl:sticky xl:top-24">
-        <section className={cn(glassCardClass, 'animate-fade-in relative overflow-hidden rounded-[32px] p-6')}>
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(151,174,255,0.2),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.82),rgba(247,249,253,0.62),rgba(244,246,250,0.48))] dark:bg-[radial-gradient(circle_at_top,rgba(99,130,216,0.24),transparent_26%),linear-gradient(180deg,rgba(17,24,39,0.22),rgba(17,24,39,0.06))]" />
-          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#DCE6F7] to-transparent dark:via-white/10" />
-          <div className="pointer-events-none absolute left-1/2 top-10 h-32 w-32 -translate-x-1/2 rounded-full bg-[#A8BBFF]/40 blur-3xl dark:bg-[#4967BF]/30" />
-          <div className="pointer-events-none absolute left-1/2 top-24 h-24 w-24 -translate-x-1/2 rounded-full bg-[#FFD8E5]/40 blur-3xl dark:bg-[#7B5A88]/20" />
+      <aside ref={sidebarTourRef} className="self-start space-y-3 xl:sticky xl:top-24">
+        <section className="animate-fade-in relative overflow-hidden rounded-[32px] border border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-6 pb-8 pt-6">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(98,132,255,0.2),transparent_28%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.08),transparent_18%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0))]" />
+          <div
+            className="pointer-events-none absolute inset-0 opacity-50"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
+              backgroundSize: '32px 32px',
+            }}
+          />
+          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          <div className="pointer-events-none absolute left-1/2 top-8 h-36 w-36 -translate-x-1/2 rounded-full bg-[#5C7BFF]/20 blur-3xl" />
+          <div className="pointer-events-none absolute left-1/2 top-24 h-28 w-28 -translate-x-1/2 rounded-full bg-[#1C2E68]/75 blur-3xl" />
           <div className="relative">
-            <div className="ml-auto w-fit rounded-full border border-[#D7E1EF] bg-white/92 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#5E6F88] shadow-[0_10px_24px_-22px_rgba(15,23,42,0.18)] dark:border-sidebar-border dark:bg-sidebar-accent/80 dark:text-slate-300 dark:shadow-none">
-              <ActiveIcon className="mr-2 inline-block h-3.5 w-3.5 align-[-0.2em] text-[#6A81C1] dark:text-[#B8C7F3]" />
+            <div className="ml-auto w-fit rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#B7C7EC] shadow-[0_18px_42px_-32px_rgba(3,7,18,0.92)] backdrop-blur-xl">
+              <ActiveIcon className="mr-2 inline-block h-3.5 w-3.5 align-[-0.2em] text-[#8CB2FF]" />
               <span>{activeContent.eyebrow}</span>
-              <span className="mx-2 inline-block h-1 w-1 rounded-full bg-[#A1AEC3] align-middle dark:bg-slate-500" />
+              <span className="mx-2 inline-block h-1 w-1 rounded-full bg-[#607AB8] align-middle" />
               <span>Step {currentStepLabel}</span>
             </div>
 
-            <div className="relative mx-auto mt-8 h-[146px] w-full max-w-[258px]">
-              <div className="pointer-events-none absolute inset-x-6 top-10 h-[74px] rounded-full bg-[#AAB9FF]/26 blur-3xl dark:bg-[#4C69C3]/24" />
-              <div className="pointer-events-none absolute inset-x-12 top-[82px] h-[46px] rounded-full bg-[#FFD7E4]/28 blur-3xl dark:bg-[#7F5D96]/18" />
+            <div className="relative mx-auto mt-8 h-[122px] w-full max-w-[258px]">
+              <div className="pointer-events-none absolute inset-x-6 top-10 h-[74px] rounded-full bg-[#5C7BFF]/24 blur-3xl" />
+              <div className="pointer-events-none absolute inset-x-12 top-[82px] h-[46px] rounded-full bg-[#A7BCFF]/12 blur-3xl" />
               <div className="relative flex h-full items-start justify-center gap-3">
                 {BRIEF_AVATAR_CONFIGS.map((avatarConfig, index) => (
                   <div
                     key={`${activeSidebarStep}-${avatarConfig.key}`}
                     className={cn(
-                      'brief-avatar-float relative shrink-0 overflow-hidden rounded-full border border-white/85 bg-white/88 p-[3px] shadow-[0_18px_36px_-26px_rgba(15,23,42,0.24)] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar-accent/82 dark:shadow-none',
+                      'brief-avatar-float relative shrink-0 overflow-hidden rounded-full border border-white/12 bg-white/[0.04] p-[3px] shadow-[0_22px_44px_-30px_rgba(2,8,23,0.9)] backdrop-blur-md',
                       avatarConfig.shellClassName,
                       index % 2 === 1 && 'brief-avatar-float--alt'
                     )}
@@ -1554,23 +1817,41 @@ export default function NewRequest() {
               </div>
             </div>
 
-            <div className="mt-5 text-left">
-              <h3 className="max-w-[19rem] whitespace-pre-line bg-[linear-gradient(135deg,#11295D_0%,#2B4FAE_52%,#678AFF_100%)] bg-clip-text text-[1.82rem] font-bold leading-[1.06] tracking-[-0.05em] text-transparent dark:bg-[linear-gradient(135deg,#E2EAFF_0%,#BED0FF_48%,#88A9FF_100%)] sm:text-[1.98rem]">
-                {activeContent.title}
+            <div className="mt-3 text-left">
+              <h3 className="max-w-[19rem] text-[1.82rem] font-medium leading-[2.45rem] tracking-[-0.05em] sm:text-[1.98rem] sm:leading-[2.65rem]">
+                {headlineLines.map((line, index) => (
+                  <span
+                    key={`${activeSidebarStep}-${index}`}
+                    className={cn(
+                      'block',
+                      index === 0 &&
+                        'bg-[linear-gradient(90deg,#F2F5FF_0%,#DCE7FF_56%,#BECEFF_100%)] bg-clip-text text-transparent',
+                      index === 1 &&
+                        'bg-[linear-gradient(90deg,#A9CBFF_0%,#78AEFF_48%,#6E90FF_100%)] bg-clip-text text-transparent',
+                      index === 2 &&
+                        'bg-[linear-gradient(90deg,#E7EEFF_0%,#A9C4FF_54%,#7C9BFF_100%)] bg-clip-text text-transparent'
+                    )}
+                  >
+                    {line}
+                  </span>
+                ))}
               </h3>
-              <p className="mt-5 max-w-[20.75rem] text-[14.5px] leading-[1.95] text-[#5C6D87] dark:text-slate-300/80">
+              <p className="mt-5 max-w-[20.75rem] text-[14.5px] leading-[1.3] text-[#A7B6D6]">
                 {activeContent.body}
               </p>
-              <div className="mt-7 max-w-[21rem] rounded-[22px] border border-[#DCE5F5] bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(242,246,255,0.82))] px-4 py-4 shadow-[0_22px_44px_-34px_rgba(43,79,174,0.28)] backdrop-blur-sm dark:border-sidebar-border dark:bg-[linear-gradient(180deg,rgba(30,41,59,0.42),rgba(15,23,42,0.24))] dark:shadow-none">
-                <div className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#6B86D8] dark:bg-[#9FB6FF]" />
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#7183A0] dark:text-slate-400">
-                    Why It Matters
+              <div className="relative mt-7 max-w-[21rem] overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04]  px-4 py-4 shadow-[0_18px_42px_-32px_rgba(3,7,18,0.92)] backdrop-blur-xl">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(156,186,255,0.18),transparent_34%),radial-gradient(circle_at_82%_24%,rgba(255,255,255,0.08),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]" />
+                <div className="relative">
+                  <div className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#83ABFF]" />
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8EA5D8]">
+                      Why It Matters
+                    </p>
+                  </div>
+                  <p className="mt-3 max-w-[18.5rem] text-[13.5px] leading-[1.55] text-[#B8C7E4]">
+                    {footerNote}
                   </p>
                 </div>
-                <p className="mt-3 max-w-[18.5rem] text-[13px] leading-[1.85] text-[#5E6F89] dark:text-slate-300/80">
-                  {footerNote}
-                </p>
               </div>
             </div>
 
@@ -1581,7 +1862,7 @@ export default function NewRequest() {
   };
 
   const stepPanel = (
-    <section className={cn(builderSurfaceClass, 'self-start overflow-hidden')}>
+    <section ref={formPanelTourRef} className={cn(builderSurfaceClass, 'overflow-hidden xl:flex xl:h-full xl:flex-col')}>
       <div className="border-b border-border/70 px-5 py-3.5 dark:border-[#253D78]/90">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -1602,16 +1883,16 @@ export default function NewRequest() {
         </div>
       </div>
 
-      <div className="px-5 py-4">{renderStepContent()}</div>
+      <div className="px-5 py-4 xl:flex-1">{renderStepContent()}</div>
 
-      <div className={builderFooterClass}>
-        {validationMessages[currentStep] ? (
+      <div ref={footerActionsTourRef} className={builderFooterClass}>
+        {currentStepValidationMessage ? (
           <div className={builderValidationClass}>
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-[#D9E6FF]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(236,243,255,0.86))] text-[#4863B7] shadow-[0_12px_24px_-18px_rgba(59,99,204,0.26)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(236,243,255,0.6))] backdrop-blur-sm dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:text-slate-300 dark:shadow-none">
               <AlertTriangle className="h-4 w-4" />
             </span>
             <span className="flex min-h-8 items-center leading-6 text-foreground/90 dark:text-slate-100">
-              {validationMessages[currentStep]}
+              {currentStepValidationMessage}
             </span>
           </div>
         ) : null}
@@ -1654,14 +1935,14 @@ export default function NewRequest() {
   );
 
   return (
-    <DashboardLayout>
+    <DashboardLayout fitContentHeight>
       <div className="mx-auto max-w-6xl space-y-4 pb-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
+          <div className="max-w-[46rem]">
             <Badge variant="outline" className="mb-3 rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-sidebar-border dark:bg-sidebar-accent/80">
               Campaign Request Builder
             </Badge>
-            <h1 className="text-[30px] font-bold tracking-tight text-foreground">
+            <h1 className="max-w-[22ch] text-[30px] font-bold leading-[1.16] tracking-[-0.04em] text-foreground [text-wrap:balance]">
               Build one campaign request with structured collateral items
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -1671,13 +1952,17 @@ export default function NewRequest() {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => openTour(0)}>
+              <BookOpen className="mr-2 h-4 w-4" />
+              Quick tour
+            </Button>
             <Button type="button" variant="outline" onClick={() => navigate('/my-requests')}>
               Cancel
             </Button>
           </div>
         </div>
 
-        <section className="relative overflow-hidden rounded-[22px] border border-[#C9D8FF]/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.52),rgba(241,246,255,0.62),rgba(224,235,255,0.54))] px-4 py-3 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.34),rgba(241,246,255,0.42),rgba(224,235,255,0.36))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:supports-[backdrop-filter]:bg-sidebar/96 dark:backdrop-blur-[24px]">
+        <section ref={stepTrackerTourRef} className="relative overflow-hidden rounded-[22px] border border-[#C9D8FF]/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.52),rgba(241,246,255,0.62),rgba(224,235,255,0.54))] px-4 py-3 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.34),rgba(241,246,255,0.42),rgba(224,235,255,0.36))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:supports-[backdrop-filter]:bg-sidebar/96 dark:backdrop-blur-[24px]">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(87,118,255,0.07),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(56,85,190,0.07),transparent_30%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(59,91,190,0.14),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,91,190,0.1),transparent_24%)]" />
           <div className="overflow-x-auto">
             <ol className="relative flex min-w-[760px] items-center">
@@ -1702,7 +1987,11 @@ export default function NewRequest() {
                         !isCurrent &&
                           !isComplete &&
                           'bg-white/18 dark:border dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:text-sidebar-foreground',
-                        isUnlocked ? 'hover:bg-white/30 dark:hover:border-sidebar-ring/30 dark:hover:bg-sidebar-accent' : 'cursor-not-allowed opacity-70'
+                        isUnlocked
+                          ? isCurrent
+                            ? 'hover:border-[#314a8e] hover:brightness-105'
+                            : 'hover:bg-white/30 dark:hover:border-sidebar-ring/30 dark:hover:bg-sidebar-accent'
+                          : 'cursor-not-allowed opacity-70'
                       )}
                       disabled={!isUnlocked}
                     >
@@ -1724,7 +2013,9 @@ export default function NewRequest() {
                           <StepIcon
                             className={cn(
                               'h-3.5 w-3.5 shrink-0',
-                              isCurrent || isComplete
+                              isCurrent
+                                ? 'text-primary dark:text-sidebar-primary-foreground'
+                                : isComplete
                                 ? 'text-primary dark:text-sidebar-primary-foreground'
                                 : 'text-muted-foreground dark:text-sidebar-foreground/70'
                             )}
@@ -1771,11 +2062,187 @@ export default function NewRequest() {
         {currentStep === 'review' ? (
           stepPanel
         ) : (
-          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] xl:items-stretch">
             {stepPanel}
             {renderStepSidebar()}
           </div>
         )}
+
+        {isTourOpen && activeTourStep ? createPortal(
+          <div className="pointer-events-none z-[120]" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, isolation: 'isolate' }}>
+            {/* SVG overlay with smooth cutout */}
+            <svg
+              className="pointer-events-auto tour-overlay-enter"
+              style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh' }}
+              onClick={completeTour}
+            >
+              <defs>
+                <mask id="tour-spotlight-mask">
+                  <rect x="0" y="0" width="100%" height="100%" fill="white" />
+                  {tourSpotlight && (
+                    <rect
+                      className="tour-cutout-morph"
+                      x={tourSpotlight.left}
+                      y={tourSpotlight.top}
+                      width={tourSpotlight.width}
+                      height={tourSpotlight.height}
+                      rx={tourSpotlight.radius}
+                      ry={tourSpotlight.radius}
+                      fill="black"
+                    />
+                  )}
+                </mask>
+              </defs>
+              <rect
+                x="0" y="0" width="100%" height="100%"
+                mask="url(#tour-spotlight-mask)"
+                className="fill-[rgba(15,23,42,0.55)] dark:fill-[rgba(2,6,23,0.68)]"
+              />
+            </svg>
+
+            {/* Spotlight border ring - hugs the element tightly */}
+            {tourSpotlight && (
+              <div
+                className="tour-spotlight-ring pointer-events-none fixed"
+                style={{
+                  top: `${tourSpotlight.top}px`,
+                  left: `${tourSpotlight.left}px`,
+                  width: `${tourSpotlight.width}px`,
+                  height: `${tourSpotlight.height}px`,
+                  borderRadius: `${tourSpotlight.radius}px`,
+                }}
+              />
+            )}
+
+            {/* Tour card - positioned adjacent to spotlight */}
+            <div
+              key={activeTourStep.id}
+              className="tour-card-enter pointer-events-auto fixed w-[370px]"
+              style={tourSpotlight?.card ? {
+                top: `${tourSpotlight.card.top}px`,
+                left: `${tourSpotlight.card.left}px`,
+              } : {
+                bottom: '24px',
+                right: '24px',
+              }}
+            >
+              {/* Arrow connector */}
+              {tourSpotlight?.card && (
+                <div
+                  className="tour-card-arrow"
+                  data-side={tourSpotlight.card.arrowSide}
+                  style={{
+                    ['--arrow-offset' as string]: `${tourSpotlight.card.arrowOffset}px`,
+                  }}
+                />
+              )}
+
+              <div className="relative overflow-hidden rounded-2xl border border-white/90 bg-white/95 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.2)] backdrop-blur-[40px] dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)]">
+                <div className="p-5">
+                  {/* Header with icon */}
+                  <div className="flex items-start gap-3.5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary dark:bg-primary/20">
+                      <activeTourStep.icon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/70 dark:text-primary/80">
+                        {activeTourStep.eyebrow}
+                      </p>
+                      <h3 className="mt-1 text-[17px] font-bold leading-snug tracking-[-0.02em] text-slate-900 dark:text-white">
+                        {activeTourStep.title}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={completeTour}
+                      className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-white"
+                      aria-label="Close tour"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                    </button>
+                  </div>
+
+                  {/* Description */}
+                  <p className="mt-3.5 text-[13.5px] leading-[1.65] text-slate-600 dark:text-slate-300">
+                    {activeTourStep.description}
+                  </p>
+
+                  {/* Tip card */}
+                  <div className="mt-3 flex items-start gap-2.5 rounded-xl bg-slate-50 px-3.5 py-3 dark:bg-white/5">
+                    <span className="mt-0.5 text-amber-500">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                    </span>
+                    <p className="text-[12.5px] leading-[1.55] text-slate-500 dark:text-slate-400">
+                      {activeTourStep.detail}
+                    </p>
+                  </div>
+
+                  {/* Progress dots */}
+                  <div className="mt-4 flex items-center gap-1.5">
+                    {builderTourSteps.map((step, index) => (
+                      <button
+                        key={step.id}
+                        type="button"
+                        onClick={() => setTourStepIndex(index)}
+                        className={cn(
+                          'tour-progress-dot rounded-full transition-all duration-300',
+                          index === tourStepIndex
+                            ? 'h-2.5 w-7 bg-primary'
+                            : index < tourStepIndex
+                              ? 'h-2.5 w-2.5 bg-primary/40'
+                              : 'h-2.5 w-2.5 bg-slate-200 dark:bg-slate-700'
+                        )}
+                        aria-label={`Go to step ${index + 1}`}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="mt-4 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={completeTour}
+                      className="text-[13px] font-medium text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-200"
+                    >
+                      {tourStepIndex === 0 ? 'Maybe later' : 'Skip'}
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      {tourStepIndex > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setTourStepIndex((c) => Math.max(c - 1, 0))}
+                          className="flex h-9 items-center rounded-lg border border-slate-200 px-3.5 text-[13px] font-semibold text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                        >
+                          Back
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (tourStepIndex === builderTourSteps.length - 1) {
+                            completeTour();
+                            return;
+                          }
+                          setTourStepIndex((c) => Math.min(c + 1, builderTourSteps.length - 1));
+                        }}
+                        className="tour-next-btn flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.1),0_4px_12px_-2px_rgba(59,99,204,0.3)] transition-all hover:brightness-110 active:scale-[0.97]"
+                      >
+                        {tourStepIndex === builderTourSteps.length - 1 ? 'Got it!' : 'Next'}
+                        {tourStepIndex < builderTourSteps.length - 1 && (
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        )}
+                        {tourStepIndex === builderTourSteps.length - 1 && (
+                          <Check className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        , document.body) : null}
 
         <CollateralPresetDialog
           open={isPresetDialogOpen}
