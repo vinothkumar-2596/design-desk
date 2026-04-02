@@ -658,6 +658,7 @@ export default function NewRequest() {
   const [masterAttachments, setMasterAttachments] = useState<BuilderAttachment[]>([]);
   const [collaterals, setCollaterals] = useState<CollateralDraft[]>([]);
   const [expandedCollateralId, setExpandedCollateralId] = useState<string | null>(null);
+  const existingCollateralTypes = useMemo(() => collaterals.map((c) => c.collateralType), [collaterals]);
   const [currentStep, setCurrentStep] = useState<BuilderStepId>('campaign');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPresetDialogOpen, setIsPresetDialogOpen] = useState(false);
@@ -3024,7 +3025,7 @@ export default function NewRequest() {
           open={isPresetDialogOpen}
           onOpenChange={setIsPresetDialogOpen}
           variant="auto"
-          existingCollateralTypes={collaterals.map((c) => c.collateralType)}
+          existingCollateralTypes={existingCollateralTypes}
           onSelect={(preset) => {
             const draft = createCollateralDraftFromPreset(preset, deadlineMode, commonDeadline);
             setCollaterals((previous) => [...previous, draft]);

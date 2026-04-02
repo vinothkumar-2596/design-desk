@@ -216,10 +216,7 @@ export function AttachmentUploadField({
 
   const handleFiles = async (fileList: FileList | null) => {
     if (!fileList?.length) return;
-    const selectedFiles = Array.from(fileList);
-    for (const file of selectedFiles) {
-      await uploadSingleFile(file);
-    }
+    await Promise.all(Array.from(fileList).map(uploadSingleFile));
   };
 
   const readyCount = attachments.filter((attachment) => !attachment.uploading && !attachment.error).length;

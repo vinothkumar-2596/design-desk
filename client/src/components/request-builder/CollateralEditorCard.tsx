@@ -15,6 +15,16 @@ import {
 } from '@/lib/campaignRequest';
 import { Trash2, CalendarDays, ChevronDown } from 'lucide-react';
 
+const lbl =
+  'text-[10px] font-semibold uppercase tracking-[0.11em] text-muted-foreground dark:text-sidebar-foreground/80';
+const fld = 'h-10 px-3 shadow-none';
+const dimensionField =
+  'h-10 appearance-none px-3.5 shadow-none disabled:opacity-100 disabled:text-[#1E2A44]/80 dark:disabled:text-slate-100/85';
+const shellClass =
+  'overflow-hidden rounded-[11px] border border-[#D7E3FF]/65 bg-gradient-to-br from-white/90 via-[#F5F9FF]/80 to-[#EAF2FF]/74 supports-[backdrop-filter]:from-white/74 supports-[backdrop-filter]:via-[#F5F9FF]/64 supports-[backdrop-filter]:to-[#EAF2FF]/56 backdrop-blur-xl shadow-[0_2px_20px_-6px_rgba(99,131,210,0.10)] text-foreground dark:bg-sidebar-accent dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent dark:border-sidebar-border dark:backdrop-blur-xl dark:text-sidebar-foreground';
+const sectionSurface =
+  'border-white/10 bg-white/18 supports-[backdrop-filter]:bg-white/12 backdrop-blur-xl dark:!border-sidebar-border dark:!bg-sidebar-accent';
+
 type CollateralEditorCardProps = {
   collateral: CollateralDraft;
   expanded: boolean;
@@ -38,16 +48,6 @@ export function CollateralEditorCard({
   onChange,
   onRemove,
 }: CollateralEditorCardProps) {
-  const lbl =
-    'text-[10px] font-semibold uppercase tracking-[0.11em] text-muted-foreground dark:text-sidebar-foreground/80';
-  const fld = 'h-10 px-3 shadow-none';
-  const dimensionField =
-    'h-10 appearance-none px-3.5 shadow-none disabled:opacity-100 disabled:text-[#1E2A44]/80 dark:disabled:text-slate-100/85';
-  const shellClass =
-    'overflow-hidden rounded-[11px] border border-[#D7E3FF]/65 bg-gradient-to-br from-white/90 via-[#F5F9FF]/80 to-[#EAF2FF]/74 supports-[backdrop-filter]:from-white/74 supports-[backdrop-filter]:via-[#F5F9FF]/64 supports-[backdrop-filter]:to-[#EAF2FF]/56 backdrop-blur-xl shadow-[0_2px_20px_-6px_rgba(99,131,210,0.10)] text-foreground dark:bg-sidebar-accent dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent dark:border-sidebar-border dark:backdrop-blur-xl dark:text-sidebar-foreground';
-  const sectionSurface =
-    'border-white/10 bg-white/18 supports-[backdrop-filter]:bg-white/12 backdrop-blur-xl dark:!border-sidebar-border dark:!bg-sidebar-accent';
-
   const deliveryText = useCommonDeadline
     ? commonDeadline
       ? format(commonDeadline, 'EEE, dd MMM yyyy')

@@ -151,7 +151,6 @@ export function CollateralPresetDialog({
     activeTab === 'recommended' ? recommendedPresets :
     groupPresets;
 
-  // Count selected items per group for tab badges
   const selectedCountByGroup = useMemo(() => {
     const map: Partial<Record<TabId, number>> = {};
     for (const p of selectedPresets) {
