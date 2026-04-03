@@ -1,3 +1,4 @@
+import type { SetStateAction } from 'react';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +22,7 @@ const fld = 'h-10 px-3 shadow-none';
 const dimensionField =
   'h-10 appearance-none px-3.5 shadow-none disabled:opacity-100 disabled:text-[#1E2A44]/80 dark:disabled:text-slate-100/85';
 const shellClass =
-  'overflow-hidden rounded-[11px] border border-[#D7E3FF]/65 bg-gradient-to-br from-white/90 via-[#F5F9FF]/80 to-[#EAF2FF]/74 supports-[backdrop-filter]:from-white/74 supports-[backdrop-filter]:via-[#F5F9FF]/64 supports-[backdrop-filter]:to-[#EAF2FF]/56 backdrop-blur-xl shadow-[0_2px_20px_-6px_rgba(99,131,210,0.10)] text-foreground dark:bg-sidebar-accent dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent dark:border-sidebar-border dark:backdrop-blur-xl dark:text-sidebar-foreground';
+  'overflow-hidden rounded-[11px] border border-[#D7E3FF]/65 bg-gradient-to-br from-white/90 via-[#F5F9FF]/80 to-[#EAF2FF]/74 supports-[backdrop-filter]:from-white/74 supports-[backdrop-filter]:via-[#F5F9FF]/64 supports-[backdrop-filter]:to-[#EAF2FF]/56 backdrop-blur-xl text-foreground dark:bg-sidebar-accent dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent dark:border-sidebar-border dark:backdrop-blur-xl dark:text-sidebar-foreground';
 const sectionSurface =
   'border-white/10 bg-white/18 supports-[backdrop-filter]:bg-white/12 backdrop-blur-xl dark:!border-sidebar-border dark:!bg-sidebar-accent';
 
@@ -32,7 +33,7 @@ type CollateralEditorCardProps = {
   useCommonDeadline: boolean;
   commonDeadline?: Date;
   minDeadline?: string;
-  onChange: (next: CollateralDraft) => void;
+  onChange: (next: SetStateAction<CollateralDraft>) => void;
   onRemove: () => void;
 };
 
@@ -55,13 +56,14 @@ export function CollateralEditorCard({
     : collateral.deadline
       ? format(collateral.deadline, 'EEE, dd MMM yyyy')
       : null;
+  const updateCollateral = (next: SetStateAction<CollateralDraft>) => onChange(next);
 
   return (
     <div className={shellClass}>
       {/* Header */}
       <div className="flex items-center justify-between gap-2.5 border-b border-transparent px-3.5 py-2.5 dark:border-sidebar-border dark:bg-sidebar/96">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-semibold text-foreground">
+          <span className="truncate text-sm font-bold text-foreground">
             {getCollateralDisplayName(collateral as never)}
           </span>
           <span className="shrink-0 text-[11px] text-muted-foreground/70">
@@ -109,7 +111,9 @@ export function CollateralEditorCard({
                 <Label className={lbl}>Name</Label>
                 <Input
                   value={collateral.title || ''}
-                  onChange={(e) => onChange({ ...collateral, title: e.target.value })}
+                  onChange={(e) =>
+                    updateCollateral((previous) => ({ ...previous, title: e.target.value }))
+                  }
                   placeholder="Launch Day Instagram"
                   className={fld}
                 />
@@ -119,7 +123,9 @@ export function CollateralEditorCard({
                 <Label className={lbl}>Platform</Label>
                 <Input
                   value={collateral.platform || ''}
-                  onChange={(e) => onChange({ ...collateral, platform: e.target.value })}
+                  onChange={(e) =>
+                    updateCollateral((previous) => ({ ...previous, platform: e.target.value }))
+                  }
                   placeholder="Instagram"
                   className={fld}
                 />
@@ -130,7 +136,10 @@ export function CollateralEditorCard({
                 <Select
                   value={collateral.priority}
                   onValueChange={(v) =>
-                    onChange({ ...collateral, priority: v as CollateralDraft['priority'] })
+                    updateCollateral((previous) => ({
+                      ...previous,
+                      priority: v as CollateralDraft['priority'],
+                    }))
                   }
                 >
                   <SelectTrigger className={fld}>
@@ -155,7 +164,10 @@ export function CollateralEditorCard({
                   inputMode="numeric"
                   value={collateral.width ?? ''}
                   onChange={(e) =>
-                    onChange({ ...collateral, width: e.target.value ? Number(e.target.value) : undefined })
+                    updateCollateral((previous) => ({
+                      ...previous,
+                      width: e.target.value ? Number(e.target.value) : undefined,
+                    }))
                   }
                   placeholder="1080"
                   disabled={collateral.sizeMode !== 'custom'}
@@ -167,7 +179,10 @@ export function CollateralEditorCard({
                   inputMode="numeric"
                   value={collateral.height ?? ''}
                   onChange={(e) =>
-                    onChange({ ...collateral, height: e.target.value ? Number(e.target.value) : undefined })
+                    updateCollateral((previous) => ({
+                      ...previous,
+                      height: e.target.value ? Number(e.target.value) : undefined,
+                    }))
                   }
                   placeholder="1350"
                   disabled={collateral.sizeMode !== 'custom'}
@@ -175,7 +190,12 @@ export function CollateralEditorCard({
                 />
                 <Select
                   value={collateral.unit || 'px'}
-                  onValueChange={(v) => onChange({ ...collateral, unit: v as CollateralDraft['unit'] })}
+                  onValueChange={(v) =>
+                    updateCollateral((previous) => ({
+                      ...previous,
+                      unit: v as CollateralDraft['unit'],
+                    }))
+                  }
                 >
                   <SelectTrigger className={`${dimensionField} w-20 justify-between px-3 font-medium`}>
                     <SelectValue placeholder="px" />
@@ -195,7 +215,9 @@ export function CollateralEditorCard({
               <Label className={lbl}>Content Brief</Label>
               <Textarea
                 value={collateral.brief}
-                onChange={(e) => onChange({ ...collateral, brief: e.target.value })}
+                onChange={(e) =>
+                  updateCollateral((previous) => ({ ...previous, brief: e.target.value }))
+                }
                 placeholder="Headline, CTA, event date, language, logos, sponsor mentions, and production notes."
                 className="min-h-[92px] resize-none shadow-none"
               />
@@ -214,10 +236,10 @@ export function CollateralEditorCard({
                   min={minDeadline}
                   value={dateInputValue(collateral.deadline)}
                   onChange={(e) =>
-                    onChange({
-                      ...collateral,
+                    updateCollateral((previous) => ({
+                      ...previous,
                       deadline: e.target.value ? new Date(`${e.target.value}T00:00:00`) : undefined,
-                    })
+                    }))
                   }
                   className="ml-1 h-8 w-40 px-2 text-[12px] shadow-none"
                 />
@@ -231,13 +253,13 @@ export function CollateralEditorCard({
               description="Copy decks, reference samples, or previous versions."
               attachments={collateral.referenceFiles}
               onChange={(referenceFiles) =>
-                onChange({
-                  ...collateral,
+                updateCollateral((previous) => ({
+                  ...previous,
                   referenceFiles:
                     typeof referenceFiles === 'function'
-                      ? referenceFiles(collateral.referenceFiles)
+                      ? referenceFiles(previous.referenceFiles)
                       : referenceFiles,
-                })
+                }))
               }
               taskTitle={collateral.title || collateral.presetLabel || collateral.collateralType}
               taskSection={`Collateral-${collateral.collateralType}`}

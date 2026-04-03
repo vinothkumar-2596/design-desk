@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /d/project/design-desk/client/src -name *router* -o -name *route* -o -name *Router* -o -name *Route*)",
+      "Bash(grep -E \"\\\\.tsx$|Task\")",
+      "Bash(node -e \":*)",
+      "Bash(node d:/project/design-desk/check_balance.js)"
+    ]
+  }
+}

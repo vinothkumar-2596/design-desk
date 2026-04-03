@@ -71,6 +71,8 @@ export function TaskFilters({
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="assigned">Assigned</SelectItem>
+              <SelectItem value="accepted">Accepted</SelectItem>
               <SelectItem value="in_progress">In Progress</SelectItem>
               <SelectItem value="clarification_required">Clarification</SelectItem>
               <SelectItem value="under_review">Under Review</SelectItem>

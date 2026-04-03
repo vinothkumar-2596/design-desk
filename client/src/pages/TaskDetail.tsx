@@ -88,7 +88,6 @@ import {
 import { cn } from '@/lib/utils';
 import { loadLocalTaskById, upsertLocalTask } from '@/lib/taskStorage';
 import { createSocket } from '@/lib/socket';
-import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { pushScheduleNotification } from '@/lib/designerSchedule';
 import { GridBackground } from '@/components/ui/background';
 import {
@@ -104,6 +103,7 @@ import {
   deriveTaskStatusFromCollaterals,
   formatCollateralStatusLabel,
   getCollateralDisplayName,
+  getCollateralSizeSummary,
 } from '@/lib/campaignRequest';
 
 type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
@@ -126,6 +126,15 @@ const statusDetails: Record<DisplayTaskStatus, string> = {
   under_review: 'Review in progress',
   completed: 'Delivery complete',
 };
+const TASK_STATUS_STEPS: DisplayTaskStatus[] = [
+  'pending',
+  'assigned',
+  'accepted',
+  'in_progress',
+  'clarification_required',
+  'under_review',
+  'completed',
+];
 
 const getCollateralStatusPillClass = (status?: string) => {
   switch (String(status || '').trim().toLowerCase()) {
@@ -142,6 +151,10 @@ const getCollateralStatusPillClass = (status?: string) => {
       return 'border-slate-200/80 bg-slate-50 text-slate-600 dark:border-slate-600/40 dark:bg-slate-900/40 dark:text-slate-300';
   }
 };
+const isCollateralStepComplete = (status?: string) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  return normalized === 'approved' || normalized === 'completed';
+};
 const normalizeTaskStatus = (value?: string): DisplayTaskStatus => {
   const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (normalized === 'assigned') return 'assigned';
@@ -156,8 +169,21 @@ const normalizeTaskStatus = (value?: string): DisplayTaskStatus => {
 };
 const getStatusSelectValue = (value?: string): TaskStatus | '' => {
   const normalized = normalizeTaskStatus(value);
-  if (normalized === 'assigned' || normalized === 'accepted') return '';
+  if (normalized === 'pending' || normalized === 'assigned' || normalized === 'accepted') return '';
   return normalized;
+};
+const getWorkflowSignalPillClass = (value?: string) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'approved' || normalized === 'completed') {
+    return 'border-emerald-200/80 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-950/30 dark:text-emerald-300';
+  }
+  if (normalized === 'rejected') {
+    return 'border-rose-200/80 bg-rose-50 text-rose-700 dark:border-rose-500/35 dark:bg-rose-950/30 dark:text-rose-300';
+  }
+  if (normalized === 'pending' || normalized === 'under_review') {
+    return 'border-[#C9D7FF] bg-[#EEF4FF] text-[#2F4E96] dark:border-[#4D70B4]/70 dark:bg-[#1E3A73]/45 dark:text-[#C7D8FF]';
+  }
+  return 'border-slate-200/80 bg-slate-50 text-slate-600 dark:border-slate-600/40 dark:bg-slate-900/40 dark:text-slate-300';
 };
 
 const categoryLabels: Record<string, string> = {
@@ -531,6 +557,8 @@ export default function TaskDetail() {
   const [isUploadingFinal, setIsUploadingFinal] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null);
+  const [expandedCollateralIds, setExpandedCollateralIds] = useState<Set<string>>(new Set());
+  const [selectedCampaignCollateralId, setSelectedCampaignCollateralId] = useState('');
   const [isUploadingWorking, setIsUploadingWorking] = useState(false);
   const [workingUploadItems, setWorkingUploadItems] = useState<WorkingUploadItem[]>([]);
   const [isFinalUploadDragging, setIsFinalUploadDragging] = useState(false);
@@ -2284,9 +2312,78 @@ export default function TaskDetail() {
   const isCampaignRequest =
     taskState.requestType === 'campaign_request' || collateralItems.length > 0;
   const campaignDeadlineMode = taskState.campaign?.deadlineMode || 'common';
+  const selectedCampaignCollateral =
+    collateralItems.find((item) => item.id === selectedCampaignCollateralId) ?? collateralItems[0];
+  const selectedCampaignCollateralIndex = selectedCampaignCollateral
+    ? Math.max(
+        0,
+        collateralItems.findIndex((item) => item.id === selectedCampaignCollateral.id)
+      )
+    : -1;
+  const selectedCampaignCollateralDeadline = selectedCampaignCollateral
+    ? campaignDeadlineMode === 'common'
+      ? taskState.campaign?.commonDeadline
+      : selectedCampaignCollateral.deadline
+    : undefined;
+  const campaignCompletedCollaterals = collateralItems.filter((item) =>
+    isCollateralStepComplete(item.status)
+  ).length;
+  const collateralCompletionPercent =
+    collateralItems.length > 0
+      ? Math.round((campaignCompletedCollaterals / collateralItems.length) * 100)
+      : 0;
+  const campaignPrimaryDeadline =
+    campaignDeadlineMode === 'common'
+      ? taskState.campaign?.commonDeadline ?? taskState.deadline
+      : taskState.deadline;
+  const campaignBriefText = useMemo(() => {
+    const directBrief = String(taskState.campaign?.brief || '').trim();
+    if (directBrief) return directBrief;
+    const description = String(taskState.description || '').trim();
+    const [briefSection] = description.split(/\n\s*Collateral Scope\s*\n/i);
+    return briefSection.trim();
+  }, [taskState.campaign?.brief, taskState.description]);
+  const campaignScopeLines = useMemo(() => {
+    if (collateralItems.length > 0) {
+      return collateralItems.map((collateral, index) => {
+        const parts = [
+          getCollateralDisplayName(collateral),
+          collateral.platform || collateral.usageType || collateral.collateralType,
+          getCollateralSizeSummary(collateral),
+          collateral.brief,
+        ].filter(Boolean);
+        return `${index + 1}. ${parts.join(' | ')}`;
+      });
+    }
+
+    const description = String(taskState.description || '').trim();
+    const match = description.match(/Collateral Scope\s*\n([\s\S]+)/i);
+    if (!match) return [];
+    return match[1]
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }, [collateralItems, taskState.description]);
+  const campaignStatusTextClass =
+    status.variant === 'completed'
+      ? 'text-emerald-600 dark:text-emerald-300'
+      : status.variant === 'clarification'
+        ? 'text-amber-600 dark:text-amber-300'
+        : status.variant === 'review'
+          ? 'text-sky-600 dark:text-sky-300'
+          : status.variant === 'progress'
+            ? 'text-[#3152BE] dark:text-[#B8CBFF]'
+            : 'text-[#A46B1A] dark:text-[#F4C66B]';
   const canUpdateCollateralStatus =
     (isDesignerRole || user?.role === 'treasurer') && hasFullTaskAccess && !isViewOnlyTask;
   const minDeadlineDate = addWorkingDays(new Date(), 3);
+  useEffect(() => {
+    setSelectedCampaignCollateralId((previous) => {
+      if (collateralItems.length === 0) return '';
+      if (previous && collateralItems.some((item) => item.id === previous)) return previous;
+      return collateralItems[0].id;
+    });
+  }, [collateralItems]);
   const emergencyStatus =
     taskState.isEmergency || taskState.emergencyApprovalStatus
       ? taskState.emergencyApprovalStatus ?? 'pending'
@@ -2462,6 +2559,85 @@ export default function TaskDetail() {
   );
   const finalDeliverableReviewNote = String(taskState?.finalDeliverableReviewNote || '').trim();
   const finalDeliverableReviewedBy = String(taskState?.finalDeliverableReviewedBy || '').trim();
+  const secondaryWorkflowSignals = useMemo(() => {
+    const items: Array<{ key: string; label: string; value: string; className: string }> = [];
+
+    if (approvalStatus) {
+      items.push({
+        key: 'approval',
+        label: 'Approval',
+        value:
+          approvalStatus === 'approved'
+            ? 'Approved'
+            : approvalStatus === 'rejected'
+              ? 'Rejected'
+              : 'Pending',
+        className: getWorkflowSignalPillClass(approvalStatus),
+      });
+    }
+
+    if (taskState.deadlineApprovalStatus) {
+      items.push({
+        key: 'deadline',
+        label: 'Deadline',
+        value:
+          taskState.deadlineApprovalStatus === 'approved'
+            ? 'Approved'
+            : taskState.deadlineApprovalStatus === 'rejected'
+              ? 'Rejected'
+              : 'Pending',
+        className: getWorkflowSignalPillClass(taskState.deadlineApprovalStatus),
+      });
+    }
+
+    if (emergencyStatus) {
+      items.push({
+        key: 'emergency',
+        label: 'Emergency',
+        value:
+          emergencyStatus === 'approved'
+            ? 'Approved'
+            : emergencyStatus === 'rejected'
+              ? 'Rejected'
+              : 'Pending',
+        className: getWorkflowSignalPillClass(emergencyStatus),
+      });
+    }
+
+    if (finalDeliverableReviewStatus !== 'not_submitted') {
+      items.push({
+        key: 'final-review',
+        label: 'Final Review',
+        value:
+          finalDeliverableReviewStatus === 'approved'
+            ? 'Approved'
+            : finalDeliverableReviewStatus === 'rejected'
+              ? 'Changes Requested'
+              : 'Pending',
+        className: getWorkflowSignalPillClass(
+          finalDeliverableReviewStatus === 'pending' ? 'under_review' : finalDeliverableReviewStatus
+        ),
+      });
+    }
+
+    return items;
+  }, [
+    approvalStatus,
+    emergencyStatus,
+    finalDeliverableReviewStatus,
+    taskState.deadlineApprovalStatus,
+  ]);
+  const deliveryStepIndex = Math.max(0, TASK_STATUS_STEPS.indexOf(normalizedTaskStatus));
+  const deliveryProgressPercent =
+    TASK_STATUS_STEPS.length > 0
+      ? Math.round(((deliveryStepIndex + 1) / TASK_STATUS_STEPS.length) * 100)
+      : 0;
+  const workflowAssigneeLabel =
+    String(taskState.assignedToName || taskState.assignedTo || '').trim() || 'Unassigned';
+  const workflowUpdatedLabel = taskState.updatedAt
+    ? formatDistanceToNow(new Date(taskState.updatedAt), { addSuffix: true })
+    : 'Recently updated';
+  const showWorkflowInsights = secondaryWorkflowSignals.length > 0 || isCampaignRequest;
   const activeFinalVersionReviewAnnotations = useMemo(
     () =>
       Array.isArray(activeFinalVersion?.reviewAnnotations)
@@ -2519,13 +2695,14 @@ export default function TaskDetail() {
   const isTaskCompleted = normalizedTaskStatus === 'completed';
   const canHandover =
     canFinalizeTaskActions &&
-    ((!isTaskCompleted && (hasFinalDeliverables || hasPendingFinalFiles)) ||
-      (isTaskCompleted && hasPendingFinalFiles)) &&
+    hasPendingFinalFiles &&
     !isUploadingFinal;
-  const submitActionLabel = isTaskCompleted ? 'Submit Revision' : 'Submit';
-  const submitActionHint = isTaskCompleted
-    ? 'Submit creates the next version (V1, V2, ...) and keeps this task completed.'
-    : 'Submit creates the next version (V1, V2, ...) and marks the task as completed.';
+  const submitActionLabel =
+    finalDeliverableReviewStatus === 'rejected' || isTaskCompleted
+      ? 'Submit Revision'
+      : 'Submit for Review';
+  const submitActionHint =
+    'Submit creates the next version (V1, V2, ...) and moves the task into review.';
   const currentSelectedVersionNote = activeFinalVersionNote;
   const isFinalVersionNoteDirty = finalVersionNote.trim() !== currentSelectedVersionNote;
   const canAcceptTask =
@@ -4035,7 +4212,10 @@ export default function TaskDetail() {
 
   const handleStatusChange = (status: TaskStatus) => {
     if (status === getStatusSelectValue(taskState?.status)) return;
-    const isCompletion = status === 'completed';
+    if (status === 'assigned' || status === 'accepted' || status === 'completed') {
+      toast.message('This status is set by assignment or final review actions.');
+      return;
+    }
     recordChanges(
       [
         {
@@ -4043,7 +4223,6 @@ export default function TaskDetail() {
           field: 'status',
           oldValue: statusConfig[normalizedTaskStatus].label,
           newValue: statusConfig[status].label,
-          note: isCompletion ? `Completed by ${user?.name || 'Designer'}` : undefined,
         },
       ],
       { status }
@@ -4212,64 +4391,55 @@ export default function TaskDetail() {
   const handleHandoverTask = async () => {
     if (!taskState) return;
     if (!ensureWritableTask({ allowMainDesignerFinalize: true })) return;
-    if (!hasFinalDeliverables && !hasPendingFinalFiles) {
+    if (!hasPendingFinalFiles) {
+      if (finalDeliverableReviewStatus === 'pending') {
+        toast.message('The latest final submission is already under review.');
+        return;
+      }
+      if (finalDeliverableReviewStatus === 'approved') {
+        toast.message('The latest final submission is already approved.');
+        return;
+      }
+      if (finalDeliverableReviewStatus === 'rejected') {
+        toast.message('Upload updated files or links before submitting the next revision.');
+        return;
+      }
       toast.message('Upload final files before handing over the task.');
-      return;
-    }
-    if (isTaskCompleted && !hasPendingFinalFiles) {
-      toast.message('Add files or link, then submit the revision.');
       return;
     }
     if (!apiUrl) {
       toast.error('Submit requires backend connection.');
       return;
     }
-    if (hasPendingFinalFiles) {
-      try {
-        await submitFinalDeliverableVersion({
-          files: pendingFinalFiles,
-          note: finalVersionNote.trim(),
-        });
-      } catch (error) {
-        const message =
-          error instanceof Error && error.message
-            ? error.message
-            : 'Failed to create final deliverable version.';
-        if (message.toLowerCase().includes('forbidden')) {
-          setTaskState((prev) =>
-            prev
-              ? ({
-                  ...prev,
-                  accessMode: 'view_only',
-                  viewOnly: true,
-                } as typeof prev)
-              : prev
-          );
-          toast.error('Only the assigned designer or Design Lead can submit this task.');
-          return;
-        }
-        toast.error(message);
+    try {
+      const updatedTask = await submitFinalDeliverableVersion({
+        files: pendingFinalFiles,
+        note: finalVersionNote.trim(),
+      });
+      if (normalizeTaskStatus(updatedTask?.status) === 'under_review') {
+        setShowHandoverModal(true);
         return;
       }
-    }
-    if (isTaskCompleted) {
-      toast.success('New revision version submitted.');
-      return;
-    }
-    const didComplete = await recordChanges(
-      [
-        {
-          type: 'status',
-          field: 'status',
-          oldValue: statusConfig[normalizedTaskStatus].label,
-          newValue: statusConfig.completed.label,
-          note: `Completed by ${user?.name || 'Designer'}`,
-        },
-      ],
-      { status: 'completed' }
-    );
-    if (didComplete) {
-      setShowHandoverModal(true);
+      toast.success('Final submission created.');
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to create final deliverable version.';
+      if (message.toLowerCase().includes('forbidden')) {
+        setTaskState((prev) =>
+          prev
+            ? ({
+                ...prev,
+                accessMode: 'view_only',
+                viewOnly: true,
+              } as typeof prev)
+            : prev
+        );
+        toast.error('Only the assigned designer or Design Lead can submit this task.');
+        return;
+      }
+      toast.error(message);
     }
   };
 
@@ -6638,94 +6808,412 @@ export default function TaskDetail() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 gap-5 pt-1 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 pt-1 xl:grid-cols-3">
           {/* Left Column - Details */}
-          <div className="space-y-5 lg:col-span-2">
-            {/* Description */}
-            <div className={`${glassPanelClass} p-5 animate-slide-up`}>
-              <h2 className="font-semibold text-foreground mb-3">Description</h2>
-              <p className="max-h-[600px] overflow-y-auto whitespace-pre-wrap text-[14px] leading-7 text-muted-foreground">
-                {taskState.description}
-              </p>
-            </div>
+          <div className={`space-y-5 ${isCampaignRequest ? "xl:col-span-3" : "xl:col-span-2"}`}>
+            {/* Description — standalone for non-campaign tasks */}
+            {!isCampaignRequest && (
+              <div className={`${glassPanelClass} p-5 animate-slide-up`}>
+                <h2 className="font-semibold text-foreground mb-3">Description</h2>
+                <p className="max-h-[600px] overflow-y-auto whitespace-pre-wrap text-[14px] leading-7 text-muted-foreground">
+                  {taskState.description}
+                </p>
+              </div>
+            )}
 
             {isCampaignRequest && (
-              <div className={`${glassPanelClass} p-5 animate-slide-up`}>
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <h2 className="font-semibold text-foreground">Campaign Request Structure</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      This request is split into individual collateral items so the design team can track each deliverable separately.
+              <div className={`${glassPanelClass} overflow-hidden animate-slide-up`}>
+                <div className="border-b border-[#E7EDF8] px-5 py-4 dark:border-border">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#7E8DAB] dark:text-slate-400">
+                        Campaign Overview
+                      </p>
+                      <h2 className="mt-1 truncate text-[1.35rem] font-semibold leading-tight text-[#215ABB] dark:text-slate-100">
+                        {taskState.title}
+                      </h2>
+                    </div>
+                    <span
+                      className={cn(
+                        'inline-flex items-center rounded-full border border-[#E4EBF8] bg-white px-3 py-1 text-[11px] font-semibold dark:border-border dark:bg-card/80',
+                        campaignStatusTextClass
+                      )}
+                    >
+                      {status.label}
+                    </span>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB] dark:text-slate-400">
+                      <span>Collateral Progress</span>
+                      <span>
+                        {campaignCompletedCollaterals} / {collateralItems.length || 0} completed
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-[#E6EBF2] dark:bg-slate-800">
+                      <div
+                        className="h-full rounded-full bg-[#F5A623] transition-all duration-300 ease-out"
+                        style={{ width: `${collateralCompletionPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid border-b border-[#E7EDF8] dark:border-border md:grid-cols-4">
+                  <div className="px-5 py-3.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF] dark:text-slate-500">
+                      Request Structure
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#1F2F4B] dark:text-slate-100">
+                      {campaignDeadlineMode === 'common' ? 'Common deadline' : 'Item-wise deadlines'}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs">
-                      {collateralItems.length} collateral{collateralItems.length === 1 ? '' : 's'}
+                  <div className="border-t border-[#E7EDF8] px-5 py-3.5 dark:border-border md:border-l md:border-t-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF] dark:text-slate-500">
+                      Collaterals
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#1F2F4B] dark:text-slate-100">
+                      {collateralItems.length} {collateralItems.length === 1 ? 'Item' : 'Items'}
+                    </p>
+                  </div>
+                  <div className="border-t border-[#E7EDF8] px-5 py-3.5 dark:border-border md:border-l md:border-t-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF] dark:text-slate-500">
+                      Delivery Target
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#1F2F4B] dark:text-slate-100">
+                      {campaignPrimaryDeadline ? format(campaignPrimaryDeadline, 'dd MMM yyyy') : 'Not set'}
+                    </p>
+                  </div>
+                  <div className="border-t border-[#E7EDF8] px-5 py-3.5 dark:border-border md:border-l md:border-t-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF] dark:text-slate-500">
+                      Requested On
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#1F2F4B] dark:text-slate-100">
+                      {format(taskState.createdAt, 'dd MMM yyyy')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-5 px-5 py-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB] dark:text-slate-400">
+                      Description
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-muted-foreground">
+                      {campaignBriefText || 'No campaign description added yet.'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB] dark:text-slate-400">
+                      Collateral Scope
+                    </p>
+                    {campaignScopeLines.length > 0 ? (
+                      <ol className="mt-2 space-y-1.5 text-[13px] leading-6 text-muted-foreground">
+                        {campaignScopeLines.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ol>
+                    ) : (
+                      <p className="mt-2 text-[13px] leading-6 text-muted-foreground">
+                        No collateral scope has been added yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E7EDF8] px-5 py-4 dark:border-border">
+                  <h2 className="font-semibold text-foreground">Deliverables</h2>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 text-[11px]">
+                      {collateralItems.length} {collateralItems.length === 1 ? 'collateral' : 'collaterals'}
                     </Badge>
-                    <Badge variant="outline" className="rounded-full px-3 py-1 text-xs">
+                    <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[11px]">
                       {campaignDeadlineMode === 'common' ? 'Common deadline' : 'Item-wise deadlines'}
                     </Badge>
                   </div>
                 </div>
 
-                {taskState.campaign?.brief ? (
-                  <div className="mt-4 rounded-2xl border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 px-4 py-4 dark:border-border dark:bg-slate-900/50">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      Overall Brief
-                    </p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                      {taskState.campaign.brief}
-                    </p>
-                  </div>
-                ) : null}
+                <div className="space-y-4 px-5 pb-5 xl:hidden">
+                  <div className="overflow-hidden rounded-[24px] border border-[#D7E4FF]/90 bg-white/75 dark:border-border dark:bg-card/70">
+                    <div className="border-b border-[#E5EEFF] px-5 py-4 dark:border-border">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6C7EA6] dark:text-slate-400">
+                        Collateral Flow
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Pick a collateral to review its brief and references.
+                      </p>
+                    </div>
 
-                <div className="mt-5 space-y-4">
-                  {collateralItems.map((collateral) => {
-                    const effectiveDeadline =
-                      campaignDeadlineMode === 'common'
-                        ? taskState.campaign?.commonDeadline
-                        : collateral.deadline;
+                    <div className="space-y-2 p-3">
+                      {collateralItems.map((collateral, index) => {
+                        const effectiveDeadline =
+                          campaignDeadlineMode === 'common'
+                            ? taskState.campaign?.commonDeadline
+                            : collateral.deadline;
+                        const isSelected = selectedCampaignCollateral?.id === collateral.id;
 
-                    return (
-                      <div
-                        key={collateral.id}
-                        className="rounded-[24px] border border-[#D7E4FF] bg-white/95 px-4 py-4 dark:border-border dark:bg-card/90"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-sm font-semibold text-foreground">
-                                {getCollateralDisplayName(collateral)}
-                              </h3>
+                        return (
+                          <button
+                            key={`campaign-mobile-${collateral.id}`}
+                            type="button"
+                            onClick={() => setSelectedCampaignCollateralId(collateral.id)}
+                            className={cn(
+                              'w-full rounded-2xl border px-3.5 py-3 text-left transition-colors',
+                              isSelected
+                                ? 'border-[#8FB0FF] bg-[#EEF4FF] dark:border-[#5477C2] dark:bg-[#172746]'
+                                : 'border-[#E1E9FF] bg-white/80 dark:border-border dark:bg-card/70'
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-foreground">
+                                  {index + 1}. {getCollateralDisplayName(collateral)}
+                                </p>
+                                <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                                  {[
+                                    collateral.collateralType,
+                                    collateral.platform,
+                                    getCollateralSizeSummary(collateral as never),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                                </p>
+                              </div>
                               <span
                                 className={cn(
-                                  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
+                                  'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
                                   getCollateralStatusPillClass(collateral.status)
                                 )}
                               >
                                 {formatCollateralStatusLabel(collateral.status)}
                               </span>
                             </div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {[collateral.collateralType, collateral.platform, collateral.usageType]
-                                .filter(Boolean)
-                                .join(' • ')}
+
+                            <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+                              {effectiveDeadline ? <span>{format(effectiveDeadline, 'dd MMM yyyy')}</span> : null}
+                              <span>
+                                {collateral.referenceFiles?.length || 0} ref
+                                {(collateral.referenceFiles?.length || 0) === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {selectedCampaignCollateral ? (
+                    <div className="space-y-4">
+                      <div className="rounded-[24px] border border-[#D7E4FF]/90 bg-white/80 px-4 py-4 dark:border-border dark:bg-card/70">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6C7EA6] dark:text-slate-400">
+                          Collateral {selectedCampaignCollateralIndex + 1} of {collateralItems.length}
+                        </p>
+                        <h3 className="mt-2 text-[1.4rem] font-semibold leading-tight text-[#1A2E62] dark:text-white">
+                          {getCollateralDisplayName(selectedCampaignCollateral)}
+                        </h3>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          {[
+                            selectedCampaignCollateral.collateralType,
+                            selectedCampaignCollateral.platform,
+                            selectedCampaignCollateral.usageType,
+                            getCollateralSizeSummary(selectedCampaignCollateral as never),
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || 'No delivery spec summary available yet.'}
+                        </p>
+
+                        <div className="mt-4 grid gap-3">
+                          <div className="rounded-2xl border border-[#DCE7FF] bg-white/82 px-4 py-3 dark:border-border dark:bg-card/70">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              Deadline
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-foreground">
+                              {selectedCampaignCollateralDeadline
+                                ? format(selectedCampaignCollateralDeadline, 'EEE, dd MMM yyyy')
+                                : 'Not set'}
                             </p>
                           </div>
 
-                          <div className="grid gap-2 sm:min-w-[210px]">
-                            <div className="text-right text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                              Designer Status
-                            </div>
+                          <div className="rounded-2xl border border-[#DCE7FF] bg-white/82 px-4 py-3 dark:border-border dark:bg-card/70">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              Progress
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-foreground">
+                              {selectedCampaignCollateral.assignedToName || 'Awaiting assignment'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {taskState.campaign?.brief ? (
+                        <div className="rounded-2xl border border-[#D9E6FF]/75 bg-[#F8FBFF]/82 px-4 py-4 dark:border-border dark:bg-card/70">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                            Overall Brief
+                          </p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                            {taskState.campaign.brief}
+                          </p>
+                        </div>
+                      ) : null}
+
+                      <div className="rounded-2xl border border-[#D9E6FF]/75 bg-white/82 px-4 py-4 dark:border-border dark:bg-card/70">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          Content Brief
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/85">
+                          {selectedCampaignCollateral.brief || (
+                            <span className="italic text-muted-foreground/60">No brief added yet.</span>
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border border-[#D9E6FF]/75 bg-white/82 px-4 py-4 dark:border-border dark:bg-card/70">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          Delivery Specs
+                        </p>
+                        <dl className="mt-4 space-y-3">
+                          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                            <dt className="text-[11px] font-medium text-muted-foreground">Platform</dt>
+                            <dd className="text-sm font-medium text-foreground sm:text-right">
+                              {selectedCampaignCollateral.platform || 'Not specified'}
+                            </dd>
+                          </div>
+                          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                            <dt className="text-[11px] font-medium text-muted-foreground">Usage</dt>
+                            <dd className="text-sm font-medium text-foreground sm:text-right">
+                              {selectedCampaignCollateral.usageType || 'Not specified'}
+                            </dd>
+                          </div>
+                          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                            <dt className="text-[11px] font-medium text-muted-foreground">Size</dt>
+                            <dd className="text-sm font-medium text-foreground sm:text-right">
+                              {getCollateralSizeSummary(selectedCampaignCollateral as never) || 'Not specified'}
+                            </dd>
+                          </div>
+                          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                            <dt className="text-[11px] font-medium text-muted-foreground">Orientation</dt>
+                            <dd className="text-sm font-medium capitalize text-foreground sm:text-right">
+                              {selectedCampaignCollateral.orientation || 'Custom'}
+                            </dd>
+                          </div>
+                          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                            <dt className="text-[11px] font-medium text-muted-foreground">Priority</dt>
+                            <dd className="text-sm font-medium capitalize text-foreground sm:text-right">
+                              {String(selectedCampaignCollateral.priority || 'normal').replace(/_/g, ' ')}
+                            </dd>
+                          </div>
+                          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                            <dt className="text-[11px] font-medium text-muted-foreground">Owner</dt>
+                            <dd className="text-sm font-medium text-foreground sm:text-right">
+                              {selectedCampaignCollateral.assignedToName || 'Unassigned'}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+
+                      <div className="rounded-2xl border border-[#D9E6FF]/75 bg-white/82 px-4 py-4 dark:border-border dark:bg-card/70">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              Reference Files
+                            </p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              Preview or open the files linked to this collateral.
+                            </p>
+                          </div>
+                          <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs">
+                            {selectedCampaignCollateral.referenceFiles?.length || 0} file
+                            {(selectedCampaignCollateral.referenceFiles?.length || 0) === 1 ? '' : 's'}
+                          </Badge>
+                        </div>
+
+                        {(selectedCampaignCollateral.referenceFiles?.length || 0) > 0 ? (
+                          <div className="mt-4 space-y-2">
+                            {selectedCampaignCollateral.referenceFiles.map((file, index) => {
+                              const fileLinkUrl = getFileActionUrl(file);
+                              const sizeLabel =
+                                formatFileSize(file.size) ||
+                                getLinkSubLabel(resolveStoredFileUrl(file) || file.url || '');
+
+                              return (
+                                <div
+                                  key={`campaign-mobile-ref-${file.id || index}`}
+                                  className={cn(
+                                    fileRowClass,
+                                    'flex-col items-start gap-3 px-3 py-2.5 sm:flex-row sm:items-center'
+                                  )}
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-medium text-foreground">
+                                      {file.name}
+                                    </p>
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                      {sizeLabel || 'Reference file'}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
+                                    {canPreviewFile(file) ? (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        className={fileActionButtonClass}
+                                        onClick={() => openFilePreviewDialog(file)}
+                                        aria-label={`Preview ${file.name}`}
+                                      >
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                    ) : null}
+
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      disabled={!fileLinkUrl || fileLinkUrl === '#'}
+                                      className={fileActionButtonClass}
+                                      onClick={() => void handleFileAction(file)}
+                                      aria-label={`Open ${file.name}`}
+                                    >
+                                      {shouldUseLinkIcon(file) ? (
+                                        <ExternalLink className="h-4 w-4" />
+                                      ) : (
+                                        <Download className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="mt-4 rounded-2xl border border-dashed border-[#D9E6FF]/80 bg-[#F8FBFF]/75 px-4 py-4 text-sm text-muted-foreground dark:border-border/70 dark:bg-card/70">
+                            No reference files attached to this collateral yet.
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-2xl border border-[#D9E6FF]/75 bg-white/82 px-4 py-4 dark:border-border dark:bg-card/70">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          Status Control
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Update the delivery state for this collateral.
+                        </p>
+
+                        {canUpdateCollateralStatus ? (
+                          <div className="mt-4">
                             <Select
-                              value={collateral.status}
+                              value={selectedCampaignCollateral.status}
                               onValueChange={(value) =>
-                                handleCollateralStatusChange(collateral.id, value as CollateralStatus)
+                                handleCollateralStatusChange(
+                                  selectedCampaignCollateral.id,
+                                  value as CollateralStatus
+                                )
                               }
-                              disabled={!canUpdateCollateralStatus}
                             >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Update status" />
+                              <SelectTrigger className="h-11 rounded-xl border-[#D7E4FF] bg-white px-3 text-sm shadow-none dark:border-border dark:bg-sidebar/60">
+                                <SelectValue placeholder="Select collateral status" />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="pending">Pending</SelectItem>
@@ -6737,78 +7225,524 @@ export default function TaskDetail() {
                               </SelectContent>
                             </Select>
                           </div>
+                        ) : (
+                          <div className="mt-4 rounded-xl border border-[#D9E6FF] bg-[#F8FBFF]/80 px-3 py-3 dark:border-border dark:bg-card/70">
+                            <p className="text-sm font-medium text-foreground">
+                              {formatCollateralStatusLabel(selectedCampaignCollateral.status)}
+                            </p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              Status updates are available to assigned designers and reviewers.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="hidden mt-5 overflow-hidden rounded-[24px] border border-[#D7E4FF]/90 bg-white/45 supports-[backdrop-filter]:bg-white/28 backdrop-blur-xl dark:border-border dark:bg-card/55 dark:backdrop-blur-none xl:grid xl:grid-cols-[320px_minmax(0,1fr)]">
+                  <aside className="border-b border-[#E5EEFF] bg-[linear-gradient(180deg,rgba(248,251,255,0.9),rgba(240,246,255,0.7))] dark:border-border dark:bg-sidebar/35 xl:border-b-0 xl:border-r">
+                    <div className="border-b border-[#E5EEFF] px-5 py-4 dark:border-border">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6C7EA6] dark:text-slate-400">
+                        Collateral Flow
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Select an item to review its brief, references, and delivery specs.
+                      </p>
+                    </div>
+
+                    {collateralItems.length > 0 ? (
+                      <div className="space-y-1.5 p-3">
+                        {collateralItems.map((collateral, index) => {
+                          const effectiveDeadline =
+                            campaignDeadlineMode === 'common'
+                              ? taskState.campaign?.commonDeadline
+                              : collateral.deadline;
+                          const isSelected = selectedCampaignCollateral?.id === collateral.id;
+                          const isComplete = isCollateralStepComplete(collateral.status);
+                          const sizeLabel = getCollateralSizeSummary(collateral as never);
+                          const typeLabel = [collateral.platform, collateral.usageType]
+                            .filter(Boolean)
+                            .join(' · ');
+
+                          return (
+                            <button
+                              key={`campaign-collateral-${collateral.id}`}
+                              type="button"
+                              onClick={() => setSelectedCampaignCollateralId(collateral.id)}
+                              className={cn(
+                                'w-full rounded-[18px] border px-3.5 py-3 text-left transition-all duration-200',
+                                isSelected
+                                  ? 'border-[#8FB0FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(235,243,255,0.94))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7)] dark:border-[#5477C2] dark:bg-[rgba(25,43,81,0.88)]'
+                                  : 'border-transparent bg-white/45 hover:border-[#D4E2FF] hover:bg-white/75 dark:bg-transparent dark:hover:border-border dark:hover:bg-sidebar-accent/35'
+                              )}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div
+                                  className={cn(
+                                    'mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[12px] font-semibold',
+                                    isSelected &&
+                                      'border-[#5F86E8] bg-[#2F67E8] text-white shadow-[0_8px_20px_-12px_rgba(47,103,232,0.9)] dark:border-[#7FA2FF] dark:bg-[#3A63C8]',
+                                    !isSelected &&
+                                      isComplete &&
+                                      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-950/35 dark:text-emerald-300',
+                                    !isSelected &&
+                                      !isComplete &&
+                                      'border-[#C7D8FF] bg-white text-[#36559F] dark:border-slate-600/70 dark:bg-slate-900/65 dark:text-slate-200'
+                                  )}
+                                >
+                                  {isComplete ? <Check className="h-4 w-4" /> : index + 1}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p
+                                        className={cn(
+                                          'truncate text-[13px] font-semibold',
+                                          isSelected ? 'text-[#183265] dark:text-white' : 'text-foreground'
+                                        )}
+                                      >
+                                        {getCollateralDisplayName(collateral)}
+                                      </p>
+                                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground/80">
+                                        {[collateral.collateralType, typeLabel, sizeLabel]
+                                          .filter(Boolean)
+                                          .join(' · ')}
+                                      </p>
+                                    </div>
+                                    <span
+                                      className={cn(
+                                        'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                                        getCollateralStatusPillClass(collateral.status)
+                                      )}
+                                    >
+                                      {formatCollateralStatusLabel(collateral.status)}
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground/85">
+                                    {effectiveDeadline ? (
+                                      <span className="inline-flex items-center gap-1">
+                                        <Calendar className="h-3.5 w-3.5" />
+                                        {format(effectiveDeadline, 'dd MMM yyyy')}
+                                      </span>
+                                    ) : null}
+                                    <span className="inline-flex items-center gap-1">
+                                      <Paperclip className="h-3.5 w-3.5" />
+                                      {collateral.referenceFiles?.length || 0} ref
+                                      {(collateral.referenceFiles?.length || 0) === 1 ? '' : 's'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="px-5 py-8 text-sm text-muted-foreground">
+                        No collateral items available for this campaign yet.
+                      </div>
+                    )}
+                  </aside>
+
+                  <div className="overflow-y-auto p-5 sm:p-6">
+                    {selectedCampaignCollateral ? (
+                      <>
+                        {/* Header — condensed, no boxed tiles */}
+                        <div className="border-b border-[#EEF2FF] pb-5 dark:border-border">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-[1.25rem] font-semibold leading-tight text-[#1A2E62] dark:text-white">
+                              {getCollateralDisplayName(selectedCampaignCollateral)}
+                            </h3>
+                            <span
+                              className={cn(
+                                'inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
+                                getCollateralStatusPillClass(selectedCampaignCollateral.status)
+                              )}
+                            >
+                              {formatCollateralStatusLabel(selectedCampaignCollateral.status)}
+                            </span>
+                          </div>
+                          <p className="mt-1.5 text-[13px] text-muted-foreground">
+                            {[
+                              selectedCampaignCollateral.collateralType,
+                              selectedCampaignCollateral.platform,
+                              selectedCampaignCollateral.usageType,
+                              getCollateralSizeSummary(selectedCampaignCollateral as never),
+                            ]
+                              .filter(Boolean)
+                              .join(' · ') || 'No specs added yet.'}
+                          </p>
+                          <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
+                            <span>
+                              <span className="font-medium text-foreground/70">Deadline:</span>{' '}
+                              {selectedCampaignCollateralDeadline
+                                ? format(selectedCampaignCollateralDeadline, 'dd MMM yyyy')
+                                : 'Not set'}
+                            </span>
+                            <span className="text-muted-foreground/30">·</span>
+                            <span>
+                              <span className="font-medium text-foreground/70">Progress:</span>{' '}
+                              {selectedCampaignCollateral.assignedToName || 'Awaiting assignment'}
+                            </span>
+                          </p>
                         </div>
 
-                        <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-                          <div className="rounded-2xl border border-[#E1E9FF] bg-[#F9FBFF] px-3.5 py-3 dark:border-border dark:bg-slate-900/50">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                              Content Brief
-                            </p>
-                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                              {collateral.brief || 'No collateral brief added.'}
+                        {/* Body — 2 columns: Brief (left) + Specs/Status (right) */}
+                        <div className="mt-5 grid gap-x-8 gap-y-6 xl:grid-cols-[1fr_220px]">
+                          {/* Left: Brief + References */}
+                          <div className="space-y-5">
+                            {taskState.campaign?.brief ? (
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                  Overall Brief
+                                </p>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                                  {taskState.campaign.brief}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            <div className={taskState.campaign?.brief ? 'border-t border-[#EEF2FF] pt-5 dark:border-border' : ''}>
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                Content Brief
+                              </p>
+                              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/85">
+                                {selectedCampaignCollateral.brief || (
+                                  <span className="italic text-muted-foreground/50">No brief added yet.</span>
+                                )}
+                              </p>
+                            </div>
+
+                            <div className="border-t border-[#EEF2FF] pt-5 dark:border-border">
+                              <div className="flex items-center justify-between">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                  References
+                                </p>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {selectedCampaignCollateral.referenceFiles?.length || 0} file
+                                  {(selectedCampaignCollateral.referenceFiles?.length || 0) !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              {(selectedCampaignCollateral.referenceFiles?.length || 0) > 0 ? (
+                                <div className="mt-3 space-y-1.5">
+                                  {selectedCampaignCollateral.referenceFiles.map((file, index) => {
+                                    const fileLinkUrl = getFileActionUrl(file);
+                                    const sizeLabel =
+                                      formatFileSize(file.size) ||
+                                      getLinkSubLabel(resolveStoredFileUrl(file) || file.url || '');
+                                    return (
+                                      <div
+                                        key={file.id || `${selectedCampaignCollateral.id}-reference-${index}`}
+                                        className={cn(fileRowClass, 'gap-3 px-3 py-2')}
+                                      >
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-sm font-medium text-foreground">{file.name}</p>
+                                          {sizeLabel ? (
+                                            <p className="mt-0.5 text-[11px] text-muted-foreground">{sizeLabel}</p>
+                                          ) : null}
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-1.5">
+                                          {canPreviewFile(file) ? (
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              size="icon-sm"
+                                              className={fileActionButtonClass}
+                                              onClick={() => openFilePreviewDialog(file)}
+                                              aria-label={`Preview ${file.name}`}
+                                            >
+                                              <Eye className="h-4 w-4" />
+                                            </Button>
+                                          ) : null}
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon-sm"
+                                            disabled={!fileLinkUrl || fileLinkUrl === '#'}
+                                            className={fileActionButtonClass}
+                                            onClick={() => void handleFileAction(file)}
+                                            aria-label={`Open ${file.name}`}
+                                          >
+                                            {shouldUseLinkIcon(file) ? (
+                                              <ExternalLink className="h-4 w-4" />
+                                            ) : (
+                                              <Download className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="mt-2 text-sm italic text-muted-foreground/60">
+                                  No reference files attached yet.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Right: Specifications + Delivery + Status */}
+                          <div className="space-y-5">
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                Specifications
+                              </p>
+                              <dl className="mt-3 space-y-2.5">
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <dt className="text-[11px] text-muted-foreground">Platform</dt>
+                                  <dd className="text-right text-[12px] font-medium text-foreground">
+                                    {selectedCampaignCollateral.platform || '—'}
+                                  </dd>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <dt className="text-[11px] text-muted-foreground">Usage</dt>
+                                  <dd className="text-right text-[12px] font-medium text-foreground">
+                                    {selectedCampaignCollateral.usageType || '—'}
+                                  </dd>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <dt className="text-[11px] text-muted-foreground">Size</dt>
+                                  <dd className="text-right text-[12px] font-medium text-foreground">
+                                    {getCollateralSizeSummary(selectedCampaignCollateral as never) || '—'}
+                                  </dd>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <dt className="text-[11px] text-muted-foreground">Orientation</dt>
+                                  <dd className="text-right text-[12px] font-medium capitalize text-foreground">
+                                    {selectedCampaignCollateral.orientation || 'Custom'}
+                                  </dd>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <dt className="text-[11px] text-muted-foreground">Priority</dt>
+                                  <dd className="text-right text-[12px] font-medium capitalize text-foreground">
+                                    {String(selectedCampaignCollateral.priority || 'normal').replace(/_/g, ' ')}
+                                  </dd>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <dt className="text-[11px] text-muted-foreground">Owner</dt>
+                                  <dd className="text-right text-[12px] font-medium text-foreground">
+                                    {selectedCampaignCollateral.assignedToName || 'Unassigned'}
+                                  </dd>
+                                </div>
+                              </dl>
+                            </div>
+
+                            <div className="border-t border-[#EEF2FF] pt-4 dark:border-border">
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                Delivery
+                              </p>
+                              <dl className="mt-3 space-y-2.5">
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <dt className="text-[11px] text-muted-foreground">Deadline</dt>
+                                  <dd className="text-right text-[12px] font-medium text-foreground">
+                                    {selectedCampaignCollateralDeadline
+                                      ? format(selectedCampaignCollateralDeadline, 'dd MMM yyyy')
+                                      : 'Not set'}
+                                  </dd>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <dt className="text-[11px] text-muted-foreground">References</dt>
+                                  <dd className="text-right text-[12px] font-medium text-foreground">
+                                    {selectedCampaignCollateral.referenceFiles?.length || 0} file
+                                    {(selectedCampaignCollateral.referenceFiles?.length || 0) !== 1 ? 's' : ''}
+                                  </dd>
+                                </div>
+                              </dl>
+                            </div>
+
+                            <div className="border-t border-[#EEF2FF] pt-4 dark:border-border">
+                              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                Status
+                              </p>
+                              {canUpdateCollateralStatus ? (
+                                <Select
+                                  value={selectedCampaignCollateral.status}
+                                  onValueChange={(value) =>
+                                    handleCollateralStatusChange(
+                                      selectedCampaignCollateral.id,
+                                      value as CollateralStatus
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger className="h-9 w-full rounded-lg border-[#D7E4FF] bg-white px-3 text-sm shadow-none dark:border-border dark:bg-sidebar/60">
+                                    <SelectValue placeholder="Select status" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="pending">Pending</SelectItem>
+                                    <SelectItem value="in_progress">In Progress</SelectItem>
+                                    <SelectItem value="submitted_for_review">Submitted for Review</SelectItem>
+                                    <SelectItem value="approved">Approved</SelectItem>
+                                    <SelectItem value="rework">Rework</SelectItem>
+                                    <SelectItem value="completed">Completed</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <span
+                                  className={cn(
+                                    'inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
+                                    getCollateralStatusPillClass(selectedCampaignCollateral.status)
+                                  )}
+                                >
+                                  {formatCollateralStatusLabel(selectedCampaignCollateral.status)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex min-h-[18rem] items-center justify-center text-sm text-muted-foreground">
+                        No collateral is selected for this campaign.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {taskState.campaign?.brief ? (
+                  <div className="hidden mt-4 rounded-2xl border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 px-4 py-4 dark:border-border dark:bg-slate-900/50">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Overall Brief
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                      {taskState.campaign.brief}
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="hidden mt-4 overflow-hidden rounded-[16px] border border-[#D7E4FF] dark:border-border">
+                  {collateralItems.map((collateral) => {
+                    const effectiveDeadline =
+                      campaignDeadlineMode === 'common'
+                        ? taskState.campaign?.commonDeadline
+                        : collateral.deadline;
+                    const isExpanded = expandedCollateralIds.has(collateral.id);
+                    const sizeLabel = getCollateralSizeSummary(collateral as never);
+                    const typeLabel = [collateral.collateralType, collateral.platform, collateral.usageType]
+                      .filter(Boolean)
+                      .join(' · ');
+
+                    return (
+                      <div
+                        key={collateral.id}
+                        className="border-b border-[#EEF2FF] last:border-0 dark:border-border"
+                      >
+                        {/* Compact row */}
+                        <div
+                          className={cn(
+                            'flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-[#F5F8FF] dark:hover:bg-sidebar-accent/40',
+                            isExpanded && 'bg-[#F8FAFF] dark:bg-sidebar-accent/30'
+                          )}
+                          onClick={() =>
+                            setExpandedCollateralIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(collateral.id)) next.delete(collateral.id);
+                              else next.add(collateral.id);
+                              return next;
+                            })
+                          }
+                        >
+                          {/* Name + meta — flex-1 */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="truncate text-[13px] font-semibold text-foreground">
+                                {getCollateralDisplayName(collateral)}
+                              </span>
+                              <span className={cn('shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', getCollateralStatusPillClass(collateral.status))}>
+                                {formatCollateralStatusLabel(collateral.status)}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 truncate text-[11px] text-muted-foreground/70">
+                              {[typeLabel, sizeLabel].filter(Boolean).join(' · ')}
                             </p>
                           </div>
 
-                          <div className="space-y-3">
-                            <div className="rounded-2xl border border-[#E1E9FF] bg-[#F9FBFF] px-3.5 py-3 dark:border-border dark:bg-slate-900/50">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                                Specifications
-                              </p>
-                              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                                <p>
-                                  Size:{' '}
-                                  <span className="font-medium text-foreground/90">
-                                    {collateral.customSizeLabel ||
-                                      collateral.sizeLabel ||
-                                      `${collateral.width || '-'} x ${collateral.height || '-'} ${collateral.unit || ''}`.trim()}
-                                  </span>
-                                </p>
-                                <p>
-                                  Orientation:{' '}
-                                  <span className="font-medium capitalize text-foreground/90">
-                                    {collateral.orientation || 'custom'}
-                                  </span>
-                                </p>
-                                <p>
-                                  Priority:{' '}
-                                  <span className="font-medium capitalize text-foreground/90">
-                                    {String(collateral.priority || 'normal').replace(/_/g, ' ')}
-                                  </span>
+                          {/* Right-side pills */}
+                          <div className="flex shrink-0 items-center gap-2">
+                            {effectiveDeadline && (
+                              <span className="hidden text-[11px] text-muted-foreground sm:block">
+                                {format(effectiveDeadline, 'dd MMM yy')}
+                              </span>
+                            )}
+                            {(collateral.referenceFiles?.length || 0) > 0 && (
+                              <span className="hidden rounded-full border border-[#D7E4FF] bg-white px-2 py-0.5 text-[10px] text-muted-foreground dark:border-border dark:bg-sidebar/60 sm:inline-flex">
+                                {collateral.referenceFiles?.length} refs
+                              </span>
+                            )}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <Select
+                                value={collateral.status}
+                                onValueChange={(value) =>
+                                  handleCollateralStatusChange(collateral.id, value as CollateralStatus)
+                                }
+                                disabled={!canUpdateCollateralStatus}
+                              >
+                                <SelectTrigger className="h-7 w-[136px] rounded-lg border-[#D7E4FF] bg-white px-2.5 text-[12px] shadow-none dark:border-border dark:bg-sidebar/60">
+                                  <SelectValue placeholder="Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="in_progress">In Progress</SelectItem>
+                                  <SelectItem value="submitted_for_review">Submitted for Review</SelectItem>
+                                  <SelectItem value="approved">Approved</SelectItem>
+                                  <SelectItem value="rework">Rework</SelectItem>
+                                  <SelectItem value="completed">Completed</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-transform', isExpanded && 'rotate-180')} />
+                          </div>
+                        </div>
+
+                        {/* Expanded details */}
+                        {isExpanded && (
+                          <div className="border-t border-[#EEF2FF] bg-white/60 px-4 py-4 dark:border-border dark:bg-sidebar/30">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:gap-8">
+                              {/* Brief */}
+                              <div className="min-w-0 flex-1">
+                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Brief</p>
+                                <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/75">
+                                  {collateral.brief || <span className="italic text-muted-foreground/50">No brief added.</span>}
                                 </p>
                               </div>
-                            </div>
 
-                            <div className="rounded-2xl border border-[#E1E9FF] bg-[#F9FBFF] px-3.5 py-3 dark:border-border dark:bg-slate-900/50">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                                Delivery & References
-                              </p>
-                              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                                <p>
-                                  Deadline:{' '}
-                                  <span className="font-medium text-foreground/90">
-                                    {effectiveDeadline
-                                      ? format(effectiveDeadline, 'EEE, dd MMM yyyy')
-                                      : 'Not set'}
+                              {/* Specs — compact key/value list */}
+                              <div className="shrink-0 space-y-2.5 sm:w-48">
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Size</span>
+                                  <span className="text-right text-xs font-medium text-foreground/80">{sizeLabel || '—'}</span>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Orientation</span>
+                                  <span className="text-right text-xs font-medium capitalize text-foreground/80">{collateral.orientation || 'Custom'}</span>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Priority</span>
+                                  <span className="text-right text-xs font-medium capitalize text-foreground/80">{String(collateral.priority || 'normal').replace(/_/g, ' ')}</span>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Deadline</span>
+                                  <span className="text-right text-xs font-medium text-foreground/80">
+                                    {effectiveDeadline ? format(effectiveDeadline, 'EEE, dd MMM yyyy') : 'Not set'}
                                   </span>
-                                </p>
-                                <p>
-                                  Reference files:{' '}
-                                  <span className="font-medium text-foreground/90">
-                                    {collateral.referenceFiles?.length || 0}
-                                  </span>
-                                </p>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">References</span>
+                                  <span className="text-right text-xs font-medium text-foreground/80">{collateral.referenceFiles?.length || 0} file{(collateral.referenceFiles?.length || 0) !== 1 ? 's' : ''}</span>
+                                </div>
                                 {collateral.assignedToName ? (
-                                  <p>
-                                    Owner:{' '}
-                                    <span className="font-medium text-foreground/90">
-                                      {collateral.assignedToName}
-                                    </span>
-                                  </p>
+                                  <div className="flex items-baseline justify-between gap-2">
+                                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Owner</span>
+                                    <span className="text-right text-xs font-medium text-foreground/80">{collateral.assignedToName}</span>
+                                  </div>
                                 ) : null}
                               </div>
                             </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     );
                   })}
@@ -7028,13 +7962,11 @@ export default function TaskDetail() {
                       <SelectValue placeholder="Select new status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
                       <SelectItem value="in_progress">In Progress</SelectItem>
                       <SelectItem value="clarification_required">
                         Clarification Required
                       </SelectItem>
                       <SelectItem value="under_review">Under Review</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
                     </SelectContent>
                   </Select>
                   <Button
@@ -7087,6 +8019,9 @@ export default function TaskDetail() {
               </div>
             </div> */}
 
+            {/* 60/40 split: Job+Chat (60%) + Progress (40%) */}
+            <div className="grid gap-5 items-start xl:grid-cols-[3fr_2fr]">
+            <div className="space-y-5">
             {/* Job Requirement File */}
             <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Job Requirement File</h2>
@@ -8088,16 +9023,32 @@ export default function TaskDetail() {
                   </div>
                   {(normalizedTaskStatus !== 'completed' || hasPendingFinalFiles) && (
                     <div className="mt-4 flex flex-col items-center gap-2">
-                      <Button
-                        onClick={handleHandoverTask}
-                        disabled={!canHandover}
-                        className="min-w-[180px] px-6"
-                      >
-                        {submitActionLabel}
-                      </Button>
-                      <span className="text-xs text-muted-foreground">
-                        {submitActionHint}
-                      </span>
+                      {hasPendingFinalFiles ? (
+                        <>
+                          <Button
+                            onClick={handleHandoverTask}
+                            disabled={!canHandover}
+                            className="min-w-[180px] px-6"
+                          >
+                            {submitActionLabel}
+                          </Button>
+                          <span className="text-center text-xs text-muted-foreground">
+                            {submitActionHint}
+                          </span>
+                        </>
+                      ) : finalDeliverableReviewStatus === 'pending' ? (
+                        <span className="text-center text-xs font-medium text-muted-foreground">
+                          The latest final submission is under review.
+                        </span>
+                      ) : finalDeliverableReviewStatus === 'rejected' ? (
+                        <span className="text-center text-xs font-medium text-muted-foreground">
+                          Upload updated files or add a new link to submit the next revision.
+                        </span>
+                      ) : hasFinalDeliverables ? (
+                        <span className="text-center text-xs font-medium text-muted-foreground">
+                          Final approval will move this task to completed.
+                        </span>
+                      ) : null}
                     </div>
                   )}
                 </>
@@ -8354,7 +9305,7 @@ export default function TaskDetail() {
           </div>
 
           {/* Right Column - Metadata */}
-          <div className="space-y-6">
+          <div className={`space-y-6 ${isCampaignRequest ? "hidden" : ""}`}>
             {/* Task Info */}
             <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Details</h2>
@@ -8661,90 +9612,212 @@ export default function TaskDetail() {
               </div>
             )}
 
+            </div>
+            {/* Progress Tracker — 40% */}
+            <div className="space-y-5">
             {/* Status Timeline */}
-            <div className={`${glassPanelClass} p-5 overflow-hidden animate-slide-up`}>
-              <h2 className="font-semibold text-foreground mb-4">Status</h2>
-              {(() => {
-                const steps: DisplayTaskStatus[] = [
-                  'pending',
-                  'assigned',
-                  'accepted',
-                  'in_progress',
-                  'clarification_required',
-                  'under_review',
-                  'completed',
-                ];
-                const currentIndex = steps.indexOf(normalizedTaskStatus);
-                return (
-                  <div className="space-y-3">
-                    {steps.map((step, index) => {
-                      const isCurrent = index === currentIndex;
-                      const isPast = index < currentIndex;
-                      return (
-                        <div key={step} className="flex items-start gap-3">
-                          <div className="relative flex flex-col items-center">
-                            <div className="relative flex h-9 w-9 items-center justify-center overflow-visible">
-                              {isPast ? (
-                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/85 text-white dark:bg-primary/80 dark:shadow-none">
-                                  <Check className="h-3.5 w-3.5" />
-                                </span>
-                              ) : isCurrent ? (
-                                <DotLottieReact
-                                  src="https://lottie.host/31b5d829-4d1f-42a6-ba16-3560e550c0ac/KTsiywVfWC.lottie"
-                                  loop
-                                  autoplay
-                                  className="pointer-events-none absolute left-1/2 top-1/2 h-[2.7rem] w-[2.7rem] -translate-x-[52%] -translate-y-1/2"
-                                />
-                              ) : (
-                                <span className="h-6 w-6 rounded-full border-2 border-[#D9E6FF] bg-white dark:border-slate-500/80 dark:bg-slate-800" />
-                              )}
-                            </div>
-                            {index !== steps.length - 1 && (
-                              <div
-                                className={cn(
-                                  'mt-1 h-7 w-px rounded-full',
-                                  isPast
-                                    ? 'bg-primary/75 dark:bg-primary/55'
-                                    : 'bg-[#D9E6FF] dark:bg-slate-700/70'
-                                )}
-                              />
+            <div className={`${glassPanelClass} overflow-hidden p-5 animate-slide-up`}>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Delivery Workflow
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-semibold text-foreground">
+                      {statusConfig[normalizedTaskStatus].label}
+                    </h2>
+                    <span className="inline-flex items-center rounded-full border border-[#D7E3FF] bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-[#35508A] dark:border-border dark:bg-muted/70 dark:text-slate-200">
+                      Step {deliveryStepIndex + 1} of {TASK_STATUS_STEPS.length}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {statusDetails[normalizedTaskStatus]}
+                  </p>
+                </div>
+                <div className="min-w-[10rem] flex-1 sm:max-w-[12rem]">
+                  <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    <span>Progress</span>
+                    <span>{deliveryProgressPercent}%</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#E4EBF7] dark:bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#3657C9] via-[#4F6EE0] to-[#7FA3FF] transition-all duration-300 ease-out"
+                      style={{ width: `${deliveryProgressPercent}%` }}
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#DCE5FB] bg-white/70 px-2.5 py-1 text-[11px] font-medium text-[#52627F] dark:border-border dark:bg-muted/70 dark:text-slate-300">
+                      <User className="h-3.5 w-3.5" />
+                      {workflowAssigneeLabel}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#DCE5FB] bg-white/70 px-2.5 py-1 text-[11px] font-medium text-[#52627F] dark:border-border dark:bg-muted/70 dark:text-slate-300">
+                      <Clock className="h-3.5 w-3.5" />
+                      {workflowUpdatedLabel}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6">
+                {TASK_STATUS_STEPS.map((step, index) => {
+                  const isCurrent = index === deliveryStepIndex;
+                  const isPast = index < deliveryStepIndex;
+                  const isUpcoming = index > deliveryStepIndex;
+
+                  return (
+                    <div key={step} className="grid grid-cols-[2.75rem_minmax(0,1fr)] gap-3">
+                      <div className="relative flex justify-center">
+                        <span
+                          className={cn(
+                            'relative z-[1] mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition-colors',
+                            isPast
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/35 dark:bg-emerald-950/30 dark:text-emerald-300'
+                              : isCurrent
+                                ? 'border-[#3657C9] bg-[#3657C9] text-white shadow-[0_0_0_4px_rgba(54,87,201,0.12)] dark:border-[#6C8DFF] dark:bg-[#4E6FE0] dark:shadow-[0_0_0_4px_rgba(108,141,255,0.18)]'
+                                : 'border-[#D7E3FF] bg-white text-[#7A8EBA] dark:border-slate-600/70 dark:bg-slate-900 dark:text-slate-300'
+                          )}
+                        >
+                          {isPast ? <Check className="h-4 w-4" /> : index + 1}
+                        </span>
+                        {index !== TASK_STATUS_STEPS.length - 1 && (
+                          <span
+                            className={cn(
+                              'absolute left-1/2 top-9 h-[calc(100%-1.25rem)] w-px -translate-x-1/2 rounded-full',
+                              isPast
+                                ? 'bg-emerald-200/90 dark:bg-emerald-500/30'
+                                : isCurrent
+                                  ? 'bg-gradient-to-b from-[#3657C9]/50 to-[#D7E3FF] dark:from-[#6C8DFF]/55 dark:to-slate-700'
+                                  : 'bg-[#DDE7FB] dark:bg-slate-700/80'
                             )}
-                          </div>
-                          <div className={cn(changeHistoryCardClass, 'w-full min-w-0 flex-1 px-3 py-2')}>
-                            <div
+                          />
+                        )}
+                      </div>
+
+                      <div className={cn(index === TASK_STATUS_STEPS.length - 1 ? 'pb-0' : 'pb-5')}>
+                        <div
+                          className={cn(
+                            'rounded-2xl border px-4 py-3 transition-colors',
+                            isCurrent
+                              ? 'border-[#C7D7FF] bg-white/88 shadow-[0_10px_30px_-24px_rgba(54,87,201,0.65)] dark:border-[#4E6FE0]/60 dark:bg-slate-900/80'
+                              : isPast
+                                ? 'border-emerald-100 bg-emerald-50/55 dark:border-emerald-500/25 dark:bg-emerald-950/20'
+                                : 'border-[#E2E9F8] bg-white/55 dark:border-slate-700/70 dark:bg-slate-900/40'
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p
+                                  className={cn(
+                                    'text-sm font-semibold',
+                                    isCurrent
+                                      ? 'text-foreground'
+                                      : isPast
+                                        ? 'text-slate-700 dark:text-slate-200'
+                                        : 'text-muted-foreground'
+                                  )}
+                                >
+                                  {statusConfig[step].label}
+                                </p>
+                                {isCurrent ? (
+                                  <span className="inline-flex items-center rounded-full border border-[#C7D7FF] bg-[#EEF4FF] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#3657C9] dark:border-[#4E6FE0]/50 dark:bg-[#24345F] dark:text-[#C8D7FF]">
+                                    Active
+                                  </span>
+                                ) : isPast ? (
+                                  <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-600 dark:border-emerald-500/35 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                    Done
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p
+                                className={cn(
+                                  'mt-1 text-xs leading-relaxed',
+                                  isCurrent
+                                    ? 'text-muted-foreground'
+                                    : isUpcoming
+                                      ? 'text-muted-foreground/70'
+                                      : 'text-muted-foreground/85'
+                                )}
+                              >
+                                {statusDetails[step]}
+                              </p>
+                            </div>
+                            <span
                               className={cn(
-                                'min-w-0 text-[13px] font-semibold leading-tight',
+                                'shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em]',
                                 isCurrent
-                                  ? 'text-foreground dark:text-slate-100'
+                                  ? 'text-[#3657C9] dark:text-[#C8D7FF]'
                                   : isPast
-                                    ? 'text-muted-foreground dark:text-slate-300'
-                                    : 'text-muted-foreground/60 dark:text-slate-300'
+                                    ? 'text-emerald-600 dark:text-emerald-300'
+                                    : 'text-muted-foreground/70'
                               )}
                             >
-                              {statusConfig[step].label}
-                            </div>
-                            <div
-                              className={cn(
-                                'mt-1 text-[11px] leading-relaxed',
-                                isCurrent
-                                  ? 'text-muted-foreground dark:text-slate-300'
-                                  : isPast
-                                    ? 'text-muted-foreground/80 dark:text-slate-400'
-                                    : 'text-muted-foreground/60 dark:text-slate-400'
-                              )}
-                            >
-                              {statusDetails[step]}
-                            </div>
+                              {isCurrent ? 'Current' : isPast ? 'Completed' : `Step ${index + 1}`}
+                            </span>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {showWorkflowInsights ? (
+                <div className="mt-5 border-t border-[#DCE5FB] pt-4 dark:border-border/70">
+                  {secondaryWorkflowSignals.length > 0 ? (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        Review & Approval
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {secondaryWorkflowSignals.map((signal) => (
+                          <div
+                            key={signal.key}
+                            className={cn(
+                              'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-medium',
+                              signal.className
+                            )}
+                          >
+                            <span className="uppercase tracking-[0.14em] opacity-70">{signal.label}</span>
+                            <span className="font-semibold">{signal.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {isCampaignRequest ? (
+                    <div className={cn('grid gap-3', secondaryWorkflowSignals.length > 0 ? 'mt-4' : '')}>
+                      <div className="rounded-2xl border border-[#DCE5FB] bg-white/72 px-4 py-3 dark:border-border dark:bg-card/70">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              Campaign Progress
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-foreground">
+                              {campaignCompletedCollaterals} / {collateralItems.length} collateral items completed
+                            </p>
+                          </div>
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            {collateralCompletionPercent}%
+                          </span>
+                        </div>
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E4EBF7] dark:bg-slate-800">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-[#3657C9] via-[#4F6EE0] to-[#7FA3FF] transition-all duration-300 ease-out"
+                            style={{ width: `${collateralCompletionPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
             </div>
           </div>
         </div>
+      </div>
       </div>
       <ImageAnnotationDialog
         open={annotationDialogOpen}
@@ -8795,12 +9868,12 @@ export default function TaskDetail() {
           <div className="px-7 pb-7 pt-5 text-center">
             <DialogHeader className="text-center sm:text-center">
               <DialogTitle className="text-2xl font-bold text-foreground premium-headline">
-                Thank you!
+                Submission received
               </DialogTitle>
               <DialogDescription className="mt-2.5 text-sm text-muted-foreground">
-                The handover has been successfully submitted.
+                The final deliverables were submitted successfully.
                 <br />
-                The requester will be notified shortly.
+                The reviewer will be notified shortly.
               </DialogDescription>
             </DialogHeader>
             <Button className="mt-8 w-full" onClick={handleHandoverClose}>

@@ -269,6 +269,32 @@ const BUILDER_STEPS: Array<{
   },
 ];
 
+const SINGLE_REQUEST_STEPS: Array<{
+  label: string;
+  title: string;
+  description: string;
+  icon: typeof BriefcaseBusiness;
+}> = [
+  {
+    label: '01',
+    title: 'Request Details',
+    description: 'Define the creative, requester, and deadline.',
+    icon: FileText,
+  },
+  {
+    label: '02',
+    title: 'Files',
+    description: 'Attach references and source material.',
+    icon: Paperclip,
+  },
+  {
+    label: '03',
+    title: 'Review & Submit',
+    description: 'Confirm the request before sending it.',
+    icon: ListChecks,
+  },
+];
+
 const REQUEST_TYPE_OPTIONS: Array<{
   value: RequestType;
   tag: string;
@@ -1198,6 +1224,39 @@ export default function NewRequest() {
       singleDeadline,
     ]
   );
+  const singleDetailsValidationMessage = useMemo(() => {
+    if (!requestTitle.trim()) return 'Creative title is required.';
+    if (!department.trim()) return 'Department is required.';
+    if (!overallBrief.trim()) return 'Creative brief is required.';
+    if (!singleCategory) return 'Select a creative category.';
+    if (!normalizeIndianPhone(requesterPhone)) return 'Enter a valid 10-digit contact number.';
+    if (!singleDeadline) return 'Set a deadline for this request.';
+    if (startOfDay(singleDeadline) < minDeadlineDate) {
+      return 'Deadline must be at least 3 working days from today.';
+    }
+    return '';
+  }, [
+    department,
+    overallBrief,
+    requestTitle,
+    requesterPhone,
+    singleCategory,
+    singleDeadline,
+  ]);
+  const singleFilesValidationMessage = useMemo(() => {
+    if (hasUploadingFiles(masterAttachments)) {
+      return 'Wait for file uploads to finish before continuing.';
+    }
+    if (hasErroredFiles(masterAttachments)) {
+      return 'Resolve file upload errors before continuing.';
+    }
+    return '';
+  }, [masterAttachments]);
+  const singleRequestCurrentStepIndex = singleDetailsValidationMessage
+    ? 0
+    : singleFilesValidationMessage
+      ? 1
+      : 2;
 
   const validationMessages: Record<BuilderStepId, string> = {
     campaign: campaignValidationMessage,
@@ -1590,16 +1649,14 @@ export default function NewRequest() {
     'border-input bg-background shadow-none focus-visible:ring-ring/30 focus-visible:ring-offset-0';
   const glassCardClass =
     'rounded-[24px] border border-[#CEDBFF]/35 bg-[linear-gradient(135deg,rgba(255,255,255,0.12),rgba(243,247,255,0.16),rgba(231,239,255,0.12))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(243,247,255,0.12),rgba(231,239,255,0.08))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:backdrop-blur-[24px]';
-  const glassStatCardClass =
-    'rounded-2xl border border-[#D7E2FF]/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.66),rgba(245,248,255,0.76))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.44),rgba(245,248,255,0.56))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:supports-[backdrop-filter]:bg-sidebar-accent/62 dark:backdrop-blur-[24px]';
   const builderSurfaceClass =
-    'rounded-[24px] border border-border/70 bg-white dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:backdrop-blur-[24px]';
+    'rounded-[24px] border border-border/70 bg-white dark:border-sidebar-border dark:bg-sidebar-accent dark:[background-image:none]';
   const builderInsetCardClass =
     'rounded-2xl border border-border/70 bg-background/70 dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:supports-[backdrop-filter]:bg-sidebar-accent/62 dark:backdrop-blur-[24px]';
   const builderFooterClass =
-    'relative border-t border-[#E7EEFF]/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.56),rgba(243,247,255,0.74))] px-5 py-3 supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.34),rgba(243,247,255,0.5))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar-accent/70 dark:supports-[backdrop-filter]:bg-sidebar-accent/58 dark:backdrop-blur-[24px]';
+    'relative border-t border-[#E7EEFF]/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.56),rgba(243,247,255,0.74))] px-5 py-3 supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.34),rgba(243,247,255,0.5))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none]';
   const builderSecondaryActionClass =
-    'h-10 rounded-[14px] border border-[#D7E2FF]/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(242,246,255,0.92))] px-4 text-[13px] font-semibold text-[#223067] shadow-[0_12px_24px_-22px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.74),rgba(242,246,255,0.66))] backdrop-blur-md transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF]/92 hover:text-[#1E2A5A] hover:shadow-[0_16px_30px_-22px_rgba(59,99,204,0.28)] dark:border-sidebar-border dark:bg-sidebar-accent/80 dark:text-sidebar-foreground dark:supports-[backdrop-filter]:bg-sidebar-accent/66 dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-primary/28 dark:hover:text-white';
+    'h-10 rounded-[14px] border border-[#D7E2FF]/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(242,246,255,0.92))] px-4 text-[13px] font-semibold text-[#223067] shadow-[0_12px_24px_-22px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.74),rgba(242,246,255,0.66))] backdrop-blur-md transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF]/92 hover:text-[#1E2A5A] hover:shadow-[0_16px_30px_-22px_rgba(59,99,204,0.28)] dark:border-sidebar-border dark:bg-sidebar/60 dark:[background-image:none] dark:text-sidebar-foreground dark:shadow-none dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-accent dark:hover:text-white';
   const builderValidationClass =
     'mb-3 flex items-center gap-3 rounded-[18px] border border-[#D9E6FF]/75 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.16),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,249,255,0.92),rgba(236,243,255,0.84))] px-3.5 py-3 text-sm text-foreground shadow-[0_18px_45px_-30px_rgba(37,99,235,0.2)] supports-[backdrop-filter]:bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.78),rgba(245,249,255,0.72),rgba(236,243,255,0.62))] backdrop-blur-md ring-1 ring-white/70 dark:border-[#253D78]/90 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.16),transparent_30%),linear-gradient(135deg,rgba(8,16,39,0.96),rgba(10,22,49,0.92),rgba(12,27,59,0.88))] dark:text-slate-100 dark:ring-white/5 dark:shadow-[0_22px_56px_-32px_rgba(2,8,23,0.95)]';
   const suggestionPopoverClass =
@@ -1607,7 +1664,7 @@ export default function NewRequest() {
   const suggestionItemClass =
     'group flex w-full items-center gap-2 rounded-[18px] border px-3.5 py-3 text-left transition-all duration-200';
   const requestFieldClass =
-    'h-11 rounded-xl border-[#D9E6FF] bg-white/90 px-3 text-sm text-[#1E2A44] shadow-none transition-colors placeholder:text-[13px] placeholder:text-[#8090B2] focus-visible:border-[#BDD0FF] focus-visible:ring-0 dark:border-border dark:bg-card/90 dark:text-slate-100';
+    'h-11 rounded-xl border-[#D9E6FF] bg-white/90 px-3 text-sm text-[#1E2A44] shadow-none transition-colors placeholder:text-[13px] placeholder:text-[#8090B2] focus-visible:border-[#BDD0FF] focus-visible:ring-0 dark:border-sidebar-border dark:bg-sidebar/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-sidebar-ring/50';
   const requestFieldWithIconClass = cn(
     requestFieldClass,
     'pl-12 pr-3.5'
@@ -1615,15 +1672,15 @@ export default function NewRequest() {
   const requestFieldIconClass =
     'pointer-events-none absolute left-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200';
   const requestSelectTriggerClass =
-    'h-11 rounded-xl border-[#D9E6FF] bg-white/90 px-3 text-left text-sm text-[#1E2A44] shadow-none transition-colors focus:ring-0 dark:border-border dark:bg-card/90 dark:text-slate-100';
+    'h-11 rounded-xl border-[#D9E6FF] bg-white/90 px-3 text-left text-sm text-[#1E2A44] shadow-none transition-colors focus:ring-0 dark:border-sidebar-border dark:bg-sidebar/60 dark:text-slate-100';
   const requestSelectContentClass =
     'rounded-xl border-[#D9E6FF] bg-white/95 p-1.5 shadow-lg dark:border-border dark:bg-card/95';
   const requestSelectItemClass =
     'rounded-lg pl-9 pr-3 data-[state=checked]:bg-primary/15 data-[state=checked]:text-[#1E2A5A] data-[state=checked]:font-semibold';
   const requestTextareaClass =
-    'min-h-[132px] rounded-xl border-[#D9E6FF] bg-white/90 px-4 py-3 text-sm text-[#1E2A44] shadow-none transition-colors placeholder:text-[13px] placeholder:text-[#8090B2] focus-visible:border-[#BDD0FF] focus-visible:ring-0 dark:border-border dark:bg-card/90 dark:text-slate-100';
+    'min-h-[132px] rounded-xl border-[#D9E6FF] bg-white/90 px-4 py-3 text-sm text-[#1E2A44] shadow-none transition-colors placeholder:text-[13px] placeholder:text-[#8090B2] focus-visible:border-[#BDD0FF] focus-visible:ring-0 dark:border-sidebar-border dark:bg-sidebar/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-sidebar-ring/50';
   const phoneFieldShellClass =
-    'group flex h-11 items-center gap-2 rounded-xl border border-[#D9E6FF] bg-white/90 px-3 shadow-none transition-colors duration-200 focus-within:border-[#BDD0FF] dark:border-border dark:bg-card/90';
+    'group flex h-11 items-center gap-2 rounded-xl border border-[#D9E6FF] bg-white/90 px-3 shadow-none transition-colors duration-200 focus-within:border-[#BDD0FF] dark:border-sidebar-border dark:bg-sidebar/60 dark:focus-within:border-sidebar-ring/50';
   const requesterPhoneLocal = getIndianPhoneLocalDigits(requesterPhone);
   const selectedSingleCategoryOption = SINGLE_REQUEST_CATEGORY_OPTIONS.find(
     (option) => option.value === singleCategory
@@ -1775,8 +1832,8 @@ export default function NewRequest() {
           <Phone className="h-4 w-4" />
         </div>
         <div className="h-5 w-px shrink-0 bg-[#D8E2FF] dark:bg-sidebar-border" />
-        <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#DCE6FF] bg-[#F8FAFF] px-2.5 py-1 text-[12px] font-semibold tracking-[0.08em] text-[#415896] dark:border-sidebar-border dark:bg-sidebar/74 dark:text-slate-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#5E7BDA] dark:bg-slate-300" />
+        <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#DCE6FF] bg-[#F8FAFF] px-2.5 py-1 text-[12px] font-semibold tracking-[0.08em] text-[#415896] dark:border-sidebar-border/70 dark:bg-sidebar-accent dark:text-slate-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#5E7BDA] dark:bg-sidebar-primary" />
           +91
         </div>
         <input
@@ -1912,7 +1969,7 @@ export default function NewRequest() {
 
             {deadlineMode === 'itemized' ? (
               <p className="mt-0.5 text-[11px] leading-[14px] text-primary md:col-start-2">
-                Each collateral item has its own deadline — set it inside each item in the next step.
+                Set deadlines per item in the next step.
               </p>
             ) : (
               <p className="mt-0.5 text-[11px] leading-[14px] text-muted-foreground md:col-start-2">
@@ -1963,7 +2020,13 @@ export default function NewRequest() {
                   minDeadline={minDeadlineInputValue}
                   onChange={(next) =>
                     setCollaterals((previous) =>
-                      previous.map((item) => (item.id === collateral.id ? next : item))
+                      previous.map((item) =>
+                        item.id === collateral.id
+                          ? typeof next === 'function'
+                            ? next(item)
+                            : next
+                          : item
+                      )
                     )
                   }
                   onRemove={() => {
@@ -1979,196 +2042,154 @@ export default function NewRequest() {
     }
 
     return (
-      <section className="space-y-6">
-        <section className={cn(glassCardClass, 'p-6')}>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-2xl">
-              <p className="text-xs uppercase tracking-[0.18em] text-primary">Review Summary</p>
-              <h2 className="mt-3 text-2xl font-semibold text-foreground">{requestTitle.trim() || 'Campaign request'}</h2>
-              <p className="mt-3 text-sm text-muted-foreground">
-                This submission will create one parent campaign suite with separate collateral
-                items for designers to track and update individually.
-              </p>
-            </div>
+      <section className="space-y-4">
+        {/* Request hero */}
+        <div className={cn(glassCardClass, 'px-6 py-5')}>
+          <p className="text-xl font-semibold tracking-[-0.02em] text-foreground">
+            {requestTitle.trim() || 'Campaign request'}
+          </p>
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
+            <span>{summary.collateralCount} {summary.collateralCount === 1 ? 'Deliverable' : 'Deliverables'}</span>
+            <span className="opacity-30">•</span>
+            <span>{summary.totalReferenceCount} {summary.totalReferenceCount === 1 ? 'Reference' : 'References'}</span>
+            <span className="opacity-30">•</span>
+            <span>Deadline: {summary.effectiveDeadline ? format(summary.effectiveDeadline, 'dd MMM yyyy') : 'Not set'}</span>
+          </p>
+        </div>
 
-            <div className="grid w-full gap-3 sm:grid-cols-3 lg:max-w-xl">
-              <div className={cn(glassStatCardClass, 'px-4 py-3')}>
-                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Collaterals</p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{summary.collateralCount}</p>
-              </div>
-              <div className={cn(glassStatCardClass, 'px-4 py-3')}>
-                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">References</p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{summary.totalReferenceCount}</p>
-              </div>
-              <div className={cn(glassStatCardClass, 'px-4 py-3')}>
-                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Deadline</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">
-                  {summary.effectiveDeadline
-                    ? format(summary.effectiveDeadline, 'EEE, dd MMM yyyy')
-                    : 'Not set'}
-                </p>
-              </div>
+        {/* Request Details */}
+        <section className={cn(glassCardClass, 'overflow-hidden')}>
+          <div className="flex items-center justify-between gap-3 px-6 py-4">
+            <h3 className="text-sm font-semibold text-foreground">Request Details</h3>
+            <Button type="button" variant="ghost" size="sm" className="h-8 px-3 text-xs" onClick={() => setCurrentStep('campaign')}>
+              Edit
+            </Button>
+          </div>
+          <div className="divide-y divide-[#E8EEFF]/60 dark:divide-sidebar-border/60">
+            <div className="flex items-baseline gap-4 px-6 py-2.5">
+              <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Title</span>
+              <span className="text-sm text-foreground">{requestTitle || '-'}</span>
+            </div>
+            <div className="flex items-baseline gap-4 px-6 py-2.5">
+              <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Department</span>
+              <span className="text-sm text-foreground">{department || '-'}</span>
+            </div>
+            <div className="flex items-baseline gap-4 px-6 py-2.5">
+              <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Contact</span>
+              <span className="text-sm text-foreground">{requesterPhone || '-'}</span>
+            </div>
+            <div className="flex items-baseline gap-4 px-6 py-2.5">
+              <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Deadline</span>
+              <span className="text-sm text-foreground">
+                {deadlineMode === 'common'
+                  ? (commonDeadline ? format(commonDeadline, 'EEE, dd MMM yyyy') : 'Not set')
+                  : 'Individual per item'}
+              </span>
+            </div>
+            <div className="px-6 py-2.5">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Brief</span>
+              <p className="mt-1 text-sm leading-6 text-foreground">{overallBrief || '-'}</p>
             </div>
           </div>
         </section>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-6">
-            <section className={cn(glassCardClass, 'p-6')}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">Campaign Details</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Shared campaign data visible across all collateral items.
-                  </p>
-                </div>
-                <Button type="button" variant="ghost" onClick={() => setCurrentStep('campaign')}>
-                  Edit
-                </Button>
-              </div>
-
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Title</p>
-                  <p className="mt-2 text-sm font-medium text-foreground">{requestTitle || '-'}</p>
-                </div>
-                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Department</p>
-                  <p className="mt-2 text-sm font-medium text-foreground">{department || '-'}</p>
-                </div>
-                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Contact Number</p>
-                  <p className="mt-2 text-sm font-medium text-foreground">{requesterPhone || '-'}</p>
-                </div>
-                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Deadline Mode</p>
-                  <p className="mt-2 text-sm font-medium capitalize text-foreground">
-                    {deadlineMode === 'common' ? 'Common deadline' : 'Individual item deadlines'}
-                  </p>
-                </div>
-                <div className={cn(glassStatCardClass, 'px-4 py-3 md:col-span-2')}>
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Overall Brief</p>
-                  <p className="mt-2 text-sm leading-6 text-foreground">{overallBrief || '-'}</p>
-                </div>
-              </div>
-            </section>
-
-            <section className={cn(glassCardClass, 'p-6')}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">Collateral Queue</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Designer tracking will happen item by item after submission.
-                  </p>
-                </div>
-                <Button type="button" variant="ghost" onClick={() => setCurrentStep('collaterals')}>
-                  Edit
-                </Button>
-              </div>
-
-              <div className="mt-5 space-y-3">
-                {collaterals.map((collateral) => (
-                  <div
-                    key={collateral.id}
-                    className={cn(glassStatCardClass, 'px-4 py-4')}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-sm font-semibold text-foreground">
-                            {getCollateralDisplayName(collateral)}
-                          </h4>
-                          <Badge variant="secondary">
-                            {formatCollateralStatusLabel(collateral.status)}
-                          </Badge>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {(collateral.presetLabel || collateral.collateralType) + ' | '}
-                          {getCollateralSizeSummary(collateral)}
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant="outline">
-                          {formatCollateralPriorityLabel(collateral.priority)}
-                        </Badge>
-                        <Badge variant="outline">
-                          {deadlineMode === 'common'
-                            ? commonDeadline
-                              ? format(commonDeadline, 'dd MMM yyyy')
-                              : 'No deadline'
-                            : collateral.deadline
-                              ? format(collateral.deadline, 'dd MMM yyyy')
-                              : 'No deadline'}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                      {collateral.brief || 'No item brief added yet.'}
-                    </p>
-
-                    <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                      <span>{collateral.platform || 'No platform'}</span>
-                      <span>{collateral.usageType || 'No usage type'}</span>
-                      <span>{collateral.referenceFiles.length} item references</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+        {/* References */}
+        <section className={cn(glassCardClass, 'overflow-hidden')}>
+          <div className="flex items-center justify-between gap-3 px-6 py-4">
+            <h3 className="text-sm font-semibold text-foreground">References</h3>
+            <Button type="button" variant="ghost" size="sm" className="h-8 px-3 text-xs" onClick={() => setCurrentStep('timeline')}>
+              Edit
+            </Button>
           </div>
+          <div className="divide-y divide-[#E8EEFF]/60 dark:divide-sidebar-border/60">
+            <div className="flex items-center gap-4 px-6 py-2.5">
+              <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Master</span>
+              <span className={cn('text-sm', summary.masterReferenceCount > 0 ? 'text-foreground' : 'text-muted-foreground')}>
+                {summary.masterReferenceCount} {summary.masterReferenceCount === 1 ? 'file' : 'files'}
+              </span>
+            </div>
+            <div className="flex items-center gap-4 px-6 py-2.5">
+              <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Item</span>
+              <span className={cn('text-sm', summary.collateralReferenceCount > 0 ? 'text-foreground' : 'text-muted-foreground')}>
+                {summary.collateralReferenceCount} {summary.collateralReferenceCount === 1 ? 'file' : 'files'}
+              </span>
+            </div>
+          </div>
+        </section>
 
-          <aside className="space-y-6">
-            <section className={cn(glassCardClass, 'p-6')}>
-              <div className="flex items-center justify-between gap-3">
+        {/* Deliverables */}
+        <section className={cn(glassCardClass, 'overflow-hidden')}>
+          <div className="flex items-center justify-between gap-3 px-6 py-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Deliverables{' '}
+              <span className="font-normal text-muted-foreground">({collaterals.length})</span>
+            </h3>
+            <Button type="button" variant="ghost" size="sm" className="h-8 px-3 text-xs" onClick={() => setCurrentStep('collaterals')}>
+              Edit
+            </Button>
+          </div>
+          <div className="divide-y divide-[#E8EEFF]/60 dark:divide-sidebar-border/60">
+            {collaterals.map((collateral) => (
+              <div key={collateral.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-3">
                 <div>
-                  <h3 className="text-lg font-semibold text-foreground">Files & Timing</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Shared references and the request timing logic.
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {getCollateralDisplayName(collateral as never)}
+                    </span>
+                    <Badge variant="secondary" className="rounded-md px-2 py-0.5 text-[10px]">
+                      {formatCollateralStatusLabel(collateral.status)}
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {collateral.presetLabel || collateral.collateralType} • {getCollateralSizeSummary(collateral as never)}
+                    {collateral.referenceFiles.length > 0 && ` • ${collateral.referenceFiles.length} references`}
                   </p>
                 </div>
-                <Button type="button" variant="ghost" onClick={() => setCurrentStep('timeline')}>
-                  Edit
-                </Button>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge variant="outline" className="rounded-md px-2 py-0.5 text-[10px]">
+                    {formatCollateralPriorityLabel(collateral.priority)}
+                  </Badge>
+                  <Badge variant="outline" className="rounded-md px-2 py-0.5 text-[10px]">
+                    {deadlineMode === 'common'
+                      ? commonDeadline ? format(commonDeadline, 'dd MMM yyyy') : 'No deadline'
+                      : collateral.deadline ? format(collateral.deadline, 'dd MMM yyyy') : 'No deadline'}
+                  </Badge>
+                </div>
               </div>
+            ))}
+          </div>
+        </section>
 
-              <div className="mt-5 grid gap-3">
-                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Effective Deadline</p>
-                  <p className="mt-2 text-sm font-medium text-foreground">
-                    {summary.effectiveDeadline
-                      ? format(summary.effectiveDeadline, 'EEE, dd MMM yyyy')
-                      : 'Not set'}
-                  </p>
-                </div>
-                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Master References</p>
-                  <p className="mt-2 text-sm font-medium text-foreground">
-                    {summary.masterReferenceCount} uploaded
-                  </p>
-                </div>
-                <div className={cn(glassStatCardClass, 'px-4 py-3')}>
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Item References</p>
-                  <p className="mt-2 text-sm font-medium text-foreground">
-                    {summary.collateralReferenceCount} uploaded
-                  </p>
-                </div>
-              </div>
-            </section>
-
-            <section className={cn(glassCardClass, 'p-6')}>
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Paperclip className="h-4 w-4 text-primary" />
-                Final Checks
-              </div>
-              <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
-                <li>At least one master or item-level reference must be attached.</li>
-                <li>Common deadline applies to every item when selected.</li>
-                <li>After submission, designers will update each collateral status separately.</li>
-              </ul>
-            </section>
-          </aside>
+        {/* Before you submit */}
+        <div className="flex items-start gap-3 rounded-[16px] border border-[#DDEAFF]/70 bg-[#F5F9FF]/80 px-4 py-4 dark:border-sidebar-border dark:bg-sidebar-accent/60">
+          <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-sidebar/60 dark:text-sidebar-foreground/70">
+            <Paperclip className="h-3.5 w-3.5" />
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary dark:text-sidebar-foreground/60">
+              Before you submit
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              <li className="flex items-start gap-2 text-sm text-muted-foreground">
+                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
+                At least one reference is required
+              </li>
+              <li className="flex items-start gap-2 text-sm text-muted-foreground">
+                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
+                Deadline applies to all deliverables when common mode is selected
+              </li>
+              <li className="flex items-start gap-2 text-sm text-muted-foreground">
+                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
+                Status will be updated by the design team after submission
+              </li>
+            </ul>
+            {summary.totalReferenceCount === 0 && (
+              <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                No references added yet
+              </p>
+            )}
+          </div>
         </div>
       </section>
     );
@@ -2580,10 +2601,10 @@ export default function NewRequest() {
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
               <Button type="button" variant="outline" onClick={saveDraft}>
-                Save as draft
+                Save Draft
               </Button>
               <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
-                {isSubmitting ? 'Submitting...' : 'Submit Quick Design'}
+                {isSubmitting ? 'Submitting...' : 'Submit Request'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
@@ -2646,12 +2667,12 @@ export default function NewRequest() {
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
             <Button type="button" variant="outline" onClick={saveDraft}>
-              Save as draft
+              Save Draft
             </Button>
 
             {currentStep === 'review' ? (
               <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
-                {isSubmitting ? 'Submitting...' : 'Submit Campaign Suite'}
+                {isSubmitting ? 'Submitting...' : 'Submit Request'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
@@ -2723,10 +2744,10 @@ export default function NewRequest() {
 
         {selectedRequestType === 'campaign_request' ? (
           <>
-            <section ref={stepTrackerTourRef} className="relative overflow-hidden rounded-[22px] border border-[#C9D8FF]/55 bg-[linear-gradient(135deg,rgba(255,255,255,0.52),rgba(241,246,255,0.62),rgba(224,235,255,0.54))] px-4 py-3 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.34),rgba(241,246,255,0.42),rgba(224,235,255,0.36))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:supports-[backdrop-filter]:bg-sidebar/96 dark:backdrop-blur-[24px]">
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(87,118,255,0.07),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(56,85,190,0.07),transparent_30%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(59,91,190,0.14),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,91,190,0.1),transparent_24%)]" />
+            <section ref={stepTrackerTourRef} className="relative overflow-hidden rounded-[22px] border border-[#BDD0FF]/65 bg-gradient-to-br from-white/62 via-[#EBF2FF]/54 to-[#DCE8FF]/46 supports-[backdrop-filter]:from-white/42 supports-[backdrop-filter]:via-[#EBF2FF]/36 supports-[backdrop-filter]:to-[#DCE8FF]/30 backdrop-blur-2xl shadow-[inset_0_0_0_1px_rgba(255,255,255,0.62)] dark:border-sidebar-border/60 dark:bg-sidebar-accent dark:[background-image:none] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_15%_0%,rgba(87,118,255,0.10),transparent_48%),radial-gradient(ellipse_at_85%_100%,rgba(56,85,190,0.08),transparent_42%)] dark:bg-[radial-gradient(ellipse_at_15%_0%,rgba(99,124,255,0.12),transparent_45%),radial-gradient(ellipse_at_85%_100%,rgba(67,97,204,0.08),transparent_40%)]" />
               <div className="overflow-x-auto">
-                <ol className="relative flex min-w-[760px] items-center">
+                <ol className="relative flex min-w-[760px] items-center px-1.5 py-1.5">
                   {BUILDER_STEPS.map((step, index) => {
                     const isCurrent = step.id === currentStep;
                     const isComplete = index < currentStepIndex && !validationMessages[step.id];
@@ -2744,55 +2765,57 @@ export default function NewRequest() {
                           type="button"
                           onClick={() => handleStepChange(step.id)}
                           className={cn(
-                            'flex min-w-0 flex-1 items-center gap-3 rounded-[18px] px-3 py-2.5 text-left backdrop-blur-md transition-all duration-150',
+                            'group flex min-w-0 flex-1 items-center gap-3 rounded-[16px] px-3.5 py-2.5 text-left transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
                             isCurrent &&
-                              'bg-[linear-gradient(135deg,rgba(255,255,255,0.32),rgba(234,241,255,0.42),rgba(212,225,255,0.24))] shadow-[inset_0_0_0_1px_rgba(67,97,204,0.12)] dark:border dark:border-sidebar-ring/40 dark:bg-sidebar-primary dark:[background-image:none] dark:text-sidebar-primary-foreground dark:shadow-[0_18px_40px_-28px_rgba(29,78,216,0.42)]',
+                              'bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] shadow-[inset_0_1px_0_rgba(255,255,255,0.28),inset_0_0_0_1px_rgba(255,255,255,0.12)] text-white',
                             isComplete &&
-                              'bg-[linear-gradient(135deg,rgba(255,255,255,0.26),rgba(240,245,255,0.34))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)] dark:border dark:border-sidebar-border dark:bg-sidebar-accent dark:[background-image:none] dark:text-sidebar-foreground',
+                              'bg-[linear-gradient(135deg,rgba(255,255,255,0.38),rgba(240,246,255,0.44))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.72)] dark:bg-white/[0.07] dark:[background-image:none] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)]',
                             !isCurrent &&
                               !isComplete &&
-                              'bg-white/18 dark:border dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none] dark:text-sidebar-foreground',
+                              'bg-white/14 dark:bg-transparent',
                             isUnlocked
                               ? isCurrent
-                                ? 'hover:border-[#314a8e] hover:brightness-105'
-                                : 'hover:bg-white/30 dark:hover:border-sidebar-ring/30 dark:hover:bg-sidebar-accent'
-                              : 'cursor-not-allowed opacity-70'
+                                ? 'hover:brightness-[1.04]'
+                                : 'hover:bg-white/32 dark:hover:bg-sidebar-accent/55'
+                              : 'cursor-not-allowed opacity-45'
                           )}
                           disabled={!isUnlocked}
                         >
                           <div
                             className={cn(
-                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold backdrop-blur-sm',
+                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-all duration-200',
                               isCurrent &&
-                                'border-primary bg-primary text-primary-foreground dark:border-sidebar-primary dark:bg-sidebar-primary dark:text-sidebar-primary-foreground',
+                                'bg-white/22 text-white ring-1 ring-white/35 backdrop-blur-sm dark:bg-white/14 dark:ring-white/20',
                               isComplete &&
-                                'border-primary bg-primary text-primary-foreground dark:border-sidebar-primary dark:bg-sidebar-primary dark:text-sidebar-primary-foreground',
+                                'bg-[linear-gradient(135deg,#22c55e,#16a34a)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]',
                               !isCurrent &&
                                 !isComplete &&
-                                'border-white/70 bg-white/70 text-muted-foreground dark:border-sidebar-border dark:bg-sidebar-accent dark:text-sidebar-foreground'
+                                'border border-[#C5D6FF]/85 bg-white/65 text-muted-foreground dark:border-sidebar-border dark:bg-sidebar dark:text-sidebar-foreground/45'
                             )}
                           >
-                            {isComplete ? <Check className="h-4 w-4" /> : step.label}
+                            {isComplete ? <Check className="h-4 w-4" strokeWidth={2.5} /> : step.label}
                           </div>
 
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                               <StepIcon
                                 className={cn(
                                   'h-3.5 w-3.5 shrink-0',
                                   isCurrent
-                                    ? 'text-primary dark:text-sidebar-primary-foreground'
+                                    ? 'text-white/85'
                                     : isComplete
-                                      ? 'text-primary dark:text-sidebar-primary-foreground'
-                                      : 'text-muted-foreground dark:text-sidebar-foreground/70'
+                                      ? 'text-muted-foreground/70 dark:text-sidebar-foreground/60'
+                                      : 'text-muted-foreground/55 dark:text-sidebar-foreground/45'
                                 )}
                               />
                               <p
                                 className={cn(
-                                  'truncate text-[13px] font-semibold text-foreground',
+                                  'truncate text-[13px] font-semibold',
                                   isCurrent
-                                    ? 'dark:text-sidebar-primary-foreground'
-                                    : 'dark:text-sidebar-foreground'
+                                    ? 'text-white'
+                                    : isComplete
+                                      ? 'text-foreground dark:text-sidebar-foreground'
+                                      : 'text-muted-foreground/80 dark:text-sidebar-foreground/50'
                                 )}
                               >
                                 {step.title}
@@ -2800,10 +2823,12 @@ export default function NewRequest() {
                             </div>
                             <p
                               className={cn(
-                                'mt-0.5 text-[10.5px] leading-4 text-muted-foreground',
+                                'mt-0.5 text-[10.5px] font-medium leading-4',
                                 isCurrent
-                                  ? 'dark:text-sidebar-primary-foreground/75'
-                                  : 'dark:text-sidebar-foreground/60'
+                                  ? 'text-white/75'
+                                  : isComplete
+                                    ? 'text-muted-foreground/55 dark:text-sidebar-foreground/50'
+                                    : 'text-muted-foreground/50 dark:text-sidebar-foreground/38'
                               )}
                             >
                               {trackingLabel}
@@ -2812,15 +2837,11 @@ export default function NewRequest() {
                         </button>
 
                         {index < BUILDER_STEPS.length - 1 ? (
-                          <div className="mx-2 h-px w-10 flex-none bg-[#D8E3FF]/90 lg:w-14 dark:bg-sidebar-border">
-                            <div
-                              className={cn(
-                                'h-full w-full',
-                                index < currentStepIndex
-                                  ? 'bg-[linear-gradient(90deg,rgba(56,85,190,0.95),rgba(96,124,255,0.92))] dark:bg-sidebar-primary dark:[background-image:none]'
-                                  : 'bg-[#D8E3FF]/90 dark:bg-sidebar-border'
-                              )}
-                            />
+                          <div className="relative mx-2 h-[2px] w-10 flex-none overflow-hidden rounded-full lg:w-14">
+                            <div className="absolute inset-0 bg-[#D4E2FF]/70 dark:bg-sidebar-border/50" />
+                            {index < currentStepIndex && (
+                              <div className="absolute inset-0 bg-gradient-to-r from-[#A5BEFF] to-[#C4D4FF] dark:from-sidebar-primary dark:to-sidebar-primary dark:[background-image:none]" />
+                            )}
                           </div>
                         ) : null}
                       </li>
@@ -2840,7 +2861,104 @@ export default function NewRequest() {
             )}
           </>
         ) : selectedRequestType === 'single_task' ? (
-          singleRequestPanel
+          <>
+            <section className="relative overflow-hidden rounded-[22px] border border-[#BDD0FF]/65 bg-gradient-to-br from-white/62 via-[#EBF2FF]/54 to-[#DCE8FF]/46 supports-[backdrop-filter]:from-white/42 supports-[backdrop-filter]:via-[#EBF2FF]/36 supports-[backdrop-filter]:to-[#DCE8FF]/30 backdrop-blur-2xl shadow-[inset_0_0_0_1px_rgba(255,255,255,0.62)] dark:border-sidebar-border/60 dark:bg-sidebar-accent dark:[background-image:none] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_15%_0%,rgba(87,118,255,0.10),transparent_48%),radial-gradient(ellipse_at_85%_100%,rgba(56,85,190,0.08),transparent_42%)] dark:bg-[radial-gradient(ellipse_at_15%_0%,rgba(99,124,255,0.12),transparent_45%),radial-gradient(ellipse_at_85%_100%,rgba(67,97,204,0.08),transparent_40%)]" />
+              <div className="overflow-x-auto">
+                <ol className="relative flex min-w-[620px] items-center px-1.5 py-1.5">
+                  {SINGLE_REQUEST_STEPS.map((step, index) => {
+                    const isCurrent = index === singleRequestCurrentStepIndex;
+                    const isComplete = index < singleRequestCurrentStepIndex;
+                    const StepIcon = step.icon;
+                    const trackingLabel = isComplete
+                      ? 'Completed'
+                      : isCurrent
+                        ? 'Current step'
+                        : 'Upcoming';
+
+                    return (
+                      <li key={step.label} className="flex min-w-0 flex-1 items-center">
+                        <div
+                          className={cn(
+                            'group flex min-w-0 flex-1 items-center gap-3 rounded-[16px] px-3.5 py-2.5 text-left transition-all duration-200',
+                            isCurrent &&
+                              'bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] shadow-[inset_0_1px_0_rgba(255,255,255,0.28),inset_0_0_0_1px_rgba(255,255,255,0.12)] text-white',
+                            isComplete &&
+                              'bg-[linear-gradient(135deg,rgba(255,255,255,0.38),rgba(240,246,255,0.44))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.72)] dark:bg-white/[0.07] dark:[background-image:none] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)]',
+                            !isCurrent && !isComplete && 'bg-white/14 dark:bg-transparent'
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-all duration-200',
+                              isCurrent &&
+                                'bg-white/22 text-white ring-1 ring-white/35 backdrop-blur-sm dark:bg-white/14 dark:ring-white/20',
+                              isComplete &&
+                                'bg-[linear-gradient(135deg,#22c55e,#16a34a)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]',
+                              !isCurrent &&
+                                !isComplete &&
+                                'border border-[#C5D6FF]/85 bg-white/65 text-muted-foreground dark:border-sidebar-border dark:bg-sidebar dark:text-sidebar-foreground/45'
+                            )}
+                          >
+                            {isComplete ? <Check className="h-4 w-4" strokeWidth={2.5} /> : step.label}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <StepIcon
+                                className={cn(
+                                  'h-3.5 w-3.5 shrink-0',
+                                  isCurrent
+                                    ? 'text-white/85'
+                                    : isComplete
+                                      ? 'text-muted-foreground/70 dark:text-sidebar-foreground/60'
+                                      : 'text-muted-foreground/55 dark:text-sidebar-foreground/45'
+                                )}
+                              />
+                              <p
+                                className={cn(
+                                  'truncate text-[13px] font-semibold',
+                                  isCurrent
+                                    ? 'text-white'
+                                    : isComplete
+                                      ? 'text-foreground dark:text-sidebar-foreground'
+                                      : 'text-muted-foreground/80 dark:text-sidebar-foreground/50'
+                                )}
+                              >
+                                {step.title}
+                              </p>
+                            </div>
+                            <p
+                              className={cn(
+                                'mt-0.5 text-[10.5px] font-medium leading-4',
+                                isCurrent
+                                  ? 'text-white/75'
+                                  : isComplete
+                                    ? 'text-muted-foreground/55 dark:text-sidebar-foreground/50'
+                                    : 'text-muted-foreground/50 dark:text-sidebar-foreground/38'
+                              )}
+                            >
+                              {trackingLabel}
+                            </p>
+                          </div>
+                        </div>
+
+                        {index < SINGLE_REQUEST_STEPS.length - 1 ? (
+                          <div className="relative mx-2 h-[2px] w-10 flex-none overflow-hidden rounded-full lg:w-14">
+                            <div className="absolute inset-0 bg-[#D4E2FF]/70 dark:bg-sidebar-border/50" />
+                            {index < singleRequestCurrentStepIndex && (
+                              <div className="absolute inset-0 bg-gradient-to-r from-[#A5BEFF] to-[#C4D4FF] dark:from-sidebar-primary dark:to-sidebar-primary dark:[background-image:none]" />
+                            )}
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            </section>
+            {singleRequestPanel}
+          </>
         ) : (
           requestTypeSelectionPanel
         )}
@@ -3047,4 +3165,3 @@ export default function NewRequest() {
     </DashboardLayout>
   );
 }
-

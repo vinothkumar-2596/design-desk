@@ -3036,9 +3036,12 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
     let task = req.task;
     task = await ensureFinalDeliverableVersions(task);
     const previousReviewState = resolveFinalDeliverableReviewState(task);
+    const previousTaskStatusLabel = String(task?.status || "");
+    const previousTaskStatus = normalizeValue(task?.status).replace(/[\s-]+/g, "_") || "pending";
     const uploadedAt = new Date();
     const reviewRequired = requiresMainDesignerFinalReview(req.user);
     const nextReviewStatus = reviewRequired ? "pending" : "approved";
+    const nextTaskStatus = reviewRequired ? "under_review" : "completed";
     const nextReviewedBy = reviewRequired ? "" : (resolvedUserName || req.user?.email || "");
     const nextReviewedAt = reviewRequired ? undefined : uploadedAt;
     const nextReviewNote = "";
@@ -3116,6 +3119,21 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
       userRole: userRole || "",
       createdAt: uploadedAt
     });
+    if (previousTaskStatus !== nextTaskStatus) {
+      changeEntries.push({
+        type: "status",
+        field: "task_status",
+        oldValue: previousTaskStatusLabel,
+        newValue: nextTaskStatus === "completed" ? "Completed" : "Under Review",
+        note: reviewRequired
+          ? `Delivery moved to review after final submission (v${nextVersion}).`
+          : `Final deliverables approved on upload (v${nextVersion}).`,
+        userId: userId || "",
+        userName: resolvedUserName || "",
+        userRole: userRole || "",
+        createdAt: uploadedAt
+      });
+    }
 
     const updateDoc = {
       $push: {
@@ -3124,6 +3142,7 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
         changeHistory: { $each: changeEntries }
       },
       $set: {
+        status: nextTaskStatus,
         updatedAt: uploadedAt,
         finalDeliverableReviewStatus: nextReviewStatus,
         finalDeliverableReviewedBy: nextReviewedBy,
@@ -3335,6 +3354,9 @@ router.post("/:id/final-deliverables/review", ensureTaskAccess, async (req, res)
     }
 
     const previousReviewState = resolveFinalDeliverableReviewState(task);
+    const previousTaskStatusLabel = String(task?.status || "");
+    const previousTaskStatus = normalizeValue(task?.status).replace(/[\s-]+/g, "_") || "pending";
+    const nextTaskStatus = decision === "approved" ? "completed" : "clarification_required";
     const reviewedAt = new Date();
     const reviewerName = req.user?.name || req.user?.email || "DesignLead";
     targetVersion.reviewStatus = decision;
@@ -3351,6 +3373,7 @@ router.post("/:id/final-deliverables/review", ensureTaskAccess, async (req, res)
       (decision === "rejected" && hasReviewAnnotations
         ? "Design Lead annotated the deliverables with requested updates."
         : "");
+    task.status = nextTaskStatus;
     task.updatedAt = reviewedAt;
     const annotationSummary = hasReviewAnnotations
       ? ` Includes ${reviewAnnotations.length} annotated file${reviewAnnotations.length === 1 ? "" : "s"}.`
@@ -3370,6 +3393,22 @@ router.post("/:id/final-deliverables/review", ensureTaskAccess, async (req, res)
       userRole: req.user?.role || "",
       createdAt: reviewedAt
     });
+    if (previousTaskStatus !== nextTaskStatus) {
+      task.changeHistory.push({
+        type: "status",
+        field: "task_status",
+        oldValue: previousTaskStatusLabel,
+        newValue: decision === "approved" ? "Completed" : "Clarification Required",
+        note:
+          decision === "approved"
+            ? `Delivery completed after Design Lead approval.`
+            : `Delivery moved back to clarification after Design Lead review.`,
+        userId: getUserId(req) || "",
+        userName: reviewerName,
+        userRole: req.user?.role || "",
+        createdAt: reviewedAt
+      });
+    }
     task.markModified("finalDeliverableVersions");
     task.markModified("changeHistory");
     await task.save();

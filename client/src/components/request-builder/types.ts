@@ -5,6 +5,7 @@ export type BuilderAttachment = {
   name: string;
   size: number;
   progress?: number;
+  localPreviewUrl?: string;
   url?: string;
   driveId?: string;
   webViewLink?: string;

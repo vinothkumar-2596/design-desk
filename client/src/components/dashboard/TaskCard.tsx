@@ -75,7 +75,7 @@ export function TaskCard({
   const categoryLabel = categoryLabels[task.category] || 'Design';
   const categoryChipLabel = truncateChipText(categoryLabel, 16);
   const chipBase =
-    'inline-flex items-center gap-1.5 rounded-full border border-[#C9D7FF] bg-[#F5F8FF] dark:bg-muted dark:border-border px-2.5 py-1 text-[11px] font-medium text-[#2F3A56] dark:text-foreground min-w-0 max-w-full leading-none';
+    'inline-flex items-center gap-1.5 rounded-full border border-[#D0DFFF] bg-[#F5F8FF] dark:bg-muted dark:border-border px-2.5 py-1 text-[11px] font-medium text-[#2F3A56] dark:text-foreground min-w-0 max-w-full leading-none';
   const chipLabel = 'min-w-0 max-w-[9.5rem] truncate';
   const chipCount =
     'ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-[#C9D7FF] bg-white dark:bg-card dark:border-border px-1 text-[10px] font-semibold text-[#2F3A56] dark:text-foreground shrink-0';
@@ -89,7 +89,7 @@ export function TaskCard({
     <span className={cn(chipBase, options?.className)} title={options?.title || label}>
       <Icon className={chipIcon} />
       <span className={chipLabel}>{label}</span>
-      <span className={chipCount}>{count}</span>
+      {count > 0 && <span className={chipCount}>{count}</span>}
     </span>
   );
   const isOverdue = isPast(task.deadline) && normalizedStatus !== 'completed';
@@ -195,15 +195,8 @@ export function TaskCard({
 
   return (
     <AnimatedCard
-      containerClassName={cn(
-        'h-full transition-all duration-300 dark:transition-none',
-        isHighlighted &&
-          'bg-[linear-gradient(135deg,rgba(99,102,241,0.7),rgba(56,189,248,0.58),rgba(244,114,182,0.68))] p-[1px] shadow-[0_0_0_1px_rgba(99,102,241,0.2)]'
-      )}
-      innerClassName={cn(
-        'h-full',
-        isHighlighted && 'border-transparent dark:border-transparent'
-      )}
+      containerClassName="h-full"
+      innerClassName="h-full"
       className="p-6 h-full flex flex-col"
     >
       <div className="mb-4 flex flex-wrap items-start gap-2">

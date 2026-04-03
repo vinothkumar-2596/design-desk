@@ -2,6 +2,8 @@ export type UserRole = 'designer' | 'staff' | 'treasurer';
 
 export type TaskStatus =
   | 'pending'
+  | 'assigned'
+  | 'accepted'
   | 'in_progress'
   | 'clarification_required'
   | 'under_review'

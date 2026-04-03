@@ -30,7 +30,7 @@ export function AnimatedCard({
         >
             <div
                 className={cn(
-                    "relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white transition-all duration-300 dark:border-border dark:bg-card",
+                    "relative overflow-hidden rounded-2xl border border-[#D0DFFF] bg-white transition-all duration-300 dark:border-border dark:bg-card",
                     innerClassName
                 )}
             >

@@ -302,7 +302,14 @@ export function CollateralPresetDialog({
                       <button
                         key="custom-format"
                         type="button"
-                        onClick={() => { onSelect(CUSTOM_PRESET); onOpenChange(false); }}
+                        onClick={() => {
+                          if (onSelectMany && selectedPresets.length > 0) {
+                            onSelectMany([...selectedPresets, CUSTOM_PRESET]);
+                          } else {
+                            onSelect(CUSTOM_PRESET);
+                          }
+                          onOpenChange(false);
+                        }}
                         className={cn(
                           'group flex items-center gap-4 rounded-xl border border-dashed p-4 text-left transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
                           dark

@@ -24,6 +24,8 @@ import { API_URL, authFetch } from '@/lib/api';
 
 const statusLabels: Record<TaskStatus, string> = {
   pending: 'Pending',
+  assigned: 'Assigned',
+  accepted: 'Accepted',
   in_progress: 'In Progress',
   clarification_required: 'Clarification',
   under_review: 'Under Review',
@@ -222,6 +224,8 @@ export default function Tasks() {
         },
         {
           pending: 0,
+          assigned: 0,
+          accepted: 0,
           in_progress: 0,
           clarification_required: 0,
           under_review: 0,
@@ -301,6 +305,8 @@ export default function Tasks() {
   const statusFilterOptions: Array<{ value: TaskStatus | 'all'; label: string; count: number }> = [
     { value: 'all', label: 'All', count: scopedTasks.length },
     { value: 'pending', label: 'Pending', count: statusCounts.pending },
+    { value: 'assigned', label: 'Assigned', count: statusCounts.assigned },
+    { value: 'accepted', label: 'Accepted', count: statusCounts.accepted },
     { value: 'in_progress', label: 'In Progress', count: statusCounts.in_progress },
     { value: 'under_review', label: 'Under Review', count: statusCounts.under_review },
     { value: 'clarification_required', label: 'Clarification', count: statusCounts.clarification_required },
