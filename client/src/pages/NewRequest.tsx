@@ -2338,18 +2338,23 @@ export default function NewRequest() {
   };
 
   const requestTypeSelectionPanel = (
-    <section className={cn(builderSurfaceClass, 'animate-fade-in overflow-hidden')}>
+    <section
+      className={cn(
+        builderSurfaceClass,
+        'animate-fade-in overflow-hidden dark:border-[#253D78]/90 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.96),rgba(10,22,49,0.94),rgba(12,27,59,0.9))] dark:shadow-[0_28px_70px_-36px_rgba(2,8,23,0.92)] dark:[background-image:none]'
+      )}
+    >
       <div className="border-b border-border/70 px-8 py-6 dark:border-[#253D78]/90">
         <Badge
           variant="outline"
-          className="rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-sidebar-border dark:bg-sidebar-accent/80"
+          className="rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-[#314778] dark:bg-[#101B38] dark:text-[#C7D6FF]"
         >
           Request Type
         </Badge>
-        <h2 className="mt-3 text-[24px] font-semibold text-foreground">
+        <h2 className="mt-3 text-[24px] font-semibold text-foreground dark:text-[#F5F8FF]">
           Select a Request Type
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground dark:text-[#9FB0D4]">
           Choose the option that best matches your requirement.
         </p>
       </div>
@@ -2363,32 +2368,32 @@ export default function NewRequest() {
               type="button"
               onClick={() => handleRequestTypeSelect(option.value)}
               className={cn(
-                'animate-slide-up group relative h-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white p-5 text-left shadow-[0_12px_28px_-24px_rgba(30,42,90,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#F8FBFF] hover:shadow-[0_18px_36px_-22px_rgba(30,42,90,0.22)] dark:border-sidebar-border dark:bg-sidebar-accent/78 dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-accent/84'
+                'animate-slide-up group relative h-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white p-5 text-left shadow-[0_12px_28px_-24px_rgba(30,42,90,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#F8FBFF] hover:shadow-[0_18px_36px_-22px_rgba(30,42,90,0.22)] dark:border-[#2A427A] dark:bg-[linear-gradient(180deg,rgba(10,18,40,0.98),rgba(11,24,52,0.95),rgba(13,29,63,0.92))] dark:shadow-[0_24px_56px_-32px_rgba(2,8,23,0.92)] dark:hover:border-[#4E6FE0]/55 dark:hover:bg-[linear-gradient(180deg,rgba(11,21,46,0.98),rgba(12,27,58,0.96),rgba(14,33,71,0.94))] dark:hover:shadow-[0_30px_64px_-34px_rgba(2,8,23,0.96)]'
               )}
               style={{ animationDelay: `${index * 90}ms` }}
             >
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.08),transparent_34%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.12),transparent_30%)]" />
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.08),transparent_34%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_30%)]" />
               <div className="relative flex min-h-[188px] flex-col">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#DDE7FF] bg-[#F7FAFF] text-primary transition-transform duration-300 group-hover:-translate-y-0.5 dark:border-sidebar-border dark:bg-sidebar/84 dark:text-slate-200">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#DDE7FF] bg-[#F7FAFF] text-primary transition-transform duration-300 group-hover:-translate-y-0.5 dark:border-[#314778] dark:bg-[#101B38] dark:text-[#D9E4FF]">
                     <OptionIcon className="h-5 w-5" />
                   </div>
-                  <span className="inline-flex rounded-full border border-[#DCE6FF] bg-[#FAFCFF] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5B73B2] dark:border-sidebar-border dark:bg-sidebar/72 dark:text-slate-300">
+                  <span className="inline-flex rounded-full border border-[#DCE6FF] bg-[#FAFCFF] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5B73B2] dark:border-[#314778] dark:bg-[#0F1935] dark:text-[#C3D1F5]">
                     {option.tag}
                   </span>
                 </div>
 
                 <div className="mt-4 flex-1 space-y-2">
-                  <h3 className="text-[17px] font-semibold tracking-[-0.02em] text-[#1E2A5A] dark:text-slate-100">
+                  <h3 className="text-[17px] font-semibold tracking-[-0.02em] text-[#1E2A5A] dark:text-[#F5F8FF]">
                     {option.label}
                   </h3>
-                  <p className="text-[14px] font-medium text-foreground/90 dark:text-slate-200">
+                  <p className="text-[14px] font-medium text-foreground/90 dark:text-[#C9D4EE]">
                     {option.description}
                   </p>
                 </div>
 
-                <div className="mt-4 flex items-center justify-end border-t border-[#E8EEFF] pt-4 dark:border-sidebar-border/80">
-                  <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-primary">
+                <div className="mt-4 flex items-center justify-end border-t border-[#E8EEFF] pt-4 dark:border-[#23396E]">
+                  <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-primary dark:text-[#C7D5FF]">
                     {option.cta}
                     <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
                   </div>
@@ -2402,7 +2407,7 @@ export default function NewRequest() {
   );
 
   const singleRequestPanel = (
-    <div className="mx-auto w-full max-w-4xl space-y-3">
+    <div className="w-full space-y-3">
       <section
         className={cn(
           glassCardClass,
@@ -2712,7 +2717,12 @@ export default function NewRequest() {
   return (
     <DashboardLayout fitContentHeight>
       <div className="mx-auto max-w-6xl space-y-6 pb-8">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div
+          className={cn(
+            'flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between',
+            selectedRequestType === 'single_task' && 'mx-auto w-full max-w-4xl'
+          )}
+        >
           <div className="max-w-[46rem]">
             {headerBadgeText ? (
               <Badge variant="outline" className="mb-3 rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-sidebar-border dark:bg-sidebar-accent/80">
@@ -2861,7 +2871,7 @@ export default function NewRequest() {
             )}
           </>
         ) : selectedRequestType === 'single_task' ? (
-          <>
+          <div className="mx-auto w-full max-w-4xl space-y-3">
             <section className="relative overflow-hidden rounded-[22px] border border-[#BDD0FF]/65 bg-gradient-to-br from-white/62 via-[#EBF2FF]/54 to-[#DCE8FF]/46 supports-[backdrop-filter]:from-white/42 supports-[backdrop-filter]:via-[#EBF2FF]/36 supports-[backdrop-filter]:to-[#DCE8FF]/30 backdrop-blur-2xl shadow-[inset_0_0_0_1px_rgba(255,255,255,0.62)] dark:border-sidebar-border/60 dark:bg-sidebar-accent dark:[background-image:none] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_15%_0%,rgba(87,118,255,0.10),transparent_48%),radial-gradient(ellipse_at_85%_100%,rgba(56,85,190,0.08),transparent_42%)] dark:bg-[radial-gradient(ellipse_at_15%_0%,rgba(99,124,255,0.12),transparent_45%),radial-gradient(ellipse_at_85%_100%,rgba(67,97,204,0.08),transparent_40%)]" />
               <div className="overflow-x-auto">
@@ -2958,7 +2968,7 @@ export default function NewRequest() {
               </div>
             </section>
             {singleRequestPanel}
-          </>
+          </div>
         ) : (
           requestTypeSelectionPanel
         )}

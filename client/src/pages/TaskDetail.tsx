@@ -6808,9 +6808,16 @@ export default function TaskDetail() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 gap-5 pt-1 xl:grid-cols-3">
+        <div
+          className={cn(
+            'grid grid-cols-1 gap-5 pt-1',
+            isCampaignRequest
+              ? 'xl:grid-cols-1'
+              : 'xl:grid-cols-[minmax(0,1.5fr)_minmax(20rem,0.95fr)] 2xl:grid-cols-[minmax(0,1.65fr)_minmax(22rem,0.9fr)]'
+          )}
+        >
           {/* Left Column - Details */}
-          <div className={`space-y-5 ${isCampaignRequest ? "xl:col-span-3" : "xl:col-span-2"}`}>
+          <div className="space-y-5">
             {/* Description — standalone for non-campaign tasks */}
             {!isCampaignRequest && (
               <div className={`${glassPanelClass} p-5 animate-slide-up`}>
@@ -9611,11 +9618,9 @@ export default function TaskDetail() {
                 </div>
               </div>
             )}
-
-            </div>
             {/* Progress Tracker — 40% */}
+            </div>
             <div className="space-y-5">
-            {/* Status Timeline */}
             <div className={`${glassPanelClass} overflow-hidden p-5 animate-slide-up`}>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -9744,7 +9749,7 @@ export default function TaskDetail() {
                             </div>
                             <span
                               className={cn(
-                                'shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em]',
+                                'hidden shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] 2xl:inline',
                                 isCurrent
                                   ? 'text-[#3657C9] dark:text-[#C8D7FF]'
                                   : isPast
