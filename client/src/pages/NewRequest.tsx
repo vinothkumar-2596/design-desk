@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { useLocation, useNavigate } from 'react-router-dom';
 import BoringAvatar from 'boring-avatars';
 import { toast } from '@/components/ui/sonner';
+import { SubmissionSuccessDialog } from '@/components/common/SubmissionSuccessDialog';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,13 +72,15 @@ import {
 } from 'lucide-react';
 
 type BuilderStepId = 'campaign' | 'timeline' | 'collaterals' | 'review';
-type BuilderTourStepId = 'tracker' | 'form' | 'sidebar' | 'actions';
+type BuilderTourStepId = 'campaign' | 'timeline' | 'collaterals' | 'review';
 type DepartmentHeadDirectoryEntry = {
   department: string;
   headName: string;
 };
 type BuilderTourStep = {
   id: BuilderTourStepId;
+  /** Which builder stage to navigate to when this tour step is active */
+  builderStage: BuilderStepId;
   eyebrow: string;
   title: string;
   description: string;
@@ -99,6 +102,13 @@ type TourSpotlight = {
   radius: number;
   card: TourCardPosition;
 };
+type SubmitSuccessState = {
+  requestType: RequestType;
+  storedLocally: boolean;
+  taskTitle: string;
+};
+
+type SingleRequestStepId = 'details' | 'files' | 'review';
 
 type BriefAvatarVariant =
   | 'marble'
@@ -326,7 +336,6 @@ const SINGLE_REQUEST_CATEGORY_OPTIONS: Array<{
   label: string;
   icon: typeof Layers3;
 }> = [
-  { value: 'campaign_or_others', label: 'Campaign or others', icon: Layers3 },
   { value: 'social_media_creative', label: 'Social Media Creative', icon: Megaphone },
   { value: 'banner', label: 'Banner', icon: FileImage },
   { value: 'flyer', label: 'Flyer', icon: FileText },
@@ -469,6 +478,9 @@ const hasUploadingFiles = (attachments: BuilderAttachment[]) =>
 
 const hasErroredFiles = (attachments: BuilderAttachment[]) =>
   attachments.some((attachment) => attachment.error);
+
+const getCompletedAttachmentCount = (attachments: BuilderAttachment[]) =>
+  attachments.filter((attachment) => !attachment.uploading && !attachment.error).length;
 
 const validateCampaignStep = ({
   title,
@@ -632,6 +644,9 @@ const validateSingleRequest = ({
   if (hasErroredFiles(attachments)) {
     return 'Resolve file upload errors before submitting.';
   }
+  if (getCompletedAttachmentCount(attachments) === 0) {
+    return 'Upload at least one attachment or reference file before submitting.';
+  }
   return '';
 };
 
@@ -687,9 +702,12 @@ export default function NewRequest() {
   const existingCollateralTypes = useMemo(() => collaterals.map((c) => c.collateralType), [collaterals]);
   const [currentStep, setCurrentStep] = useState<BuilderStepId>('campaign');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccessState, setSubmitSuccessState] = useState<SubmitSuccessState | null>(null);
   const [isPresetDialogOpen, setIsPresetDialogOpen] = useState(false);
   const [isDepartmentSuggestionOpen, setIsDepartmentSuggestionOpen] = useState(false);
   const [shouldRevealSingleValidation, setShouldRevealSingleValidation] = useState(false);
+  const [singleRequestActiveStep, setSingleRequestActiveStep] =
+    useState<SingleRequestStepId>('details');
   const [revealedValidationSteps, setRevealedValidationSteps] = useState<
     Partial<Record<BuilderStepId, boolean>>
   >({});
@@ -701,6 +719,10 @@ export default function NewRequest() {
   const formPanelTourRef = useRef<HTMLElement | null>(null);
   const sidebarTourRef = useRef<HTMLElement | null>(null);
   const footerActionsTourRef = useRef<HTMLDivElement | null>(null);
+  const lastScrolledStepRef = useRef<string | null>(null);
+  const prevSpotlightKeyRef = useRef<string>('');
+  const tourStepIndexRef = useRef(tourStepIndex);
+  tourStepIndexRef.current = tourStepIndex;
 
   const tourStorageKey = useMemo(() => {
     const userKey = String(
@@ -709,51 +731,61 @@ export default function NewRequest() {
     return `${NEW_REQUEST_TOUR_STORAGE_KEY_PREFIX}:${userKey}`;
   }, [user]);
 
+  const handleSubmitSuccessModalChange = (open: boolean) => {
+    if (open) return;
+    setSubmitSuccessState(null);
+    navigate('/my-requests');
+  };
+
   const builderTourSteps = useMemo<BuilderTourStep[]>(
     () => [
       {
-        id: 'tracker',
+        id: 'campaign',
+        builderStage: 'campaign',
         eyebrow: 'Step 1 of 4',
-        title: 'Follow the request flow',
+        title: 'Campaign Details',
         description:
-          'This builder is split into four stages so you always know what comes next.',
+          'Start here — add the campaign title, requester info, contact number, and a clear brief for the design team.',
         detail:
-          'Complete the active stage and the next one unlocks automatically.',
+          'A well-written brief reduces revision rounds and speeds up delivery.',
+        align: 'right',
+        icon: BriefcaseBusiness,
+      },
+      {
+        id: 'timeline',
+        builderStage: 'timeline',
+        eyebrow: 'Step 2 of 4',
+        title: 'Timeline & Files',
+        description:
+          'Set practical deadlines and upload any shared reference files the design team will need.',
+        detail:
+          'Clear timelines help prioritise work across campaigns.',
+        align: 'right',
+        icon: CalendarRange,
+      },
+      {
+        id: 'collaterals',
+        builderStage: 'collaterals',
+        eyebrow: 'Step 3 of 4',
+        title: 'Collateral Builder',
+        description:
+          'Add each deliverable — posters, social media assets, banners — with its own brief, size, and references.',
+        detail:
+          'Each item gets its own spec so nothing is missed during execution.',
+        align: 'right',
+        icon: Layers3,
+      },
+      {
+        id: 'review',
+        builderStage: 'review',
+        eyebrow: 'Step 4 of 4',
+        title: 'Review & Submit',
+        description:
+          'Review everything in one summary before submitting. You can go back to edit any section.',
+        detail:
+          'The review shows all details across every stage in one glance.',
         align: 'right',
         icon: ListChecks,
-      },
-      {
-        id: 'form',
-        eyebrow: 'Step 2 of 4',
-        title: 'Add the core brief',
-        description:
-          'Add the campaign title, requester details, contact number, and brief.',
-        detail:
-          'Keep it clear: audience, message, approvals, and references.',
-        align: 'right',
-        icon: ClipboardCheck,
-      },
-      {
-        id: 'sidebar',
-        eyebrow: 'Step 3 of 4',
-        title: 'Your design guide',
-        description:
-          'This panel explains what the design team needs and reduces vague requests.',
-        detail:
-          'It updates as the flow changes, coaching you without feeling heavy.',
-        align: 'left',
-        icon: BookOpen,
-      },
-      {
-        id: 'actions',
-        eyebrow: 'Step 4 of 4',
-        title: 'Save or continue',
-        description:
-          'Save a draft or continue when the required details are ready.',
-        detail:
-          'Validation appears only when required fields are missing.',
-        align: 'right',
-        icon: ArrowRight,
       },
     ],
     []
@@ -840,6 +872,9 @@ export default function NewRequest() {
   const handleDepartmentHeadSelection = (entry: DepartmentHeadDirectoryEntry) => {
     setDepartment(entry.headName);
     setIsDepartmentSuggestionOpen(false);
+    if (selectedRequestType === 'single_task') {
+      setSingleRequestActiveStep('details');
+    }
   };
 
   const handleDepartmentInputFocus = (event: React.FocusEvent<HTMLInputElement>) => {
@@ -897,8 +932,12 @@ export default function NewRequest() {
         draft.requestType === 'single_task' && draft.deadline
           ? new Date(draft.deadline)
           : minDeadlineDate;
+      const restoredSingleCategory =
+        draft.requestType === 'single_task' && draft.category !== 'campaign_or_others'
+          ? draft.category || ''
+          : '';
       setSelectedRequestType('single_task');
-      setSingleCategory(draft.requestType === 'single_task' ? draft.category || '' : '');
+      setSingleCategory(restoredSingleCategory);
       setSingleUrgency(draft.requestType === 'single_task' ? draft.urgency || 'normal' : 'normal');
       setSingleDeadline(draftDeadline);
       setDeadlineMode('common');
@@ -944,67 +983,53 @@ export default function NewRequest() {
   const completeTour = useCallback(() => {
     setIsTourOpen(false);
     setTourSpotlight(null);
+    lastScrolledStepRef.current = null;
+    // Return user to the first stage after the tour finishes
+    setCurrentStep('campaign');
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(tourStorageKey, '1');
     }
   }, [tourStorageKey]);
 
   const openTour = useCallback((nextStepIndex = 0) => {
+    lastScrolledStepRef.current = null;
     setCurrentStep('campaign');
     setTourStepIndex(nextStepIndex);
     setIsTourOpen(true);
   }, []);
 
+  // ── Tour: resolve target element for a given step ──
+  // All tour steps highlight the main form panel since each step navigates
+  // to a different builder stage — the form content changes with the stage.
   const resolveTourTarget = useCallback(
-    (stepId: BuilderTourStepId) => {
-      switch (stepId) {
-        case 'tracker':
-          return stepTrackerTourRef.current;
-        case 'form':
-          return formPanelTourRef.current;
-        case 'sidebar':
-          return sidebarTourRef.current;
-        case 'actions':
-          return footerActionsTourRef.current;
-        default:
-          return null;
-      }
+    (_stepId: BuilderTourStepId): HTMLElement | null => {
+      return formPanelTourRef.current;
     },
     []
   );
 
-  const syncTourSpotlight = useCallback(() => {
-    if (
-      selectedRequestType !== 'campaign_request' ||
-      !isTourOpen ||
-      !activeTourStep ||
-      typeof window === 'undefined'
-    ) {
-      setTourSpotlight(null);
-      return;
-    }
+  // ── Tour: compute & apply spotlight position ──
+  // Reads step index from a ref so it never goes stale inside the rAF loop.
+  const computeAndSetSpotlight = useCallback(() => {
+    if (typeof window === 'undefined') return;
 
-    const target = resolveTourTarget(activeTourStep.id);
+    const idx = tourStepIndexRef.current;
+    const step = builderTourSteps[idx];
+    if (!step) return;
+
+    const target = resolveTourTarget(step.id);
     if (!target) return;
 
     const rect = target.getBoundingClientRect();
-    // Tight padding that hugs the element closely
     const pad = 6;
     const spotW = Math.min(rect.width + pad * 2, window.innerWidth - 8);
     const spotH = Math.min(rect.height + pad * 2, window.innerHeight - 8);
     const spotL = Math.min(Math.max(4, rect.left - pad), window.innerWidth - spotW - 4);
     const spotT = Math.min(Math.max(4, rect.top - pad), window.innerHeight - spotH - 4);
 
-    // Match the actual border-radius of each target element
-    const radiusMap: Record<BuilderTourStepId, number> = {
-      tracker: 22, // rounded-[22px]
-      form: 24,    // rounded-[24px] from builderSurfaceClass
-      sidebar: 32, // rounded-[32px] from aside > section
-      actions: 0,  // footer div has no border-radius
-    };
-    const radius = (radiusMap[activeTourStep.id] ?? 16) + pad;
+    // All tour steps highlight the form panel (rounded-[24px])
+    const radius = 24 + pad;
 
-    // Compute card position adjacent to spotlight (Slack-style)
     const cardW = 370;
     const cardGap = 18;
     const vw = window.innerWidth;
@@ -1020,30 +1045,31 @@ export default function NewRequest() {
     const spaceBelow = vh - (spotT + spotH);
 
     if (spaceRight >= cardW + cardGap + 12) {
-      // Place card to the right of spotlight
       cardLeft = spotL + spotW + cardGap;
       cardTop = Math.min(Math.max(16, spotT), vh - 320);
       arrowSide = 'left';
       arrowOffset = Math.min(Math.max(28, (spotT + spotH / 2) - cardTop), 280);
     } else if (spaceLeft >= cardW + cardGap + 12) {
-      // Place card to the left of spotlight
       cardLeft = spotL - cardW - cardGap;
       cardTop = Math.min(Math.max(16, spotT), vh - 320);
       arrowSide = 'right';
       arrowOffset = Math.min(Math.max(28, (spotT + spotH / 2) - cardTop), 280);
     } else if (spaceBelow >= 200) {
-      // Place card below spotlight
       cardTop = spotT + spotH + cardGap;
       cardLeft = Math.min(Math.max(16, spotL + spotW / 2 - cardW / 2), vw - cardW - 16);
       arrowSide = 'top';
       arrowOffset = Math.min(Math.max(28, (spotL + spotW / 2) - cardLeft), cardW - 28);
     } else {
-      // Place card above spotlight
       cardTop = Math.max(16, spotT - 300 - cardGap);
       cardLeft = Math.min(Math.max(16, spotL + spotW / 2 - cardW / 2), vw - cardW - 16);
       arrowSide = 'bottom';
       arrowOffset = Math.min(Math.max(28, (spotL + spotW / 2) - cardLeft), cardW - 28);
     }
+
+    // Skip state update if position didn't change (avoids 60fps re-renders)
+    const key = `${step.id}|${Math.round(spotT)}|${Math.round(spotL)}|${Math.round(spotW)}|${Math.round(spotH)}|${arrowSide}`;
+    if (key === prevSpotlightKeyRef.current) return;
+    prevSpotlightKeyRef.current = key;
 
     setTourSpotlight({
       top: spotT,
@@ -1053,8 +1079,9 @@ export default function NewRequest() {
       radius,
       card: { top: cardTop, left: cardLeft, arrowSide, arrowOffset },
     });
-  }, [activeTourStep, isTourOpen, resolveTourTarget, selectedRequestType]);
+  }, [builderTourSteps, resolveTourTarget]);
 
+  // ── Tour: auto-trigger on first visit ──
   useEffect(() => {
     if (selectedRequestType !== 'campaign_request') return;
     if (typeof window === 'undefined' || didRestoreDraft) return;
@@ -1068,21 +1095,38 @@ export default function NewRequest() {
     return () => window.clearTimeout(timeoutId);
   }, [didRestoreDraft, selectedRequestType, tourStorageKey]);
 
+  // ── Tour: navigate to the correct builder stage + scroll into view ──
   useEffect(() => {
-    if (selectedRequestType !== 'campaign_request') return;
-    if (!isTourOpen || !activeTourStep || typeof window === 'undefined') return;
+    if (!isTourOpen || typeof window === 'undefined') return;
+    const step = builderTourSteps[tourStepIndex];
+    if (!step) return;
 
-    const target = resolveTourTarget(activeTourStep.id);
-    target?.scrollIntoView({
-      behavior: 'smooth',
-      block: activeTourStep.id === 'tracker' ? 'nearest' : 'center',
-      inline: 'nearest',
-    });
+    // Only act once per step
+    if (lastScrolledStepRef.current === step.id) return;
+    lastScrolledStepRef.current = step.id;
 
-    const frameId = window.requestAnimationFrame(syncTourSpotlight);
-    return () => window.cancelAnimationFrame(frameId);
-  }, [activeTourStep, isTourOpen, resolveTourTarget, selectedRequestType, syncTourSpotlight]);
+    // Navigate to the builder stage this tour step describes
+    setCurrentStep(step.builderStage);
 
+    // Wait for React to render the new stage content, then scroll
+    const timerId = window.setTimeout(() => {
+      const target = resolveTourTarget(step.id);
+      if (target) {
+        target.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest',
+        });
+      }
+    }, 80);
+
+    return () => window.clearTimeout(timerId);
+  }, [builderTourSteps, isTourOpen, resolveTourTarget, tourStepIndex]);
+
+  // ── Tour: main rAF loop + keyboard + cleanup ──
+  // This single effect runs the entire time the tour is open.
+  // It does NOT depend on tourStepIndex or activeTourStep —
+  // computeAndSetSpotlight reads from tourStepIndexRef so it's never stale.
   useEffect(() => {
     if (selectedRequestType !== 'campaign_request') {
       setIsTourOpen(false);
@@ -1091,39 +1135,43 @@ export default function NewRequest() {
     }
     if (!isTourOpen || typeof window === 'undefined') return;
 
-    const update = () => window.requestAnimationFrame(syncTourSpotlight);
+    let alive = true;
+    let rafId: number | undefined;
+
+    const tick = () => {
+      if (!alive) return;
+      computeAndSetSpotlight();
+      rafId = window.requestAnimationFrame(tick);
+    };
+    rafId = window.requestAnimationFrame(tick);
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         completeTour();
         return;
       }
-
       if (event.key === 'ArrowRight') {
-        setTourStepIndex((current) => Math.min(current + 1, builderTourSteps.length - 1));
+        setTourStepIndex((c) => Math.min(c + 1, builderTourSteps.length - 1));
         return;
       }
-
       if (event.key === 'ArrowLeft') {
-        setTourStepIndex((current) => Math.max(current - 1, 0));
+        setTourStepIndex((c) => Math.max(c - 1, 0));
       }
     };
 
-    update();
-    window.addEventListener('resize', update);
-    document.addEventListener('scroll', update, true);
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      window.removeEventListener('resize', update);
-      document.removeEventListener('scroll', update, true);
+      alive = false;
+      if (rafId !== undefined) window.cancelAnimationFrame(rafId);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [
     builderTourSteps.length,
     completeTour,
+    computeAndSetSpotlight,
     isTourOpen,
     selectedRequestType,
-    syncTourSpotlight,
   ]);
 
   const summary = useMemo(() => {
@@ -1250,13 +1298,18 @@ export default function NewRequest() {
     if (hasErroredFiles(masterAttachments)) {
       return 'Resolve file upload errors before continuing.';
     }
+    if (getCompletedAttachmentCount(masterAttachments) === 0) {
+      return 'Upload at least one attachment or reference file before continuing.';
+    }
     return '';
   }, [masterAttachments]);
-  const singleRequestCurrentStepIndex = singleDetailsValidationMessage
-    ? 0
-    : singleFilesValidationMessage
-      ? 1
-      : 2;
+  const singleCompletedAttachmentCount = useMemo(
+    () => getCompletedAttachmentCount(masterAttachments),
+    [masterAttachments]
+  );
+  const singleFilesStepComplete = singleCompletedAttachmentCount > 0;
+  const singleRequestCurrentStepIndex =
+    singleRequestActiveStep === 'files' ? 1 : singleRequestActiveStep === 'review' ? 2 : 0;
 
   const validationMessages: Record<BuilderStepId, string> = {
     campaign: campaignValidationMessage,
@@ -1373,6 +1426,18 @@ export default function NewRequest() {
     }
   };
 
+  const openSubmitSuccessModal = (
+    requestType: RequestType,
+    taskTitle: string,
+    storedLocally = false
+  ) => {
+    setSubmitSuccessState({
+      requestType,
+      taskTitle,
+      storedLocally,
+    });
+  };
+
   const handleSubmit = async () => {
     if (!selectedRequestType) {
       toast.error('Choose a request type first.');
@@ -1392,8 +1457,11 @@ export default function NewRequest() {
 
       if (validationMessage) {
         setShouldRevealSingleValidation(true);
+        setSingleRequestActiveStep(singleDetailsValidationMessage ? 'details' : 'files');
         return;
       }
+
+      setSingleRequestActiveStep('review');
 
       const normalizedPhone = normalizeIndianPhone(requesterPhone);
       const payload = {
@@ -1434,8 +1502,7 @@ export default function NewRequest() {
         }
         window.dispatchEvent(new CustomEvent('designhub:request:new', { detail: data }));
         clearRequestDraft(user);
-        toast.success('Single creative request submitted.');
-        navigate('/my-requests');
+        openSubmitSuccessModal('single_task', requestTitle.trim() || 'Quick Design Request');
         return;
       } catch (error) {
         const now = new Date();
@@ -1444,7 +1511,7 @@ export default function NewRequest() {
           requestType: 'single_task',
           title: requestTitle.trim(),
           description: overallBrief.trim(),
-          category: singleCategory || 'campaign_or_others',
+          category: singleCategory || 'social_media_creative',
           urgency: singleUrgency,
           status: 'pending',
           requesterId: user?.id || '',
@@ -1477,12 +1544,7 @@ export default function NewRequest() {
         upsertLocalTask(fallbackTask);
         clearRequestDraft(user);
         window.dispatchEvent(new CustomEvent('designhub:request:new', { detail: fallbackTask }));
-        toast.success(
-          error instanceof Error && error.message !== 'API unavailable'
-            ? `${error.message} Saved locally instead.`
-            : 'API unavailable. Request saved locally instead.'
-        );
-        navigate('/my-requests');
+        openSubmitSuccessModal('single_task', fallbackTask.title, true);
       } finally {
         setIsSubmitting(false);
       }
@@ -1584,8 +1646,7 @@ export default function NewRequest() {
       }
       window.dispatchEvent(new CustomEvent('designhub:request:new', { detail: data }));
       clearRequestDraft(user);
-      toast.success('Campaign request submitted.');
-      navigate('/my-requests');
+      openSubmitSuccessModal('campaign_request', requestTitle.trim() || 'Campaign Request');
       return;
     } catch (error) {
       const now = new Date();
@@ -1634,12 +1695,7 @@ export default function NewRequest() {
       upsertLocalTask(fallbackTask);
       clearRequestDraft(user);
       window.dispatchEvent(new CustomEvent('designhub:request:new', { detail: fallbackTask }));
-      toast.success(
-        error instanceof Error && error.message !== 'API unavailable'
-          ? `${error.message} Saved locally instead.`
-          : 'API unavailable. Request saved locally instead.'
-      );
-      navigate('/my-requests');
+      openSubmitSuccessModal('campaign_request', fallbackTask.title, true);
     } finally {
       setIsSubmitting(false);
     }
@@ -1649,6 +1705,18 @@ export default function NewRequest() {
     'border-input bg-background shadow-none focus-visible:ring-ring/30 focus-visible:ring-offset-0';
   const glassCardClass =
     'rounded-[24px] border border-[#CEDBFF]/35 bg-[linear-gradient(135deg,rgba(255,255,255,0.12),rgba(243,247,255,0.16),rgba(231,239,255,0.12))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(243,247,255,0.12),rgba(231,239,255,0.08))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:backdrop-blur-[24px]';
+  const reviewSurfaceClass =
+    'rounded-[24px] border border-[#CEDBFF]/35 bg-white/80 supports-[backdrop-filter]:bg-white/62 backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:backdrop-blur-[24px]';
+  const reviewDenseCardClass =
+    'overflow-hidden rounded-[18px] border border-[#D8E4FF]/80 bg-white/84 supports-[backdrop-filter]:bg-white/66 shadow-none backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:shadow-none dark:backdrop-blur-[24px]';
+  const reviewDenseLabelClass =
+    'text-[12px] font-medium leading-[1.35] text-muted-foreground';
+  const reviewDenseValueClass =
+    'text-[14px] font-medium leading-[1.4] text-foreground';
+  const reviewDenseChipClass =
+    'inline-flex items-center rounded-full border border-[#D8E4FF]/90 bg-[#F8FBFF]/90 px-3 py-1 text-[12px] font-medium leading-none text-[#33446F] dark:border-sidebar-border dark:bg-sidebar-accent/72 dark:text-sidebar-foreground';
+  const reviewDenseTableHeaderClass =
+    'text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground';
   const builderSurfaceClass =
     'rounded-[24px] border border-border/70 bg-white dark:border-sidebar-border dark:bg-sidebar-accent dark:[background-image:none]';
   const builderInsetCardClass =
@@ -1695,6 +1763,7 @@ export default function NewRequest() {
   const handleRequestTypeSelect = (nextType: RequestType) => {
     setSelectedRequestType(nextType);
     setShouldRevealSingleValidation(false);
+    setSingleRequestActiveStep('details');
     navigate(
       nextType === 'single_task' ? '/new-request/quick-design' : '/new-request/campaign-suite'
     );
@@ -1710,6 +1779,7 @@ export default function NewRequest() {
   const resetRequestTypeSelection = () => {
     setSelectedRequestType(null);
     setShouldRevealSingleValidation(false);
+    setSingleRequestActiveStep('details');
     setIsPresetDialogOpen(false);
     setIsTourOpen(false);
     setTourSpotlight(null);
@@ -2042,23 +2112,230 @@ export default function NewRequest() {
     }
 
     return (
-      <section className="space-y-4">
+      <section className="space-y-3">
+        <div className={cn(reviewDenseCardClass, 'px-5 py-4')}>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <p className="truncate text-[18px] font-semibold leading-[1.3] tracking-[-0.02em] text-foreground">
+                {requestTitle.trim() || 'Campaign request'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={reviewDenseChipClass}>
+                {summary.collateralCount} {summary.collateralCount === 1 ? 'Deliverable' : 'Deliverables'}
+              </span>
+              <span className={reviewDenseChipClass}>
+                {summary.totalReferenceCount} {summary.totalReferenceCount === 1 ? 'Reference' : 'References'}
+              </span>
+              <span className={reviewDenseChipClass}>
+                Deadline: {summary.effectiveDeadline ? format(summary.effectiveDeadline, 'dd MMM yyyy') : 'Not set'}
+              </span>
+            </div>
+          </div>
+        </div>
+        <section className={reviewDenseCardClass}>
+          <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+            <h3 className="text-sm font-semibold text-foreground">Request Details</h3>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-md px-2.5 text-[12px] text-muted-foreground hover:text-foreground"
+              onClick={() => setCurrentStep('campaign')}
+            >
+              Edit
+            </Button>
+          </div>
+          <div className="border-t border-[#E8EEFF]/70 px-5 py-4 dark:border-sidebar-border/60">
+            <div className="grid gap-x-8 gap-y-3 md:grid-cols-2">
+              {[
+                { label: 'Title', value: requestTitle || '-' },
+                { label: 'Department', value: department || '-' },
+                { label: 'Contact', value: requesterPhone || '-' },
+                {
+                  label: 'Deadline',
+                  value:
+                    deadlineMode === 'common'
+                      ? commonDeadline
+                        ? format(commonDeadline, 'EEE, dd MMM yyyy')
+                        : 'Not set'
+                      : 'Per item',
+                },
+              ].map((item) => (
+                <div key={item.label} className="grid grid-cols-[84px_minmax(0,1fr)] items-start gap-3">
+                  <span className={reviewDenseLabelClass}>{item.label}</span>
+                  <span className={reviewDenseValueClass}>{item.value}</span>
+                </div>
+              ))}
+              <div className="grid grid-cols-[84px_minmax(0,1fr)] items-start gap-3 md:col-span-2">
+                <span className={reviewDenseLabelClass}>Brief</span>
+                <p className={reviewDenseValueClass}>{overallBrief || '-'}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className={reviewDenseCardClass}>
+          <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+            <h3 className="text-sm font-semibold text-foreground">References</h3>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-md px-2.5 text-[12px] text-muted-foreground hover:text-foreground"
+              onClick={() => setCurrentStep('timeline')}
+            >
+              Edit
+            </Button>
+          </div>
+          <div className="border-t border-[#E8EEFF]/70 px-5 py-4 dark:border-sidebar-border/60">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={reviewDenseChipClass}>
+                Master: {summary.masterReferenceCount} {summary.masterReferenceCount === 1 ? 'file' : 'files'}
+              </span>
+              <span className={reviewDenseChipClass}>
+                Item: {summary.collateralReferenceCount} {summary.collateralReferenceCount === 1 ? 'file' : 'files'}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section className={reviewDenseCardClass}>
+          <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+            <h3 className="text-sm font-semibold text-foreground">
+              Deliverables <span className="font-normal text-muted-foreground">({collaterals.length})</span>
+            </h3>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-md px-2.5 text-[12px] text-muted-foreground hover:text-foreground"
+              onClick={() => setCurrentStep('collaterals')}
+            >
+              Edit
+            </Button>
+          </div>
+          <div className="hidden border-t border-[#E8EEFF]/70 px-5 py-2.5 md:grid md:grid-cols-[minmax(0,1.8fr)_auto_auto_auto_auto_auto] md:items-center md:gap-3 dark:border-sidebar-border/60">
+            <span className={reviewDenseTableHeaderClass}>Name</span>
+            <span className={reviewDenseTableHeaderClass}>Status</span>
+            <span className={reviewDenseTableHeaderClass}>Size</span>
+            <span className={cn(reviewDenseTableHeaderClass, 'text-center')}>Refs</span>
+            <span className={reviewDenseTableHeaderClass}>Priority</span>
+            <span className={reviewDenseTableHeaderClass}>Date</span>
+          </div>
+          <div className="divide-y divide-[#E8EEFF]/70 dark:divide-sidebar-border/60">
+            {collaterals.map((collateral) => {
+              const deadlineLabel =
+                deadlineMode === 'common'
+                  ? commonDeadline
+                    ? format(commonDeadline, 'dd MMM yyyy')
+                    : 'No deadline'
+                  : collateral.deadline
+                    ? format(collateral.deadline, 'dd MMM yyyy')
+                    : 'No deadline';
+              const referenceCount = getCompletedAttachmentCount(collateral.referenceFiles);
+
+              return (
+                <div key={collateral.id} className="px-5 py-3">
+                  <div className="grid gap-2 md:grid-cols-[minmax(0,1.8fr)_auto_auto_auto_auto_auto] md:items-center md:gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[14px] font-semibold leading-[1.35] text-foreground">
+                        {getCollateralDisplayName(collateral as never)}
+                      </p>
+                      <p className="mt-0.5 truncate text-[12px] leading-[1.35] text-muted-foreground">
+                        {collateral.presetLabel || collateral.collateralType}
+                      </p>
+                    </div>
+
+                    <div className="md:justify-self-start">
+                      <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 text-[10px] font-medium">
+                        {formatCollateralStatusLabel(collateral.status)}
+                      </Badge>
+                    </div>
+
+                    <div className="hidden text-[13px] font-medium text-foreground/90 md:block">
+                      {getCollateralSizeSummary(collateral as never)}
+                    </div>
+
+                    <div className="hidden text-center text-[13px] font-medium text-foreground/90 md:block">
+                      {referenceCount}
+                    </div>
+
+                    <div className="hidden md:block">
+                      <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[10px] font-medium">
+                        {formatCollateralPriorityLabel(collateral.priority)}
+                      </Badge>
+                    </div>
+
+                    <div className="hidden text-[13px] font-medium text-foreground/90 md:block">
+                      {deadlineLabel}
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2 md:hidden">
+                    <span className={reviewDenseChipClass}>Size: {getCollateralSizeSummary(collateral as never)}</span>
+                    <span className={reviewDenseChipClass}>Refs: {referenceCount}</span>
+                    <span className={reviewDenseChipClass}>{formatCollateralPriorityLabel(collateral.priority)}</span>
+                    <span className={reviewDenseChipClass}>{deadlineLabel}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <div className="flex items-start gap-3 rounded-[16px] border border-[#DDEAFF]/80 bg-[#F5F9FF]/88 px-4 py-3.5 shadow-none dark:border-sidebar-border dark:bg-sidebar-accent/60 dark:shadow-none">
+          <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-sidebar/60 dark:text-sidebar-foreground/70">
+            <Paperclip className="h-3.5 w-3.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary dark:text-sidebar-foreground/60">
+              Before you submit
+            </p>
+            <ul className="mt-2 grid gap-1.5">
+              <li className="flex items-start gap-2 text-[13px] leading-[1.4] text-muted-foreground">
+                <span className="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
+                At least one reference is required
+              </li>
+              <li className="flex items-start gap-2 text-[13px] leading-[1.4] text-muted-foreground">
+                <span className="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
+                Deadline applies to all deliverables when common mode is selected
+              </li>
+              <li className="flex items-start gap-2 text-[13px] leading-[1.4] text-muted-foreground">
+                <span className="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-muted-foreground/40" />
+                Status will be updated by the design team after submission
+              </li>
+            </ul>
+            {summary.totalReferenceCount === 0 ? (
+              <p className="mt-2.5 flex items-center gap-1.5 text-[13px] font-medium leading-[1.4] text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                No references added yet
+              </p>
+            ) : null}
+          </div>
+        </div>
         {/* Request hero */}
-        <div className={cn(glassCardClass, 'px-6 py-5')}>
-          <p className="text-xl font-semibold tracking-[-0.02em] text-foreground">
-            {requestTitle.trim() || 'Campaign request'}
-          </p>
-          <p className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
-            <span>{summary.collateralCount} {summary.collateralCount === 1 ? 'Deliverable' : 'Deliverables'}</span>
+        <div className="hidden">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <p className="truncate text-[18px] font-semibold leading-[1.3] tracking-[-0.02em] text-foreground">
+                {requestTitle.trim() || 'Campaign request'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={reviewDenseChipClass}>
+                {summary.collateralCount} {summary.collateralCount === 1 ? 'Deliverable' : 'Deliverables'}
+              </span>
             <span className="opacity-30">•</span>
             <span>{summary.totalReferenceCount} {summary.totalReferenceCount === 1 ? 'Reference' : 'References'}</span>
             <span className="opacity-30">•</span>
             <span>Deadline: {summary.effectiveDeadline ? format(summary.effectiveDeadline, 'dd MMM yyyy') : 'Not set'}</span>
-          </p>
+          </div>
+        </div>
         </div>
 
         {/* Request Details */}
-        <section className={cn(glassCardClass, 'overflow-hidden')}>
+        <section className="hidden">
           <div className="flex items-center justify-between gap-3 px-6 py-4">
             <h3 className="text-sm font-semibold text-foreground">Request Details</h3>
             <Button type="button" variant="ghost" size="sm" className="h-8 px-3 text-xs" onClick={() => setCurrentStep('campaign')}>
@@ -2094,7 +2371,7 @@ export default function NewRequest() {
         </section>
 
         {/* References */}
-        <section className={cn(glassCardClass, 'overflow-hidden')}>
+        <section className="hidden">
           <div className="flex items-center justify-between gap-3 px-6 py-4">
             <h3 className="text-sm font-semibold text-foreground">References</h3>
             <Button type="button" variant="ghost" size="sm" className="h-8 px-3 text-xs" onClick={() => setCurrentStep('timeline')}>
@@ -2118,7 +2395,7 @@ export default function NewRequest() {
         </section>
 
         {/* Deliverables */}
-        <section className={cn(glassCardClass, 'overflow-hidden')}>
+        <section className="hidden">
           <div className="flex items-center justify-between gap-3 px-6 py-4">
             <h3 className="text-sm font-semibold text-foreground">
               Deliverables{' '}
@@ -2161,7 +2438,7 @@ export default function NewRequest() {
         </section>
 
         {/* Before you submit */}
-        <div className="flex items-start gap-3 rounded-[16px] border border-[#DDEAFF]/70 bg-[#F5F9FF]/80 px-4 py-4 dark:border-sidebar-border dark:bg-sidebar-accent/60">
+        <div className="hidden">
           <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-sidebar/60 dark:text-sidebar-foreground/70">
             <Paperclip className="h-3.5 w-3.5" />
           </div>
@@ -2411,7 +2688,7 @@ export default function NewRequest() {
       <section
         className={cn(
           glassCardClass,
-          'overflow-hidden shadow-[0_28px_64px_-42px_rgba(59,99,204,0.28)]'
+          'overflow-hidden shadow-[0_24px_52px_-40px_rgba(59,99,204,0.084)]'
         )}
       >
         <div className="border-b border-border/70 px-5 py-4 dark:border-[#253D78]/90">
@@ -2423,14 +2700,24 @@ export default function NewRequest() {
               </p>
             </div>
 
-            <Button type="button" variant="outline" onClick={resetRequestTypeSelection}>
-              Change request type
+            <Button
+              type="button"
+              onClick={() => handleRequestTypeSelect('campaign_request')}
+              className="h-11 w-full justify-start gap-3 rounded-[16px] border border-[#D9E6FF] bg-white/88 px-3.5 text-[13px] font-semibold text-[#223067] shadow-none transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-sidebar-border dark:bg-sidebar/60 dark:text-sidebar-foreground dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-accent sm:w-auto"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200">
+                <Layers3 className="h-4 w-4" />
+              </span>
+              <span className="truncate">Switch to Campaign Suite</span>
             </Button>
           </div>
         </div>
 
         <div className="px-5 py-4">
-          <section className="space-y-5">
+          <section
+            className="space-y-5"
+            onFocusCapture={() => setSingleRequestActiveStep('details')}
+          >
             <div className="grid items-start gap-x-5 gap-y-4 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.2fr)_minmax(0,1.2fr)]">
               <div className="space-y-2">
                 <Label>Creative Title</Label>
@@ -2564,18 +2851,23 @@ export default function NewRequest() {
               />
             </div>
 
-            <AttachmentUploadField
-              label="Attachments & References"
-              description="Upload supporting files to help the designer clearly understand and execute your request — such as logos, brand guidelines, content documents, screenshots, or reference designs."
+            <div onFocusCapture={() => setSingleRequestActiveStep('files')}>
+              <AttachmentUploadField
+              label="Attachments & References (Required)"
+              description="Upload at least one supporting file to help the designer clearly understand and execute your request — such as logos, brand guidelines, content documents, screenshots, or reference designs."
               attachments={masterAttachments}
-              onChange={setMasterAttachments}
+              onChange={(next) => {
+                setSingleRequestActiveStep('files');
+                setMasterAttachments(next);
+              }}
               taskTitle={requestTitle || 'Quick Design Request'}
               taskSection="Quick Design References"
               emptyLabel=""
               uploadTitle="Drag and drop files here, or upload from your device"
               uploadDescription="Files will be securely stored and linked to this request."
               buttonLabel="Upload Files"
-            />
+              />
+            </div>
           </section>
         </div>
 
@@ -2620,7 +2912,14 @@ export default function NewRequest() {
     </div>
   );
   const stepPanel = (
-    <section ref={formPanelTourRef} className={cn(builderSurfaceClass, 'overflow-hidden xl:flex xl:h-full xl:flex-col')}>
+    <section
+      ref={formPanelTourRef}
+      className={cn(
+        currentStep === 'review'
+          ? cn(reviewSurfaceClass, 'overflow-hidden shadow-none xl:flex xl:h-full xl:flex-col')
+          : cn(glassCardClass, 'overflow-hidden shadow-[0_24px_52px_-40px_rgba(59,99,204,0.084)] xl:flex xl:h-full xl:flex-col')
+      )}
+    >
       <div className="border-b border-border/70 px-5 py-3.5 dark:border-[#253D78]/90">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -2878,12 +3177,20 @@ export default function NewRequest() {
                 <ol className="relative flex min-w-[620px] items-center px-1.5 py-1.5">
                   {SINGLE_REQUEST_STEPS.map((step, index) => {
                     const isCurrent = index === singleRequestCurrentStepIndex;
-                    const isComplete = index < singleRequestCurrentStepIndex;
+                    const isComplete = !isCurrent && (
+                      index === 0
+                        ? !singleDetailsValidationMessage
+                        : index === 1
+                          ? singleFilesStepComplete
+                          : false
+                    );
                     const StepIcon = step.icon;
                     const trackingLabel = isComplete
                       ? 'Completed'
                       : isCurrent
                         ? 'Current step'
+                        : index === 1 && !singleDetailsValidationMessage && !singleFilesValidationMessage
+                          ? 'Optional'
                         : 'Upcoming';
 
                     return (
@@ -2956,7 +3263,8 @@ export default function NewRequest() {
                         {index < SINGLE_REQUEST_STEPS.length - 1 ? (
                           <div className="relative mx-2 h-[2px] w-10 flex-none overflow-hidden rounded-full lg:w-14">
                             <div className="absolute inset-0 bg-[#D4E2FF]/70 dark:bg-sidebar-border/50" />
-                            {index < singleRequestCurrentStepIndex && (
+                            {((index === 0 && !singleDetailsValidationMessage) ||
+                              (index === 1 && singleFilesStepComplete)) && (
                               <div className="absolute inset-0 bg-gradient-to-r from-[#A5BEFF] to-[#C4D4FF] dark:from-sidebar-primary dark:to-sidebar-primary dark:[background-image:none]" />
                             )}
                           </div>
@@ -3020,8 +3328,10 @@ export default function NewRequest() {
             )}
 
             {/* Tour card - positioned adjacent to spotlight */}
+            {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events,jsx-a11y/no-static-element-interactions */}
             <div
               key={activeTourStep.id}
+              onClick={(e) => e.stopPropagation()}
               className="tour-card-enter pointer-events-auto fixed w-[370px]"
               style={tourSpotlight?.card ? {
                 top: `${tourSpotlight.card.top}px`,
@@ -3148,6 +3458,27 @@ export default function NewRequest() {
             </div>
           </div>
         , document.body) : null}
+
+        <SubmissionSuccessDialog
+          open={Boolean(submitSuccessState)}
+          onOpenChange={handleSubmitSuccessModalChange}
+          title={submitSuccessState?.storedLocally ? 'Request saved locally' : 'Thank you!'}
+          description={
+            submitSuccessState
+              ? submitSuccessState.storedLocally
+                ? `Your ${submitSuccessState.requestType === 'campaign_request' ? 'campaign' : 'quick design'} request was saved locally and is available in My Requests.`
+                : (
+                    <>
+                      Your request has been successfully submitted.
+                      <br />
+                      Our design team will review it shortly.
+                    </>
+                  )
+              : ''
+          }
+          actionLabel="Close"
+          onAction={() => handleSubmitSuccessModalChange(false)}
+        />
 
         <CollateralPresetDialog
           open={isPresetDialogOpen}

@@ -198,6 +198,7 @@ export function TaskCard({
       containerClassName="h-full"
       innerClassName="h-full"
       className="p-6 h-full flex flex-col"
+      highlighted={isHighlighted}
     >
       <div className="mb-4 flex flex-wrap items-start gap-2">
         {renderChip(CheckCircle2, status.label, 0, {

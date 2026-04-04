@@ -577,18 +577,30 @@ export const sendFinalFilesEmail = async ({
   const from = resolveEmailFromHeader(brandName);
   const compactText = (value) => String(value || "").replace(/\s+/g, " ").trim();
   const normalizedEmailType = String(emailType || "").toUpperCase();
-  const email_type =
-    normalizedEmailType === "TASK_ASSIGNED"
-      ? "TASK_ASSIGNED"
-      : normalizedEmailType === "TASK_ACCEPTED"
-        ? "TASK_ACCEPTED"
-        : "FINAL_FILES_UPLOADED";
+  const supportedEmailTypes = new Set([
+    "REQUEST_CREATED",
+    "TASK_ASSIGNED",
+    "TASK_ACCEPTED",
+    "CLARIFICATION_REQUIRED",
+    "APPROVAL_APPROVED",
+    "APPROVAL_REJECTED",
+    "DEADLINE_APPROVED",
+    "DEADLINE_REJECTED",
+    "EMERGENCY_APPROVED",
+    "EMERGENCY_REJECTED",
+    "FINAL_FILES_UPLOADED",
+  ]);
+  const email_type = supportedEmailTypes.has(normalizedEmailType)
+    ? normalizedEmailType
+    : "FINAL_FILES_UPLOADED";
   const isTaskAssignedEmail = email_type === "TASK_ASSIGNED";
   const isTaskAcceptedEmail = email_type === "TASK_ACCEPTED";
+  const isFinalFilesEmail = email_type === "FINAL_FILES_UPLOADED";
   const isAssignmentLifecycleEmail = isTaskAssignedEmail || isTaskAcceptedEmail;
   const safeTitle = taskTitle || "your task";
   const displayDesigner = designerName || "A designer";
   const displayAssigner = assignedByName || "A manager";
+  const displayActor = designerName || taskDetails?.requesterName || assignedByName || "A team member";
   const safeAssignmentMessage = assignmentMessage ? String(assignmentMessage).trim() : "";
   const fileItems = Array.isArray(files) ? files : [];
   const isDriveDocumentUrl = (value) =>
@@ -626,24 +638,9 @@ export const sendFinalFilesEmail = async ({
     ? `${taskDetails.requesterName}${taskDetails.requesterEmail ? ` (${taskDetails.requesterEmail})` : ""}${taskDetails.requesterDepartment ? ` - ${taskDetails.requesterDepartment}` : ""
     }`
     : taskDetails?.requesterEmail || "";
-  const deadlineLabel = isAssignmentLifecycleEmail
-    ? formatDeadlineDateTime(taskDetails?.deadline)
-    : formatDate(taskDetails?.deadline);
   const workflowStageLabel = [humanize(taskDetails?.status), humanize(taskDetails?.category)]
     .filter(Boolean)
     .join(" | ");
-  const lifecycleActorLabel = isTaskAssignedEmail ? displayAssigner : displayDesigner;
-  const lifecycleActorHeading = isTaskAssignedEmail
-    ? "Assigned by"
-    : isTaskAcceptedEmail
-      ? "Accepted by"
-      : "Delivered by";
-  const timelineHeading = isTaskAssignedEmail
-    ? "Assigned on"
-    : isTaskAcceptedEmail
-      ? "Accepted on"
-      : "Delivered on";
-  const timelineValue = formatDateTime(submittedAt);
   const fileCountLabel =
     fileItems.length > 0 ? `${fileItems.length} file${fileItems.length === 1 ? "" : "s"}` : "";
   const fileNamePreview = fileItems
@@ -656,6 +653,214 @@ export const sendFinalFilesEmail = async ({
     fileNamePreview && remainingFileCount > 0
       ? `${fileNamePreview}, +${remainingFileCount} more`
       : fileNamePreview;
+  let lifecycleActorLabel = isTaskAssignedEmail ? displayAssigner : displayDesigner;
+  let lifecycleActorHeading = isTaskAssignedEmail
+    ? "Assigned by"
+    : isTaskAcceptedEmail
+      ? "Accepted by"
+      : "Delivered by";
+  let timelineHeading = isTaskAssignedEmail
+    ? "Assigned on"
+    : isTaskAcceptedEmail
+      ? "Accepted on"
+      : "Delivered on";
+  let emailEyebrow = "Final Deliverables";
+  let emailHeadline = `Final files are ready for ${safeTitle}`;
+  let emailDescription = `${displayDesigner} uploaded ${fileCountLabel || "the final files"} for <strong>${safeTitle}</strong>. Review the delivery summary below and open the task if another revision is needed.`;
+  let summaryHeading = "Delivery summary";
+  let summaryContent =
+    safeTaskDescription ||
+    (fileNameSummary
+      ? `${displayDesigner} shared ${fileCountLabel}. Delivered files: ${fileNameSummary}.`
+      : `${displayDesigner} marked the final delivery ready for review.`);
+  let taskCtaLabel = "Review Deliverables";
+  let supportTitle = "Need another revision?";
+  let supportMessage =
+    "Reply to this email or open the task workspace if you want edits, comments, or an additional delivery round.";
+  let subject = `DesignDesk-Official: Final files uploaded for ${safeTitle}`;
+  let logLabel = "Final files";
+  let showFilesSection = isFinalFilesEmail;
+  let textIntroLines = [
+    `${displayDesigner} uploaded final files for "${safeTitle}".`,
+    "",
+    "Files:",
+    ...(fileItems.length > 0
+      ? fileItems.map((file) => `- ${file.name}${file.url ? ` (${file.url})` : ""}`)
+      : ["- (no file names provided)"]),
+  ];
+
+  switch (email_type) {
+    case "TASK_ASSIGNED": {
+      emailEyebrow = "Task Assignment";
+      emailHeadline = "A new task has been assigned";
+      emailDescription = `${displayAssigner} assigned <strong>${safeTitle}</strong> to <strong>${displayDesigner}</strong>. Review the task details, deadline, and reference files below before work starts.${safeAssignmentMessage ? `<br /><br /><strong>Assignment note:</strong> ${safeAssignmentMessage}` : ""}`;
+      summaryHeading = "Assignment summary";
+      summaryContent =
+        safeTaskDescription ||
+        safeAssignmentMessage ||
+        `${displayAssigner} assigned this request to ${displayDesigner}. Check the deadline and attached reference files before starting.`;
+      taskCtaLabel = "Open Assignment";
+      supportTitle = "Need clarification?";
+      supportMessage =
+        "Reply to this email if the assignee needs more context, a revised deadline, or missing reference material.";
+      subject = (() => {
+        const deadlineForSubject = formatDateTime(taskDetails?.deadline);
+        return deadlineForSubject
+          ? `Task Assigned: ${safeTitle} | Due ${deadlineForSubject}`
+          : `Task Assigned: ${safeTitle}`;
+      })();
+      logLabel = "Task assigned";
+      showFilesSection = false;
+      textIntroLines = [
+        `New task assigned: "${safeTitle}".`,
+        `${displayAssigner} assigned this task to ${displayDesigner}.`,
+        ...(safeAssignmentMessage ? ["", `Message: ${safeAssignmentMessage}`] : []),
+      ];
+      break;
+    }
+    case "TASK_ACCEPTED": {
+      emailEyebrow = "Acceptance Update";
+      emailHeadline = `${displayDesigner} accepted this task`;
+      emailDescription =
+        `<strong>${displayDesigner}</strong> has accepted <strong>${safeTitle}</strong>. Open the task to follow comments, files, and next updates in the workspace.`;
+      summaryHeading = "Acceptance summary";
+      summaryContent =
+        safeTaskDescription ||
+        `${displayDesigner} confirmed the assignment and the task can now continue in the workspace.`;
+      taskCtaLabel = "Open Task";
+      supportTitle = "Track the next update";
+      supportMessage =
+        "Open the task workspace to monitor files, comments, and review progress from here.";
+      subject = `Task Accepted: ${safeTitle}`;
+      logLabel = "Task accepted";
+      showFilesSection = false;
+      textIntroLines = [
+        `Task accepted: "${safeTitle}".`,
+        `${displayDesigner} has accepted this task.`,
+      ];
+      break;
+    }
+    case "REQUEST_CREATED": {
+      lifecycleActorLabel = taskDetails?.requesterName || displayActor;
+      lifecycleActorHeading = "Submitted by";
+      timelineHeading = "Submitted on";
+      emailEyebrow = "Request Received";
+      emailHeadline = "Your request has been submitted";
+      emailDescription =
+        `We received <strong>${safeTitle}</strong>. The request is now in the queue and the team will review it shortly.`;
+      summaryHeading = "What happens next";
+      summaryContent =
+        safeTaskDescription ||
+        "Your request is now recorded in DesignDesk. The team will review the brief, files, and deadline before assignment.";
+      taskCtaLabel = "View Request";
+      supportTitle = "Need to add more context?";
+      supportMessage =
+        "Open the request workspace to track progress, comments, and future updates.";
+      subject = `Request submitted: ${safeTitle}`;
+      logLabel = "Request created";
+      showFilesSection = false;
+      textIntroLines = [
+        `Request submitted: "${safeTitle}".`,
+        `${taskDetails?.requesterName || "The requester"} submitted this request.`,
+      ];
+      break;
+    }
+    case "CLARIFICATION_REQUIRED": {
+      lifecycleActorLabel = displayActor;
+      lifecycleActorHeading = "Updated by";
+      timelineHeading = "Updated on";
+      emailEyebrow = "Clarification Required";
+      emailHeadline = `Clarification needed for ${safeTitle}`;
+      emailDescription =
+        `<strong>${displayActor}</strong> marked this request as clarification required. Open the task and reply with the missing details so work can continue.`;
+      summaryHeading = "Action needed";
+      summaryContent =
+        safeAssignmentMessage ||
+        safeTaskDescription ||
+        "The design team needs more information to continue this request. Review the task and respond with the requested clarification.";
+      taskCtaLabel = "Open Task";
+      supportTitle = "Next step";
+      supportMessage =
+        "Open the task workspace to add comments, upload files, or confirm the missing details.";
+      subject = `Clarification required: ${safeTitle}`;
+      logLabel = "Clarification required";
+      showFilesSection = false;
+      textIntroLines = [
+        `Clarification required: "${safeTitle}".`,
+        `${displayActor} requested more information before work can continue.`,
+        ...(safeAssignmentMessage ? ["", `Note: ${safeAssignmentMessage}`] : []),
+      ];
+      break;
+    }
+    case "APPROVAL_APPROVED":
+    case "APPROVAL_REJECTED":
+    case "DEADLINE_APPROVED":
+    case "DEADLINE_REJECTED":
+    case "EMERGENCY_APPROVED":
+    case "EMERGENCY_REJECTED": {
+      const isApproved = email_type.endsWith("_APPROVED");
+      const isDeadlineEmail = email_type.startsWith("DEADLINE_");
+      const isEmergencyEmail = email_type.startsWith("EMERGENCY_");
+      lifecycleActorLabel = displayActor;
+      lifecycleActorHeading = isDeadlineEmail ? "Reviewed by" : "Updated by";
+      timelineHeading = isDeadlineEmail ? "Reviewed on" : "Updated on";
+      emailEyebrow = isDeadlineEmail
+        ? "Deadline Update"
+        : isEmergencyEmail
+          ? "Emergency Update"
+          : "Request Approval";
+      emailHeadline = isDeadlineEmail
+        ? `${isApproved ? "Deadline approved" : "Deadline update rejected"}`
+        : isEmergencyEmail
+          ? `${isApproved ? "Emergency request approved" : "Emergency request rejected"}`
+          : `${isApproved ? "Request approved" : "Request rejected"}`;
+      emailDescription = isDeadlineEmail
+        ? `<strong>${displayActor}</strong> ${isApproved ? "approved" : "rejected"} the requested deadline update for <strong>${safeTitle}</strong>.`
+        : isEmergencyEmail
+          ? `<strong>${displayActor}</strong> ${isApproved ? "approved" : "rejected"} the emergency request for <strong>${safeTitle}</strong>.`
+          : `<strong>${displayActor}</strong> ${isApproved ? "approved" : "rejected"} <strong>${safeTitle}</strong>.`;
+      summaryHeading = isDeadlineEmail
+        ? "Deadline decision"
+        : isEmergencyEmail
+          ? "Emergency decision"
+          : "Approval update";
+      summaryContent =
+        safeAssignmentMessage ||
+        (isDeadlineEmail
+          ? `The requested deadline update was ${isApproved ? "approved" : "rejected"}.`
+          : isEmergencyEmail
+            ? `The emergency request was ${isApproved ? "approved" : "rejected"}.`
+            : `Your request was ${isApproved ? "approved" : "rejected"}.`);
+      taskCtaLabel = isApproved ? "Open Request" : "Review Request";
+      supportTitle = isApproved ? "Track progress" : "Next step";
+      supportMessage = isApproved
+        ? "Open the task workspace to follow assignment, comments, and delivery progress."
+        : "Open the task workspace to review the decision, update the request if needed, and continue from there.";
+      subject = isDeadlineEmail
+        ? `Deadline ${isApproved ? "approved" : "rejected"}: ${safeTitle}`
+        : isEmergencyEmail
+          ? `Emergency request ${isApproved ? "approved" : "rejected"}: ${safeTitle}`
+          : `Request ${isApproved ? "approved" : "rejected"}: ${safeTitle}`;
+      logLabel = isDeadlineEmail
+        ? `Deadline ${isApproved ? "approved" : "rejected"}`
+        : isEmergencyEmail
+          ? `Emergency request ${isApproved ? "approved" : "rejected"}`
+          : `Request ${isApproved ? "approved" : "rejected"}`;
+      showFilesSection = false;
+      textIntroLines = [
+        `${subject}.`,
+        `${displayActor} ${isApproved ? "approved" : "rejected"} this update.`,
+        ...(safeAssignmentMessage ? ["", `Note: ${safeAssignmentMessage}`] : []),
+      ];
+      break;
+    }
+    default:
+      break;
+  }
+  const deadlineLabel = isAssignmentLifecycleEmail
+    ? formatDeadlineDateTime(taskDetails?.deadline)
+    : formatDate(taskDetails?.deadline);
+  const timelineValue = formatDateTime(submittedAt);
   const detailItems = [
     { label: "Task ID", value: taskDetails?.id },
     { label: "Title", value: safeTitle },
@@ -666,69 +871,7 @@ export const sendFinalFilesEmail = async ({
     { label: "Requester", value: requesterLabel },
     ...(!isTaskAssignedEmail && fileCountLabel ? [{ label: "Files", value: fileCountLabel }] : []),
   ].filter((item) => item.value);
-  const emailEyebrow = isTaskAssignedEmail
-    ? "Task Assignment"
-    : isTaskAcceptedEmail
-      ? "Acceptance Update"
-      : "Final Deliverables";
-  const emailHeadline = isTaskAssignedEmail
-    ? "A new task has been assigned"
-    : isTaskAcceptedEmail
-      ? `${displayDesigner} accepted this task`
-      : `Final files are ready for ${safeTitle}`;
-  const emailDescription = isTaskAssignedEmail
-    ? `${displayAssigner} assigned <strong>${safeTitle}</strong> to <strong>${displayDesigner}</strong>. Review the task details, deadline, and reference files below before work starts.${safeAssignmentMessage ? `<br /><br /><strong>Assignment note:</strong> ${safeAssignmentMessage}` : ""}`
-    : isTaskAcceptedEmail
-      ? `<strong>${displayDesigner}</strong> has accepted <strong>${safeTitle}</strong>. Open the task to follow comments, files, and next updates in the workspace.`
-      : `${displayDesigner} uploaded ${fileCountLabel || "the final files"} for <strong>${safeTitle}</strong>. Review the delivery summary below and open the task if another revision is needed.`;
-  const summaryHeading = isTaskAssignedEmail
-    ? "Assignment summary"
-    : isTaskAcceptedEmail
-      ? "Acceptance summary"
-      : "Delivery summary";
-  const summaryContent = safeTaskDescription ||
-    (isTaskAssignedEmail
-      ? safeAssignmentMessage ||
-        `${displayAssigner} assigned this request to ${displayDesigner}. Check the deadline and attached reference files before starting.`
-      : isTaskAcceptedEmail
-        ? `${displayDesigner} confirmed the assignment and the task can now continue in the workspace.`
-        : fileNameSummary
-          ? `${displayDesigner} shared ${fileCountLabel}. Delivered files: ${fileNameSummary}.`
-          : `${displayDesigner} marked the final delivery ready for review.`);
-  const taskCtaLabel = isTaskAssignedEmail
-    ? "Open Assignment"
-    : isTaskAcceptedEmail
-      ? "Open Task"
-      : "Review Deliverables";
-  const supportTitle = isTaskAssignedEmail
-    ? "Need clarification?"
-    : isTaskAcceptedEmail
-      ? "Track the next update"
-      : "Need another revision?";
-  const supportMessage = isTaskAssignedEmail
-    ? "Reply to this email if the assignee needs more context, a revised deadline, or missing reference material."
-    : isTaskAcceptedEmail
-      ? "Open the task workspace to monitor files, comments, and review progress from here."
-      : "Reply to this email or open the task workspace if you want edits, comments, or an additional delivery round.";
-  const lines = isTaskAssignedEmail
-    ? [
-      `New task assigned: "${safeTitle}".`,
-      `${displayAssigner} assigned this task to ${displayDesigner}.`,
-      ...(safeAssignmentMessage ? ["", `Message: ${safeAssignmentMessage}`] : []),
-    ]
-    : isTaskAcceptedEmail
-      ? [
-        `Task accepted: "${safeTitle}".`,
-        `${displayDesigner} has accepted this task.`,
-      ]
-    : [
-      `${displayDesigner} uploaded final files for "${safeTitle}".`,
-      "",
-      "Files:",
-      ...(fileItems.length > 0
-        ? fileItems.map((file) => `- ${file.name}${file.url ? ` (${file.url})` : ""}`)
-        : ["- (no file names provided)"]),
-    ];
+  const lines = [...textIntroLines];
   if (detailItems.length > 0) {
     lines.push("", "Details:", ...detailItems.map((item) => `${item.label}: ${item.value}`));
   }
@@ -963,9 +1106,8 @@ export const sendFinalFilesEmail = async ({
                 </td>
               </tr>
               ${isTaskAssignedEmail ? assignmentAttachmentSection : ""}
-              ${isAssignmentLifecycleEmail
-      ? ""
-      : `
+              ${showFilesSection
+      ? `
                   <tr>
                     <td style="padding:0 32px 24px;">
                       <div style="background:${brandSoft};border-radius:16px;padding:20px;text-align:left;">
@@ -978,6 +1120,8 @@ export const sendFinalFilesEmail = async ({
                       </div>
                     </td>
                   </tr>
+                `
+      : `
                 `
     }
               <tr>
@@ -1019,16 +1163,7 @@ export const sendFinalFilesEmail = async ({
       from,
       to,
       cc: ccRecipients.length > 0 ? ccRecipients.join(", ") : undefined,
-      subject: isTaskAssignedEmail
-        ? (() => {
-          const deadlineForSubject = formatDateTime(taskDetails?.deadline);
-          return deadlineForSubject
-            ? `Task Assigned: ${safeTitle} | Due ${deadlineForSubject}`
-            : `Task Assigned: ${safeTitle}`;
-        })()
-        : isTaskAcceptedEmail
-          ? `Task Accepted: ${safeTitle}`
-          : `DesignDesk-Official: Final files uploaded for ${safeTitle}`,
+      subject,
       text: lines.join("\n"),
       html,
       attachments: hasLocalLogo
@@ -1042,13 +1177,13 @@ export const sendFinalFilesEmail = async ({
         : [],
     });
     console.log(
-      `${isTaskAssignedEmail ? "Task assigned" : isTaskAcceptedEmail ? "Task accepted" : "Final files"} email sent:`,
+      `${logLabel} email sent:`,
       info?.response || info?.messageId || "ok"
     );
     return true;
   } catch (error) {
     console.error(
-      `${isTaskAssignedEmail ? "Task assigned" : isTaskAcceptedEmail ? "Task accepted" : "Final files"} email failed:`,
+      `${logLabel} email failed:`,
       error?.message || error
     );
     if (error?.response) {

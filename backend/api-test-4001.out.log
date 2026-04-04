@@ -1,0 +1,12 @@
+MongoDB connected successfully
+Antigravity API listening on port 4001
+Environment: production
+[2026-04-04T07:15:57.436Z] GET /healthz
+[2026-04-04T07:16:21.578Z] POST /api/auth/login
+[2026-04-04T07:16:54.670Z] POST /api/auth/signup
+[2026-04-04T07:16:54.866Z] POST /api/tasks
+Request created: 69d0bae6b720f88198391167
+Emitted request:new to room: designers:queue
+Emitted request:new to 1 designer rooms
+Emitted request:new to 1 treasurer rooms
+Request created email sent: 250 2.0.0 OK  1775287017 d9443c01a7336-2b27472d55fsm101583795ad.11 - gsmtp

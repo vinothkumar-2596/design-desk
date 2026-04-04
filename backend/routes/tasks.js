@@ -198,6 +198,89 @@ const resolveNotificationPreferences = async ({ userId, email, fallbackUser }) =
   return { ...defaultNotificationPreferences, ...(user?.notificationPreferences || {}) };
 };
 
+const buildFrontendTaskUrl = (taskId) => {
+  const normalizedTaskId = String(taskId || "").trim();
+  const baseUrl = String(process.env.FRONTEND_URL || "").trim();
+  if (!normalizedTaskId || !baseUrl) return undefined;
+  return `${baseUrl.replace(/\/$/, "")}/task/${normalizedTaskId}`;
+};
+
+const resolveRequesterEmailFromTask = async (task) => {
+  let requesterEmail = String(task?.requesterEmail || "").trim();
+  if (requesterEmail) return requesterEmail;
+
+  const requesterId = String(task?.requesterId || "").trim();
+  if (requesterId) {
+    const requesterUser = await User.findById(requesterId).select("email");
+    requesterEmail = String(requesterUser?.email || "").trim();
+    if (requesterEmail) return requesterEmail;
+  }
+
+  const history = Array.isArray(task?.changeHistory) ? task.changeHistory : [];
+  const createdEntry = history.find((entry) => entry?.field === "created");
+  if (createdEntry?.userId) {
+    const requesterUser = await User.findById(createdEntry.userId).select("email");
+    requesterEmail = String(requesterUser?.email || "").trim();
+    if (requesterEmail) return requesterEmail;
+  }
+
+  if (createdEntry?.userName) {
+    const requesterUser = await User.findOne({
+      name: new RegExp(`^${escapeRegExp(createdEntry.userName)}$`, "i"),
+      isActive: { $ne: false }
+    }).select("email");
+    requesterEmail = String(requesterUser?.email || "").trim();
+  }
+
+  return requesterEmail;
+};
+
+const sendTaskLifecycleEmailIfEnabled = async ({
+  task,
+  userId = "",
+  email = "",
+  fallbackUser,
+  emailType,
+  actorName = "",
+  note = "",
+  files = [],
+  submittedAt = new Date(),
+}) => {
+  const resolvedEmail = String(email || "").trim() || await resolveRequesterEmailFromTask(task);
+  const resolvedUserId = String(userId || task?.requesterId || "").trim();
+  const requesterPrefs = await resolveNotificationPreferences({
+    userId: resolvedUserId,
+    email: resolvedEmail,
+    fallbackUser,
+  });
+
+  if (!resolvedEmail || !requesterPrefs.emailNotifications) {
+    return false;
+  }
+
+  const taskId = task?.id || task?._id?.toString?.() || "";
+  return sendFinalFilesEmail({
+    to: resolvedEmail,
+    taskTitle: task?.title,
+    files,
+    designerName: actorName,
+    taskUrl: buildFrontendTaskUrl(taskId),
+    submittedAt,
+    taskDetails: {
+      id: taskId || task?._id,
+      status: task?.status,
+      category: task?.category,
+      deadline: task?.deadline,
+      requesterName: task?.requesterName,
+      requesterEmail: resolvedEmail,
+      requesterDepartment: task?.requesterDepartment,
+      description: task?.description,
+    },
+    emailType,
+    assignmentMessage: note,
+  });
+};
+
 const normalizeAssignedName = (value) => {
   if (!value) return "";
   const raw = String(value).trim();
@@ -2491,16 +2574,28 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
       });
     }
 
-    const baseUrl = process.env.FRONTEND_URL || "";
-    const taskUrl = baseUrl
-      ? `${baseUrl.replace(/\/$/, "")}/task/${task.id || task._id}`
-      : "";
+    const taskUrl = buildFrontendTaskUrl(task.id || task._id);
 
     const requesterPrefs = await resolveNotificationPreferences({
       userId: task.requesterId,
       email: task.requesterEmail,
       fallbackUser: req.user,
     });
+
+    if (requesterPrefs.emailNotifications) {
+      const emailSent = await sendTaskLifecycleEmailIfEnabled({
+        task,
+        userId: task.requesterId,
+        email: task.requesterEmail,
+        fallbackUser: req.user,
+        emailType: "REQUEST_CREATED",
+        actorName: requesterName || task.requesterName || "Staff",
+        submittedAt: now,
+      });
+      if (!emailSent) {
+        console.warn("Request created email skipped or failed.");
+      }
+    }
 
     if (requesterPrefs.whatsappNotifications) {
       const recipients = [
@@ -4832,7 +4927,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
 
     const statusEntry = sanitizedEntries.find((entry) => entry.field === "status");
     if (statusEntry && requesterUserId) {
-      const nextStatus = String(statusEntry.newValue || "").toLowerCase();
+      const nextStatus = normalizeValue(statusEntry.newValue).replace(/[\s-]+/g, "_");
       if (nextStatus.includes("completed")) {
         notifyUser(requesterUserId, {
           title: `Task completed: ${updatedTask.title}`,
@@ -4842,6 +4937,19 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
           taskId,
           eventId: `status:${taskId}:${nextStatus}:${changeStamp}`,
         });
+      }
+      if (nextStatus === "clarification_required") {
+        const emailSent = await sendTaskLifecycleEmailIfEnabled({
+          task: updatedTask,
+          userId: requesterUserId,
+          emailType: "CLARIFICATION_REQUIRED",
+          actorName: resolvedUserName || "Designer",
+          note: statusEntry.note || "",
+          submittedAt: statusEntry.createdAt || new Date(changeStamp),
+        });
+        if (!emailSent) {
+          console.warn("Clarification required email skipped or failed.");
+        }
       }
     }
 
@@ -4857,6 +4965,17 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
           taskId,
           eventId: `deadline:${taskId}:${decision}:${changeStamp}`,
         });
+        const emailSent = await sendTaskLifecycleEmailIfEnabled({
+          task: updatedTask,
+          userId: requesterUserId,
+          emailType: "DEADLINE_APPROVED",
+          actorName: resolvedUserName || "Designer",
+          note: deadlineEntry.note || "",
+          submittedAt: deadlineEntry.createdAt || new Date(changeStamp),
+        });
+        if (!emailSent) {
+          console.warn("Deadline approved email skipped or failed.");
+        }
       } else if (decision.includes("rejected")) {
         notifyUser(requesterUserId, {
           title: `Deadline update: ${updatedTask.title}`,
@@ -4866,6 +4985,17 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
           taskId,
           eventId: `deadline:${taskId}:${decision}:${changeStamp}`,
         });
+        const emailSent = await sendTaskLifecycleEmailIfEnabled({
+          task: updatedTask,
+          userId: requesterUserId,
+          emailType: "DEADLINE_REJECTED",
+          actorName: resolvedUserName || "Designer",
+          note: deadlineEntry.note || "",
+          submittedAt: deadlineEntry.createdAt || new Date(changeStamp),
+        });
+        if (!emailSent) {
+          console.warn("Deadline rejected email skipped or failed.");
+        }
       }
     }
 
@@ -4879,6 +5009,23 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
         taskId,
         eventId: `emergency:${taskId}:${changeStamp}`,
       });
+      const emergencyDecision = normalizeValue(emergencyEntry.newValue);
+      if (emergencyDecision === "approved" || emergencyDecision === "rejected") {
+        const emailSent = await sendTaskLifecycleEmailIfEnabled({
+          task: updatedTask,
+          userId: requesterUserId,
+          emailType:
+            emergencyDecision === "approved"
+              ? "EMERGENCY_APPROVED"
+              : "EMERGENCY_REJECTED",
+          actorName: resolvedUserName || "Designer",
+          note: emergencyEntry.note || "",
+          submittedAt: emergencyEntry.createdAt || new Date(changeStamp),
+        });
+        if (!emailSent) {
+          console.warn(`Emergency ${emergencyDecision} email skipped or failed.`);
+        }
+      }
     }
 
     const approvalEntry = sanitizedEntries.find((entry) => entry.field === "approval_status");
@@ -4894,6 +5041,19 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       };
       if (requesterUserId) notifyUser(requesterUserId, payload);
       if (designerUserId) notifyUser(designerUserId, payload);
+      if ((decision.includes("approved") || decision.includes("rejected")) && requesterUserId) {
+        const emailSent = await sendTaskLifecycleEmailIfEnabled({
+          task: updatedTask,
+          userId: requesterUserId,
+          emailType: decision.includes("approved") ? "APPROVAL_APPROVED" : "APPROVAL_REJECTED",
+          actorName: resolvedUserName || "Treasurer",
+          note: approvalEntry.note || "",
+          submittedAt: approvalEntry.createdAt || new Date(changeStamp),
+        });
+        if (!emailSent) {
+          console.warn(`Approval ${decision} email skipped or failed.`);
+        }
+      }
     }
 
     if (userRole === "staff" && designerUserId) {

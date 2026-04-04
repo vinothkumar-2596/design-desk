@@ -152,7 +152,12 @@ export default function Tasks() {
       setTasks((prev) => {
         const index = prev.findIndex((task) => (task.id || (task as any)._id) === id);
         if (index === -1) return prev;
-        const hydrated = hydrateTask({ ...payload, id });
+        const previousTask = prev[index];
+        const hydrated = hydrateTask({
+          ...payload,
+          id,
+          viewerReadAt: payload.viewerReadAt ?? previousTask.viewerReadAt,
+        });
         const next = [...prev];
         next[index] = hydrated;
         return next;

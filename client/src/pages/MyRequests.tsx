@@ -101,10 +101,15 @@ export default function MyRequests() {
       if (!payload) return;
       const id = payload.id || payload._id;
       if (!id) return;
-      const hydrated = hydrateTask({ ...payload, id });
       setTasks((prev) => {
         const index = prev.findIndex((task) => (task.id || (task as any)._id) === id);
         if (index === -1) return prev;
+        const previousTask = prev[index];
+        const hydrated = hydrateTask({
+          ...payload,
+          id,
+          viewerReadAt: payload.viewerReadAt ?? previousTask.viewerReadAt,
+        });
         const next = [...prev];
         next[index] = hydrated;
         return next;

@@ -470,16 +470,17 @@ export default function Dashboard() {
       const updatedTaskRaw = (payload?.task || payload) as any;
       const updatedTaskId = updatedTaskRaw?.id || updatedTaskRaw?._id;
       if (updatedTaskId) {
-        const hydrated = hydrateTask({
-          ...updatedTaskRaw,
-          id: updatedTaskId,
-        } as typeof mockTasks[number]);
         setTasks((prev) =>
-          prev.map((task) =>
-            (task.id || (task as { _id?: string })._id) === updatedTaskId
-              ? hydrated
-              : task
-          )
+          prev.map((task) => {
+            if ((task.id || (task as { _id?: string })._id) !== updatedTaskId) {
+              return task;
+            }
+            return hydrateTask({
+              ...updatedTaskRaw,
+              id: updatedTaskId,
+              viewerReadAt: updatedTaskRaw?.viewerReadAt ?? task.viewerReadAt,
+            } as typeof mockTasks[number]);
+          })
         );
       }
 
@@ -826,12 +827,16 @@ export default function Dashboard() {
         throw new Error(payload?.error || 'Failed to update approval');
       }
       const updated = await response.json();
-      const hydrated = hydrateTask({
-        ...updated,
-        id: updated.id || updated._id,
-      });
       setTasks((prev) =>
-        prev.map((task) => (task.id === hydrated.id ? hydrated : task))
+        prev.map((task) =>
+          task.id === (updated.id || updated._id)
+            ? hydrateTask({
+                ...updated,
+                id: updated.id || updated._id,
+                viewerReadAt: updated.viewerReadAt ?? task.viewerReadAt,
+              })
+            : task
+        )
       );
       return;
     }

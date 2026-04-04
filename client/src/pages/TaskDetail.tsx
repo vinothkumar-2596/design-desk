@@ -1,4 +1,5 @@
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import { SubmissionSuccessDialog } from '@/components/common/SubmissionSuccessDialog';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { mockTasks } from '@/data/mockTasks';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,14 +23,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import Lottie from 'lottie-react';
 import {
   Select,
   SelectContent,
@@ -73,16 +66,21 @@ import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from 
 import { toast } from 'sonner';
 import {
   ApprovalStatus,
+  CollateralItem,
+  CollateralPriority,
   CollateralStatus,
   DesignVersion,
   FinalDeliverableFile,
   FinalDeliverableReviewAnnotation,
   FinalDeliverableReviewStatus,
   FinalDeliverableVersion,
+  Task,
+  TaskCategory,
   TaskChange,
   TaskComment,
   TaskFile,
   TaskStatus,
+  TaskUrgency,
   UserRole,
 } from '@/types';
 import { cn } from '@/lib/utils';
@@ -103,6 +101,7 @@ import {
   deriveTaskStatusFromCollaterals,
   formatCollateralStatusLabel,
   getCollateralDisplayName,
+  getCollateralPreset,
   getCollateralSizeSummary,
 } from '@/lib/campaignRequest';
 
@@ -195,6 +194,76 @@ const categoryLabels: Record<string, string> = {
   led_backdrop: 'LED Backdrop',
   brochure: 'Brochure',
   flyer: 'Flyer',
+};
+
+const quickDesignOverviewPresetByCategory: Partial<Record<TaskCategory, string>> = {
+  social_media_creative: 'instagram-square',
+  banner: 'banner-10x4',
+  flyer: 'a4-flyer',
+  brochure: 'brochure-trifold',
+  led_backdrop: 'led-backdrop',
+};
+
+const resolveQuickDesignOverviewPresetKey = (
+  task: Pick<Task, 'category' | 'title' | 'description'>
+) => {
+  const haystack = `${task.title} ${task.description}`.toLowerCase();
+  if (haystack.includes('youtube')) return 'youtube-thumbnail';
+  if (haystack.includes('facebook')) return 'facebook-post';
+  if (haystack.includes('whatsapp') && haystack.includes('story')) return 'whatsapp-story';
+  if (haystack.includes('whatsapp')) return 'whatsapp-creative-square';
+  if (haystack.includes('instagram') && haystack.includes('story')) return 'instagram-story';
+  if (haystack.includes('story')) return 'instagram-story';
+  if (haystack.includes('instagram')) return 'instagram-square';
+  return quickDesignOverviewPresetByCategory[task.category];
+};
+
+const mapTaskUrgencyToCollateralPriority = (urgency?: TaskUrgency): CollateralPriority => {
+  if (urgency === 'urgent') return 'high';
+  if (urgency === 'low') return 'low';
+  return 'normal';
+};
+
+const mapTaskStatusToCollateralStatus = (status?: TaskStatus): CollateralStatus => {
+  if (status === 'completed') return 'completed';
+  if (status === 'under_review') return 'submitted_for_review';
+  if (status === 'clarification_required') return 'rework';
+  if (status === 'in_progress' || status === 'assigned' || status === 'accepted') {
+    return 'in_progress';
+  }
+  return 'pending';
+};
+
+const buildQuickDesignOverviewCollateral = (task: Task): CollateralItem => {
+  const presetKey = resolveQuickDesignOverviewPresetKey(task);
+  const preset = getCollateralPreset(presetKey);
+
+  return {
+    id: `quick-design-overview-${task.id}`,
+    title: task.title,
+    collateralType: preset?.collateralType || categoryLabels[task.category] || 'Quick Design',
+    presetCategory: preset?.group,
+    presetKey: preset?.id,
+    presetLabel: preset?.label,
+    sizeMode: preset ? 'preset' : 'custom',
+    width: preset?.width,
+    height: preset?.height,
+    unit: preset?.unit,
+    sizeLabel: preset?.sizeLabel,
+    ratioLabel: preset?.ratioLabel,
+    orientation: preset?.orientation || 'custom',
+    platform: preset?.platform,
+    usageType: preset?.usageType,
+    brief: task.description,
+    deadline: task.deadline,
+    priority: mapTaskUrgencyToCollateralPriority(task.urgency),
+    status: mapTaskStatusToCollateralStatus(task.status),
+    referenceFiles: task.files.filter((file) => file.type === 'input'),
+    assignedToId: task.assignedToId,
+    assignedToName: task.assignedToName,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+  };
 };
 
 const changeFieldLabels: Record<string, string> = {
@@ -589,7 +658,6 @@ export default function TaskDetail() {
   const [isCommentComposerDragging, setIsCommentComposerDragging] = useState(false);
   const [isReplyComposerDragging, setIsReplyComposerDragging] = useState(false);
   const [copiedFileKey, setCopiedFileKey] = useState('');
-  const [handoverAnimation, setHandoverAnimation] = useState<object | null>(null);
   const [approvalDecisionInFlight, setApprovalDecisionInFlight] = useState<ApprovalDecision | null>(null);
   const [approvalRequestInFlight, setApprovalRequestInFlight] = useState(false);
   const [finalReviewDecisionInFlight, setFinalReviewDecisionInFlight] =
@@ -819,23 +887,6 @@ export default function TaskDetail() {
       isActive = false;
     };
   }, [apiUrl, id, taskState?.id, taskState?.viewerReadAt, user?.id]);
-
-  useEffect(() => {
-    let isActive = true;
-    const fetchAnimation = async (path: string) => {
-      const response = await fetch(path);
-      return response.ok ? response.json() : null;
-    };
-    fetchAnimation('/lottie/thank-you.json')
-      .then((data) => {
-        if (!isActive) return;
-        if (data) setHandoverAnimation(data);
-      })
-      .catch(() => { });
-    return () => {
-      isActive = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (highlightChangeId) {
@@ -2308,10 +2359,21 @@ export default function TaskDetail() {
   const canRemoveFiles = canDesignerActions;
   const canViewWorkingFiles = user?.role === 'designer' || user?.role === 'treasurer';
   const canManageWorkingFiles = canDesignerActions || (isDesignerRole && isMainDesignerUser);
-  const collateralItems = Array.isArray(taskState.collaterals) ? taskState.collaterals : [];
+  const rawCollateralItems = Array.isArray(taskState.collaterals) ? taskState.collaterals : [];
   const isCampaignRequest =
-    taskState.requestType === 'campaign_request' || collateralItems.length > 0;
-  const campaignDeadlineMode = taskState.campaign?.deadlineMode || 'common';
+    taskState.requestType === 'campaign_request' || rawCollateralItems.length > 0;
+  const quickDesignOverviewCollaterals = useMemo<CollateralItem[]>(
+    () =>
+      !isCampaignRequest && taskState.requestType === 'single_task'
+        ? [buildQuickDesignOverviewCollateral(taskState)]
+        : [],
+    [isCampaignRequest, taskState]
+  );
+  const collateralItems = isCampaignRequest ? rawCollateralItems : quickDesignOverviewCollaterals;
+  const usesCampaignOverviewLayout = collateralItems.length > 0;
+  const campaignDeadlineMode =
+    taskState.campaign?.deadlineMode || (usesCampaignOverviewLayout ? 'itemized' : 'common');
+  const overviewCampaignCommonDeadline = taskState.campaign?.commonDeadline;
   const selectedCampaignCollateral =
     collateralItems.find((item) => item.id === selectedCampaignCollateralId) ?? collateralItems[0];
   const selectedCampaignCollateralIndex = selectedCampaignCollateral
@@ -2322,7 +2384,7 @@ export default function TaskDetail() {
     : -1;
   const selectedCampaignCollateralDeadline = selectedCampaignCollateral
     ? campaignDeadlineMode === 'common'
-      ? taskState.campaign?.commonDeadline
+      ? overviewCampaignCommonDeadline ?? taskState.deadline
       : selectedCampaignCollateral.deadline
     : undefined;
   const campaignCompletedCollaterals = collateralItems.filter((item) =>
@@ -2334,7 +2396,7 @@ export default function TaskDetail() {
       : 0;
   const campaignPrimaryDeadline =
     campaignDeadlineMode === 'common'
-      ? taskState.campaign?.commonDeadline ?? taskState.deadline
+      ? overviewCampaignCommonDeadline ?? taskState.deadline
       : taskState.deadline;
   const campaignBriefText = useMemo(() => {
     const directBrief = String(taskState.campaign?.brief || '').trim();
@@ -2343,6 +2405,7 @@ export default function TaskDetail() {
     const [briefSection] = description.split(/\n\s*Collateral Scope\s*\n/i);
     return briefSection.trim();
   }, [taskState.campaign?.brief, taskState.description]);
+  const campaignOverallBrief = String(taskState.campaign?.brief || '').trim() || campaignBriefText;
   const campaignScopeLines = useMemo(() => {
     if (collateralItems.length > 0) {
       return collateralItems.map((collateral, index) => {
@@ -2637,7 +2700,7 @@ export default function TaskDetail() {
   const workflowUpdatedLabel = taskState.updatedAt
     ? formatDistanceToNow(new Date(taskState.updatedAt), { addSuffix: true })
     : 'Recently updated';
-  const showWorkflowInsights = secondaryWorkflowSignals.length > 0 || isCampaignRequest;
+  const showWorkflowInsights = secondaryWorkflowSignals.length > 0 || usesCampaignOverviewLayout;
   const activeFinalVersionReviewAnnotations = useMemo(
     () =>
       Array.isArray(activeFinalVersion?.reviewAnnotations)
@@ -6811,7 +6874,7 @@ export default function TaskDetail() {
         <div
           className={cn(
             'grid grid-cols-1 gap-5 pt-1',
-            isCampaignRequest
+            usesCampaignOverviewLayout
               ? 'xl:grid-cols-1'
               : 'xl:grid-cols-[minmax(0,1.5fr)_minmax(20rem,0.95fr)] 2xl:grid-cols-[minmax(0,1.65fr)_minmax(22rem,0.9fr)]'
           )}
@@ -6819,7 +6882,7 @@ export default function TaskDetail() {
           {/* Left Column - Details */}
           <div className="space-y-5">
             {/* Description — standalone for non-campaign tasks */}
-            {!isCampaignRequest && (
+            {!usesCampaignOverviewLayout && (
               <div className={`${glassPanelClass} p-5 animate-slide-up`}>
                 <h2 className="font-semibold text-foreground mb-3">Description</h2>
                 <p className="max-h-[600px] overflow-y-auto whitespace-pre-wrap text-[14px] leading-7 text-muted-foreground">
@@ -6828,7 +6891,7 @@ export default function TaskDetail() {
               </div>
             )}
 
-            {isCampaignRequest && (
+            {usesCampaignOverviewLayout && (
               <div className={`${glassPanelClass} overflow-hidden animate-slide-up`}>
                 <div className="border-b border-[#E7EDF8] px-5 py-4 dark:border-border">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -6955,7 +7018,7 @@ export default function TaskDetail() {
                       {collateralItems.map((collateral, index) => {
                         const effectiveDeadline =
                           campaignDeadlineMode === 'common'
-                            ? taskState.campaign?.commonDeadline
+                            ? overviewCampaignCommonDeadline ?? taskState.deadline
                             : collateral.deadline;
                         const isSelected = selectedCampaignCollateral?.id === collateral.id;
 
@@ -7052,13 +7115,13 @@ export default function TaskDetail() {
                         </div>
                       </div>
 
-                      {taskState.campaign?.brief ? (
+                      {campaignOverallBrief ? (
                         <div className="rounded-2xl border border-[#D9E6FF]/75 bg-[#F8FBFF]/82 px-4 py-4 dark:border-border dark:bg-card/70">
                           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                             Overall Brief
                           </p>
                           <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                            {taskState.campaign.brief}
+                            {campaignOverallBrief}
                           </p>
                         </div>
                       ) : null}
@@ -7208,7 +7271,7 @@ export default function TaskDetail() {
                           Update the delivery state for this collateral.
                         </p>
 
-                        {canUpdateCollateralStatus ? (
+                        {isCampaignRequest && canUpdateCollateralStatus ? (
                           <div className="mt-4">
                             <Select
                               value={selectedCampaignCollateral.status}
@@ -7263,7 +7326,7 @@ export default function TaskDetail() {
                         {collateralItems.map((collateral, index) => {
                           const effectiveDeadline =
                             campaignDeadlineMode === 'common'
-                              ? taskState.campaign?.commonDeadline
+                              ? overviewCampaignCommonDeadline ?? taskState.deadline
                               : collateral.deadline;
                           const isSelected = selectedCampaignCollateral?.id === collateral.id;
                           const isComplete = isCollateralStepComplete(collateral.status);
@@ -7400,19 +7463,19 @@ export default function TaskDetail() {
                         {/* Body — 2 columns: Brief (left) + Specs/Status (right) */}
                         <div className="mt-5 grid gap-x-8 gap-y-6 xl:grid-cols-[1fr_220px]">
                           {/* Left: Brief + References */}
-                          <div className="space-y-5">
-                            {taskState.campaign?.brief ? (
+                          <div className="min-w-0 space-y-5">
+                            {campaignOverallBrief ? (
                               <div>
                                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                                   Overall Brief
                                 </p>
                                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                                  {taskState.campaign.brief}
+                                  {campaignOverallBrief}
                                 </p>
                               </div>
                             ) : null}
 
-                            <div className={taskState.campaign?.brief ? 'border-t border-[#EEF2FF] pt-5 dark:border-border' : ''}>
+                            <div className={campaignOverallBrief ? 'border-t border-[#EEF2FF] pt-5 dark:border-border' : ''}>
                               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                                 Content Brief
                               </p>
@@ -7434,7 +7497,7 @@ export default function TaskDetail() {
                                 </span>
                               </div>
                               {(selectedCampaignCollateral.referenceFiles?.length || 0) > 0 ? (
-                                <div className="mt-3 space-y-1.5">
+                                <div className="mt-3 min-w-0 space-y-1.5">
                                   {selectedCampaignCollateral.referenceFiles.map((file, index) => {
                                     const fileLinkUrl = getFileActionUrl(file);
                                     const sizeLabel =
@@ -7443,10 +7506,12 @@ export default function TaskDetail() {
                                     return (
                                       <div
                                         key={file.id || `${selectedCampaignCollateral.id}-reference-${index}`}
-                                        className={cn(fileRowClass, 'gap-3 px-3 py-2')}
+                                        className={cn(fileRowClass, 'min-w-0 gap-3 px-3 py-2')}
                                       >
                                         <div className="min-w-0 flex-1">
-                                          <p className="truncate text-sm font-medium text-foreground">{file.name}</p>
+                                          <p className="line-clamp-2 pr-2 text-sm font-medium leading-5 text-foreground [overflow-wrap:anywhere]">
+                                            {file.name}
+                                          </p>
                                           {sizeLabel ? (
                                             <p className="mt-0.5 text-[11px] text-muted-foreground">{sizeLabel}</p>
                                           ) : null}
@@ -7565,7 +7630,7 @@ export default function TaskDetail() {
                               <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                                 Status
                               </p>
-                              {canUpdateCollateralStatus ? (
+                              {isCampaignRequest && canUpdateCollateralStatus ? (
                                 <Select
                                   value={selectedCampaignCollateral.status}
                                   onValueChange={(value) =>
@@ -7609,13 +7674,13 @@ export default function TaskDetail() {
                   </div>
                 </div>
 
-                {taskState.campaign?.brief ? (
+                {campaignOverallBrief ? (
                   <div className="hidden mt-4 rounded-2xl border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 px-4 py-4 dark:border-border dark:bg-slate-900/50">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       Overall Brief
                     </p>
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                      {taskState.campaign.brief}
+                      {campaignOverallBrief}
                     </p>
                   </div>
                 ) : null}
@@ -7624,7 +7689,7 @@ export default function TaskDetail() {
                   {collateralItems.map((collateral) => {
                     const effectiveDeadline =
                       campaignDeadlineMode === 'common'
-                        ? taskState.campaign?.commonDeadline
+                        ? overviewCampaignCommonDeadline ?? taskState.deadline
                         : collateral.deadline;
                     const isExpanded = expandedCollateralIds.has(collateral.id);
                     const sizeLabel = getCollateralSizeSummary(collateral as never);
@@ -7685,7 +7750,7 @@ export default function TaskDetail() {
                                 onValueChange={(value) =>
                                   handleCollateralStatusChange(collateral.id, value as CollateralStatus)
                                 }
-                                disabled={!canUpdateCollateralStatus}
+                                disabled={!isCampaignRequest || !canUpdateCollateralStatus}
                               >
                                 <SelectTrigger className="h-7 w-[136px] rounded-lg border-[#D7E4FF] bg-white px-2.5 text-[12px] shadow-none dark:border-border dark:bg-sidebar/60">
                                   <SelectValue placeholder="Status" />
@@ -8028,7 +8093,7 @@ export default function TaskDetail() {
 
             {/* 60/40 split: Job+Chat (60%) + Progress (40%) */}
             <div className="grid gap-5 items-start xl:grid-cols-[3fr_2fr]">
-            <div className="space-y-5">
+            <div className="min-w-0 space-y-5">
             {/* Job Requirement File */}
             <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Job Requirement File</h2>
@@ -8057,8 +8122,8 @@ export default function TaskDetail() {
                     </button>
                   </div>
                   {showReferenceFileList && (
-                    <div className={cn(inputFiles.length > 8 && fileListShellClass)}>
-                      <div className={cn('space-y-1.5', inputFiles.length > 8 && fileListScrollClass)}>
+                    <div className={cn('min-w-0', inputFiles.length > 8 && fileListShellClass)}>
+                      <div className={cn('min-w-0 space-y-1.5', inputFiles.length > 8 && fileListScrollClass)}>
                       {inputFiles.map((file, index) => {
                         const isCopied = copiedFileKey === getFileCopyFeedbackKey(file);
                         const isPreviewable = canPreviewFile(file);
@@ -8067,6 +8132,7 @@ export default function TaskDetail() {
                           key={getFileListItemKey(file, index)}
                           className={cn(
                             fileRowClass,
+                            'min-w-0 items-start',
                             isPreviewable &&
                               'cursor-pointer transition-colors hover:bg-white/55 dark:hover:bg-slate-800/85'
                           )}
@@ -8075,7 +8141,7 @@ export default function TaskDetail() {
                           <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
                             {renderFilePreview(file)}
                             <div className="min-w-0 flex-1">
-                              <span className="block truncate text-[13px] font-medium text-foreground">
+                              <span className="block pr-2 text-[13px] font-medium leading-5 text-foreground line-clamp-2 [overflow-wrap:anywhere]">
                                 {toTitleCaseFileName(file.name)}
                               </span>
                               <span className="mt-0.5 block text-[11px] text-muted-foreground">
@@ -8184,8 +8250,8 @@ export default function TaskDetail() {
                   {showWorkingFileList && (
                     <>
                       {workingFiles.length > 0 ? (
-                        <div className={cn(workingFiles.length > 8 && fileListShellClass)}>
-                          <div className={cn('space-y-1.5', workingFiles.length > 8 && fileListScrollClass)}>
+                        <div className={cn('min-w-0', workingFiles.length > 8 && fileListShellClass)}>
+                          <div className={cn('min-w-0 space-y-1.5', workingFiles.length > 8 && fileListScrollClass)}>
                           {workingFiles.map((file, index) => {
                             const isCopied = copiedFileKey === getFileCopyFeedbackKey(file);
                             const isPreviewable = canPreviewFile(file);
@@ -8194,6 +8260,7 @@ export default function TaskDetail() {
                               key={getFileListItemKey(file, index)}
                               className={cn(
                                 fileRowClass,
+                                'min-w-0 items-start',
                                 isPreviewable &&
                                   'cursor-pointer transition-colors hover:bg-white/55 dark:hover:bg-slate-800/85'
                               )}
@@ -8202,7 +8269,7 @@ export default function TaskDetail() {
                               <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
                                 {renderFilePreview(file)}
                                 <div className="min-w-0 flex-1">
-                                  <span className="block truncate text-[13px] font-medium text-foreground">
+                                  <span className="block pr-2 text-[13px] font-medium leading-5 text-foreground line-clamp-2 [overflow-wrap:anywhere]">
                                     {toTitleCaseFileName(file.name)}
                                   </span>
                                   <span className="mt-0.5 block text-[11px] text-muted-foreground">
@@ -8326,7 +8393,7 @@ export default function TaskDetail() {
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium text-foreground">
+                                  <p className="line-clamp-2 pr-2 text-sm font-medium leading-5 text-foreground [overflow-wrap:anywhere]">
                                     {item.name}
                                   </p>
                                   <p className="mt-1 text-[11px] text-muted-foreground">
@@ -9312,12 +9379,12 @@ export default function TaskDetail() {
           </div>
 
           {/* Right Column - Metadata */}
-          <div className={`space-y-6 ${isCampaignRequest ? "hidden" : ""}`}>
+          <div className={`space-y-6 ${usesCampaignOverviewLayout ? "hidden" : ""}`}>
             {/* Task Info */}
             <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Details</h2>
               <dl className="space-y-4">
-                {isCampaignRequest && (
+                {usesCampaignOverviewLayout && (
                   <div>
                     <dt className="text-xs text-muted-foreground uppercase tracking-wider">
                       Campaign Mode
@@ -9677,24 +9744,36 @@ export default function TaskDetail() {
                             'relative z-[1] mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition-colors',
                             isPast
                               ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/35 dark:bg-emerald-950/30 dark:text-emerald-300'
-                              : isCurrent
-                                ? 'border-[#3657C9] bg-[#3657C9] text-white shadow-[0_0_0_4px_rgba(54,87,201,0.12)] dark:border-[#6C8DFF] dark:bg-[#4E6FE0] dark:shadow-[0_0_0_4px_rgba(108,141,255,0.18)]'
+                            : isCurrent
+                                ? 'border-[#3657C9] bg-[#3657C9] text-white shadow-[0_0_0_4px_rgba(54,87,201,0.12)] motion-safe:animate-[trackingNodePulse_1.9s_ease-in-out_infinite] dark:border-[#6C8DFF] dark:bg-[#4E6FE0] dark:shadow-[0_0_0_4px_rgba(108,141,255,0.18)]'
                                 : 'border-[#D7E3FF] bg-white text-[#7A8EBA] dark:border-slate-600/70 dark:bg-slate-900 dark:text-slate-300'
                           )}
                         >
-                          {isPast ? <Check className="h-4 w-4" /> : index + 1}
+                          {isCurrent ? (
+                            <span className="pointer-events-none absolute inset-[-6px] rounded-full border border-[#9CB2FF]/55 motion-safe:animate-[trackingHalo_1.9s_ease-out_infinite] dark:border-[#8EA7FF]/35" />
+                          ) : null}
+                          {isCurrent ? (
+                            <span className="pointer-events-none absolute inset-[-2px] rounded-full border border-white/40 dark:border-white/20" />
+                          ) : null}
+                          <span className="relative z-[1]">{isPast ? <Check className="h-4 w-4" /> : index + 1}</span>
                         </span>
                         {index !== TASK_STATUS_STEPS.length - 1 && (
                           <span
                             className={cn(
-                              'absolute left-1/2 top-9 h-[calc(100%-1.25rem)] w-px -translate-x-1/2 rounded-full',
+                              'absolute left-1/2 top-9 h-[calc(100%-1.25rem)] w-px -translate-x-1/2 overflow-visible rounded-full',
                               isPast
                                 ? 'bg-emerald-200/90 dark:bg-emerald-500/30'
-                                : isCurrent
+                              : isCurrent
                                   ? 'bg-gradient-to-b from-[#3657C9]/50 to-[#D7E3FF] dark:from-[#6C8DFF]/55 dark:to-slate-700'
                                   : 'bg-[#DDE7FB] dark:bg-slate-700/80'
                             )}
-                          />
+                          >
+                            {isCurrent ? (
+                              <>
+                                <span className="absolute inset-x-[-1px] inset-y-0 rounded-full bg-[linear-gradient(180deg,transparent_0%,rgba(54,87,201,0.18)_16%,rgba(54,87,201,0.95)_50%,rgba(151,177,255,0.26)_82%,transparent_100%)] bg-[length:100%_180%] motion-safe:animate-[trackingLineFlow_1.55s_linear_infinite] dark:bg-[linear-gradient(180deg,transparent_0%,rgba(108,141,255,0.14)_16%,rgba(108,141,255,0.92)_50%,rgba(168,189,255,0.24)_82%,transparent_100%)]" />
+                              </>
+                            ) : null}
+                          </span>
                         )}
                       </div>
 
@@ -9791,13 +9870,13 @@ export default function TaskDetail() {
                     </div>
                   ) : null}
 
-                  {isCampaignRequest ? (
+                  {usesCampaignOverviewLayout ? (
                     <div className={cn('grid gap-3', secondaryWorkflowSignals.length > 0 ? 'mt-4' : '')}>
                       <div className="rounded-2xl border border-[#DCE5FB] bg-white/72 px-4 py-3 dark:border-border dark:bg-card/70">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                              Campaign Progress
+                              {isCampaignRequest ? 'Campaign Progress' : 'Request Progress'}
                             </p>
                             <p className="mt-1 text-sm font-semibold text-foreground">
                               {campaignCompletedCollaterals} / {collateralItems.length} collateral items completed
@@ -9858,49 +9937,22 @@ export default function TaskDetail() {
         }}
         description="Previewing task attachment"
       />
-      <Dialog
+      <SubmissionSuccessDialog
         open={showHandoverModal}
         onOpenChange={(open) => {
           if (!open) handleHandoverClose();
         }}
-      >
-        <DialogContent className="max-w-md overflow-hidden p-0">
-          <div className="relative h-44 bg-primary/10">
-            {handoverAnimation && (
-              <Lottie animationData={handoverAnimation} loop={6} className="h-full w-full" />
-            )}
-          </div>
-          <div className="px-7 pb-7 pt-5 text-center">
-            <DialogHeader className="text-center sm:text-center">
-              <DialogTitle className="text-2xl font-bold text-foreground premium-headline">
-                Submission received
-              </DialogTitle>
-              <DialogDescription className="mt-2.5 text-sm text-muted-foreground">
-                The final deliverables were submitted successfully.
-                <br />
-                The reviewer will be notified shortly.
-              </DialogDescription>
-            </DialogHeader>
-            <Button className="mt-8 w-full" onClick={handleHandoverClose}>
-              Close
-            </Button>
-            <div className="mt-6 border-t border-border/60 pt-4 pb-2 text-center text-[11px] text-muted-foreground">
-              For assistance, please contact the coordinator at{' '}
-              <a href="tel:+919360960019" className="font-medium text-foreground/80 hover:text-foreground">
-                +91 9360960019
-              </a>{' '}
-              or{' '}
-              <a
-                href="mailto:design@smvec.ac.in"
-                className="font-medium text-foreground/80 hover:text-foreground"
-              >
-                design@smvec.ac.in
-              </a>
-              .
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+        title="Submission received"
+        description={
+          <>
+            The final deliverables were submitted successfully.
+            <br />
+            The reviewer will be notified shortly.
+          </>
+        }
+        actionLabel="Close"
+        onAction={handleHandoverClose}
+      />
     </DashboardLayout>
   );
 }

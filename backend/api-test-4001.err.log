@@ -1,0 +1,2 @@
+SMTP password contained spaces; normalized before sending.
+SMTP_ALLOW_SELF_SIGNED enabled; TLS certificate validation is relaxed.
