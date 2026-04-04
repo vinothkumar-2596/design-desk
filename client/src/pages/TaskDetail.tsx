@@ -7,9 +7,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -30,6 +39,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Calendar as DateCalendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   ArrowLeft,
   Calendar,
@@ -62,7 +73,15 @@ import {
   Search,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
-import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react';
 import { toast } from 'sonner';
 import {
   ApprovalStatus,
@@ -94,7 +113,7 @@ import {
   type AttachmentPreviewFile,
 } from '@/components/tasks/AttachmentPreviewDialog';
 import { ImageAnnotationDialog } from '@/components/tasks/ImageAnnotationDialog';
-import { isMainDesigner } from '@/lib/designerAccess';
+import { getDesignerScopeLabel, isMainDesigner } from '@/lib/designerAccess';
 import { DESIGN_GOVERNANCE_NOTICE_COMPACT } from '@/lib/designGovernance';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import {
@@ -297,6 +316,150 @@ const getAttachmentThumbnailLabel = (name: string) => {
 const normalizeUserRole = (role?: string) =>
   allRoles.includes(role as UserRole) ? (role as UserRole) : 'staff';
 const formatCommentTimestampHover = (value: Date) => format(value, 'MMMM d, yyyy - h:mm a');
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const toDateInputValue = (value?: Date | string | null) => {
+  if (!value) return '';
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return format(parsed, 'yyyy-MM-dd');
+};
+const toTimeInputValue = (value?: Date | string | null) => {
+  if (!value) return '';
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return format(parsed, 'HH:mm');
+};
+const DEADLINE_HOURS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
+const DEADLINE_MINUTES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'));
+const DEADLINE_PERIODS = ['AM', 'PM'] as const;
+const assignPanelClassName =
+  'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border-0 ring-1 ring-black/5 shadow-none dark:from-slate-950/70 dark:via-slate-900/60 dark:to-slate-900/45 dark:supports-[backdrop-filter]:from-slate-950/60 dark:supports-[backdrop-filter]:via-slate-900/50 dark:supports-[backdrop-filter]:to-slate-900/40 dark:ring-white/5';
+const assignFieldClassName =
+  'bg-white/75 border border-[#D9E6FF] backdrop-blur-lg font-semibold text-foreground/90 placeholder:text-[#9CA3AF] placeholder:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-[#B7C8FF] shadow-none dark:bg-slate-900/60 dark:border-slate-700/60 dark:text-slate-100 dark:placeholder:text-slate-400 dark:focus-visible:ring-primary/40 dark:focus-visible:border-slate-500/60';
+const assignSelectContentClassName =
+  'border border-[#C9D7FF] bg-[#F2F6FF]/95 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:text-slate-100 dark:supports-[backdrop-filter]:bg-slate-900/70';
+const parseTimeParts = (value?: string | null) => {
+  const normalized = String(value || '').trim();
+  const match = normalized.match(/^(\d{2}):(\d{2})$/);
+  if (!match) {
+    return { hour: '06', minute: '00', period: 'PM' as const };
+  }
+
+  const rawHour = Number(match[1]);
+  const minute = match[2];
+  const period = rawHour >= 12 ? 'PM' : 'AM';
+  const hour12 = rawHour % 12 || 12;
+
+  return {
+    hour: String(hour12).padStart(2, '0'),
+    minute,
+    period,
+  };
+};
+const toTwentyFourHourTime = (
+  hour: string,
+  minute: string,
+  period: (typeof DEADLINE_PERIODS)[number]
+) => {
+  const normalizedHour = Number(hour);
+  if (!Number.isFinite(normalizedHour) || normalizedHour < 1 || normalizedHour > 12) {
+    return '';
+  }
+
+  const safeMinute = /^\d{2}$/.test(minute) ? minute : '00';
+  let hours24 = normalizedHour % 12;
+  if (period === 'PM') hours24 += 12;
+  return `${String(hours24).padStart(2, '0')}:${safeMinute}`;
+};
+
+type DesignerOption = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  designerScope?: 'main' | 'junior';
+  portalId?: string;
+};
+
+const isDebugOrDemoDesigner = (option?: Partial<DesignerOption> | null) => {
+  const haystack = `${option?.name || ''} ${option?.email || ''}`.trim().toLowerCase();
+  return haystack.includes('demo') || haystack.includes('debug');
+};
+
+const sanitizeDesignerOptions = (options: DesignerOption[]) => {
+  const uniqueOptions = new Map<string, DesignerOption>();
+
+  options.forEach((option) => {
+    const id = String(option.id || '').trim();
+    const name = String(option.name || '').trim();
+    const email = String(option.email || '').trim().toLowerCase();
+    if (!id || !name) return;
+    if (isDebugOrDemoDesigner({ ...option, email, name })) return;
+
+    const key = email || `${name.toLowerCase()}::${option.designerScope || 'junior'}`;
+    if (uniqueOptions.has(key)) return;
+
+    uniqueOptions.set(key, {
+      ...option,
+      id,
+      name,
+      email,
+    });
+  });
+
+  return Array.from(uniqueOptions.values()).sort(
+    (left, right) =>
+      left.name.localeCompare(right.name) ||
+      left.email.localeCompare(right.email) ||
+      left.id.localeCompare(right.id)
+  );
+};
+
+const buildFallbackDesigners = (
+  currentTask?: typeof mockTasks[number] | null,
+  currentUser?: {
+    id?: string;
+    name?: string;
+    email?: string;
+    role?: string;
+    designerScope?: 'main' | 'junior';
+    portalId?: string;
+  } | null
+): DesignerOption[] => {
+  const options: DesignerOption[] = [];
+  const assignedId = resolveTaskAssignedId(currentTask);
+  const assignedName = String(currentTask?.assignedToName || '').trim();
+  if (assignedId && assignedName) {
+    options.push({
+      id: assignedId,
+      name: assignedName,
+      email: normalizeEmail(assignedId),
+      role: 'designer',
+      designerScope: 'junior',
+      portalId: `JD-${assignedId.slice(-6).toUpperCase()}`,
+    });
+  }
+
+  const currentRole = String(currentUser?.role || '').toLowerCase();
+  const currentId = String(currentUser?.id || '').trim();
+  if (currentRole === 'designer' && currentId) {
+    const currentEmail = String(currentUser?.email || '').trim().toLowerCase();
+    const fallbackName =
+      String(currentUser?.name || '').trim() ||
+      (currentEmail ? currentEmail.split('@')[0] : 'Designer');
+    options.unshift({
+      id: currentId,
+      name: fallbackName,
+      email: currentEmail,
+      role: 'designer',
+      designerScope: currentUser?.designerScope === 'main' ? 'main' : 'junior',
+      portalId: currentUser?.portalId || `JD-${currentId.slice(-6).toUpperCase()}`,
+    });
+  }
+
+  return sanitizeDesignerOptions(options);
+};
+
 type TaskAccessMode = 'full' | 'view_only';
 const normalizeTaskAccessMode = (value?: string): TaskAccessMode | null => {
   const normalized = String(value || '').trim().toLowerCase();
@@ -576,6 +739,24 @@ export default function TaskDetail() {
   const initialTask = stateTask || localTask || mockTasks.find((t) => t.id === id);
   const [taskState, setTaskState] = useState<typeof mockTasks[number] | undefined>(initialTask);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [assigningTask, setAssigningTask] = useState<typeof mockTasks[number] | null>(null);
+  const [designerOptions, setDesignerOptions] = useState<DesignerOption[]>([]);
+  const [designersLoaded, setDesignersLoaded] = useState(false);
+  const [isLoadingDesigners, setIsLoadingDesigners] = useState(false);
+  const [selectedDesignerId, setSelectedDesignerId] = useState('');
+  const [ccInput, setCcInput] = useState('');
+  const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const [assignmentMessage, setAssignmentMessage] = useState('');
+  const [assignmentDeadline, setAssignmentDeadline] = useState('');
+  const [assignmentDeadlineTime, setAssignmentDeadlineTime] = useState('18:00');
+  const [deadlineCalendarOpen, setDeadlineCalendarOpen] = useState(false);
+  const [isAssigningDesigner, setIsAssigningDesigner] = useState(false);
+  const [assignSuccessInfo, setAssignSuccessInfo] = useState<{
+    taskTitle: string;
+    designerName: string;
+    ccCount: number;
+  } | null>(null);
   const [newComment, setNewComment] = useState('');
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -847,6 +1028,7 @@ export default function TaskDetail() {
   const activeDesignVersion = designVersions.find((version) => version.id === activeDesignVersionId);
   const isDesignerRole = user?.role === 'designer';
   const isMainDesignerUser = isMainDesigner(user);
+  const deadlineTimeParts = parseTimeParts(assignmentDeadlineTime);
   const compareLeft = designVersions.find((version) => version.id === compareLeftId);
   const compareRight = designVersions.find((version) => version.id === compareRightId);
   useEffect(() => {
@@ -1489,6 +1671,61 @@ export default function TaskDetail() {
     return () => window.removeEventListener('designhub:task:updated', handleTaskUpdated);
   }, [id, taskState?.id, taskState?._id]);
 
+  const resetAssignDesignerModal = () => {
+    setAssigningTask(null);
+    setSelectedDesignerId('');
+    setCcInput('');
+    setCcEmails([]);
+    setAssignmentMessage('');
+    setAssignmentDeadline('');
+    setAssignmentDeadlineTime('18:00');
+    setDeadlineCalendarOpen(false);
+    setIsAssigningDesigner(false);
+    setAssignSuccessInfo(null);
+  };
+
+  const handleAssignModalChange = (open: boolean) => {
+    setIsAssignModalOpen(open);
+    if (!open) {
+      resetAssignDesignerModal();
+    }
+  };
+
+  const openAssignDesignerModal = (task: typeof mockTasks[number]) => {
+    const assignedId = resolveTaskAssignedId(task);
+    setAssigningTask(task);
+    setSelectedDesignerId(assignedId);
+    setCcInput('');
+    setCcEmails(resolveTaskCcEmails(task));
+    setAssignmentMessage('');
+    setAssignmentDeadline(toDateInputValue(task.deadline));
+    setAssignmentDeadlineTime(toTimeInputValue(task.deadline) || '18:00');
+    setDeadlineCalendarOpen(false);
+    setAssignSuccessInfo(null);
+    setIsAssignModalOpen(true);
+  };
+
+  const addCcEmail = (rawValue: string) => {
+    const normalizedEmail = rawValue.trim().toLowerCase();
+    if (!normalizedEmail) return;
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      toast.error('Enter a valid CC email address.');
+      return;
+    }
+    setCcEmails((prev) => (prev.includes(normalizedEmail) ? prev : [...prev, normalizedEmail]));
+    setCcInput('');
+  };
+
+  const removeCcEmail = (email: string) => {
+    setCcEmails((prev) => prev.filter((value) => value !== email));
+  };
+
+  const handleCcInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' && event.key !== ',') return;
+    event.preventDefault();
+    addCcEmail(ccInput);
+  };
+
   const persistTask = (nextTask: typeof taskState, nextHistory?: TaskChange[]) => {
     if (!nextTask || !storageKey) return;
     const payload = {
@@ -1496,6 +1733,187 @@ export default function TaskDetail() {
       changeHistory: nextHistory ?? nextTask.changeHistory,
     };
     localStorage.setItem(storageKey, JSON.stringify(payload));
+  };
+
+  useEffect(() => {
+    if (!isAssignModalOpen || !isDesignerRole || !isMainDesignerUser || designersLoaded) return;
+
+    const loadDesigners = async () => {
+      if (!apiUrl) {
+        const fallbackDesigners = buildFallbackDesigners(taskState, user);
+        setDesignerOptions(sanitizeDesignerOptions(fallbackDesigners));
+        setDesignersLoaded(true);
+        return;
+      }
+
+      setIsLoadingDesigners(true);
+      try {
+        const response = await authFetch(`${apiUrl}/api/tasks/designers`);
+        const payload = await response.json();
+        if (!response.ok) {
+          const errorMessage =
+            typeof payload?.error === 'string' && payload.error.trim()
+              ? payload.error.trim()
+              : 'Failed to load designers';
+          throw new Error(errorMessage);
+        }
+
+        const source = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.designers)
+            ? payload.designers
+            : [];
+        const mapped = source
+          .map((designer: any) => {
+            const id = String(designer?.id || designer?._id || '').trim();
+            const email = String(designer?.email || '').trim().toLowerCase();
+            const name =
+              String(designer?.name || '').trim() ||
+              (email ? email.split('@')[0] : '');
+            const designerScope =
+              String(designer?.designerScope || '').trim().toLowerCase() === 'main'
+                ? 'main'
+                : 'junior';
+            if (!id || !name) return null;
+            return {
+              id,
+              name,
+              email,
+              role: String(designer?.role || 'designer').trim().toLowerCase(),
+              designerScope,
+              portalId:
+                String(designer?.portalId || '').trim() ||
+                `${designerScope === 'main' ? 'MD' : 'JD'}-${id.slice(-6).toUpperCase()}`,
+            } as DesignerOption;
+          })
+          .filter(Boolean) as DesignerOption[];
+        setDesignerOptions(sanitizeDesignerOptions(mapped));
+        setDesignersLoaded(true);
+      } catch (error) {
+        const fallbackDesigners = buildFallbackDesigners(taskState, user);
+        if (fallbackDesigners.length > 0) {
+          setDesignerOptions(sanitizeDesignerOptions(fallbackDesigners));
+          setDesignersLoaded(true);
+        }
+        const message =
+          error instanceof Error && error.message ? error.message : 'Failed to load designers';
+        toast.error(message);
+      } finally {
+        setIsLoadingDesigners(false);
+      }
+    };
+
+    loadDesigners();
+  }, [
+    apiUrl,
+    designersLoaded,
+    isAssignModalOpen,
+    isDesignerRole,
+    isMainDesignerUser,
+    taskState,
+    user,
+  ]);
+
+  const submitAssignDesigner = async () => {
+    const taskId = assigningTask?.id || (assigningTask as { _id?: string } | null)?._id || '';
+    if (!taskId) {
+      toast.error('Task not found.');
+      return;
+    }
+    if (!selectedDesignerId) {
+      toast.error('Select a designer to continue.');
+      return;
+    }
+    if (!apiUrl) {
+      toast.error('Assignment API is not configured.');
+      return;
+    }
+    if (!assignmentDeadline) {
+      toast.error('Select a deadline before assigning.');
+      return;
+    }
+    if (!assignmentDeadlineTime) {
+      toast.error('Select deadline time before assigning.');
+      return;
+    }
+
+    const deadlinePayload = `${assignmentDeadline}T${assignmentDeadlineTime}:00`;
+    const parsedDeadlinePayload = new Date(deadlinePayload);
+    if (Number.isNaN(parsedDeadlinePayload.getTime())) {
+      toast.error('Invalid deadline date and time.');
+      return;
+    }
+
+    setIsAssigningDesigner(true);
+    try {
+      const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/assign-designer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assigned_designer_id: selectedDesignerId,
+          cc_emails: ccEmails,
+          message: assignmentMessage.trim(),
+          deadline: deadlinePayload,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to assign designer.');
+      }
+
+      const updatedTaskRaw = (payload?.task || payload) as any;
+      const updatedTaskId = updatedTaskRaw?.id || updatedTaskRaw?._id;
+      const nextCc =
+        resolveTaskCcEmails(updatedTaskRaw as typeof mockTasks[number]).length > 0
+          ? resolveTaskCcEmails(updatedTaskRaw as typeof mockTasks[number])
+          : ccEmails;
+      const hydrated = withAccessMetadata(
+        hydrateTask({
+          ...updatedTaskRaw,
+          id: updatedTaskId,
+          viewerReadAt: updatedTaskRaw?.viewerReadAt ?? taskState?.viewerReadAt,
+          ccEmails: nextCc,
+          cc_emails: nextCc,
+        } as typeof mockTasks[number]),
+        taskState
+      );
+
+      setTaskState(hydrated);
+      setChangeHistory(hydrated?.changeHistory ?? []);
+      setChangeCount(hydrated?.changeCount ?? 0);
+      setApprovalStatus(hydrated?.approvalStatus);
+      persistTask(hydrated);
+      window.dispatchEvent(new CustomEvent('designhub:task:updated', { detail: hydrated }));
+
+      const selectedDesigner = designerOptions.find((designer) => designer.id === selectedDesignerId);
+      setAssignSuccessInfo({
+        taskTitle: updatedTaskRaw?.title || assigningTask?.title || 'Task',
+        designerName: selectedDesigner?.name || updatedTaskRaw?.assignedToName || 'Designer',
+        ccCount: ccEmails.length,
+      });
+      toast.success('Task assigned. Email notification is being sent.');
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to assign designer.';
+      const normalizedMessage = message.toLowerCase();
+      if (
+        normalizedMessage.includes('only designers can assign designers') ||
+        normalizedMessage.includes('only designer or admin accounts can assign designers') ||
+        normalizedMessage.includes('only designer, treasurer, or admin accounts can assign designers') ||
+        normalizedMessage.includes('only the main designer can assign designers') ||
+        normalizedMessage.includes('only the design lead can assign designers')
+      ) {
+        toast.error(
+          'Your signed-in account is not authorized to assign designers. Demo role switch changes view only.'
+        );
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setIsAssigningDesigner(false);
+    }
   };
 
   useEffect(() => {
@@ -2340,6 +2758,7 @@ export default function TaskDetail() {
   const hasFullTaskAccess = hasExplicitAccessMode
     ? backendAccessMode === 'full' && !explicitViewOnlyFlag
     : !isViewOnlyTask;
+  const canAssignDesigner = isDesignerRole && isMainDesignerUser && hasFullTaskAccess && !isViewOnlyTask;
   const canDesignerActions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canFinalizeTaskActions = canDesignerActions || (isDesignerRole && isMainDesignerUser);
   const isStaffRole = user?.role === 'staff';
@@ -2697,6 +3116,8 @@ export default function TaskDetail() {
       : 0;
   const workflowAssigneeLabel =
     String(taskState.assignedToName || taskState.assignedTo || '').trim() || 'Unassigned';
+  const hasWorkflowAssignee =
+    Boolean(resolveTaskAssignedId(taskState)) || Boolean(String(taskState.assignedToName || '').trim());
   const workflowUpdatedLabel = taskState.updatedAt
     ? formatDistanceToNow(new Date(taskState.updatedAt), { addSuffix: true })
     : 'Recently updated';
@@ -9706,7 +10127,7 @@ export default function TaskDetail() {
                     {statusDetails[normalizedTaskStatus]}
                   </p>
                 </div>
-                <div className="min-w-[10rem] flex-1 sm:max-w-[12rem]">
+                <div className="min-w-[13rem] flex-1 sm:max-w-[16rem]">
                   <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     <span>Progress</span>
                     <span>{deliveryProgressPercent}%</span>
@@ -9727,6 +10148,23 @@ export default function TaskDetail() {
                       {workflowUpdatedLabel}
                     </span>
                   </div>
+                  {canAssignDesigner ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={hasWorkflowAssignee ? 'outline' : 'default'}
+                      onClick={() => openAssignDesignerModal(taskState)}
+                      className={cn(
+                        'mt-3 h-9 w-full rounded-full text-sm font-semibold shadow-none',
+                        hasWorkflowAssignee
+                          ? 'border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white'
+                          : 'bg-[#3657C9] text-white hover:bg-[#2F4EBA] dark:bg-[#4E6FE0] dark:text-white dark:hover:bg-[#6080F0]'
+                      )}
+                    >
+                      <User className="mr-2 h-4 w-4" />
+                      {hasWorkflowAssignee ? 'Reassign Designer' : 'Assign Designer'}
+                    </Button>
+                  ) : null}
                 </div>
               </div>
 
@@ -9903,6 +10341,311 @@ export default function TaskDetail() {
         </div>
       </div>
       </div>
+      <Dialog open={isAssignModalOpen} onOpenChange={handleAssignModalChange}>
+        <DialogContent className={`sm:max-w-xl ${assignPanelClassName} dark:border-0`}>
+          <DialogHeader>
+            <DialogTitle>Assign Designer</DialogTitle>
+            <DialogDescription>
+              {assignSuccessInfo
+                ? `Assignment submitted for "${assignSuccessInfo.taskTitle}".`
+                : assigningTask
+                  ? `Assign a designer for "${assigningTask.title}" and notify everyone in CC.`
+                  : 'Assign a designer and send an email notification.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {assignSuccessInfo ? (
+            <div className="rounded-xl border border-[#D9E6FF] bg-[#F5F8FF] p-4 dark:border-[#2A3C6B]/70 dark:bg-[#0F1D39]/80">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 rounded-full bg-[#EAF0FF] p-1.5 text-[#34429D] dark:bg-[#1A315E] dark:text-[#AFC5FF]">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-[#1E2A5A] dark:text-[#E8EEFF]">
+                    Assignment confirmed
+                  </p>
+                  <p className="text-sm text-[#2B3F86] dark:text-[#C4D3FF]">
+                    <span className="font-medium">{assignSuccessInfo.taskTitle}</span> has been assigned to{' '}
+                    <span className="font-medium">{assignSuccessInfo.designerName}</span>.
+                  </p>
+                  <p className="text-xs text-[#4B5FA8] dark:text-[#94A9E8]">
+                    Email notification sent
+                    {assignSuccessInfo.ccCount > 0
+                      ? ` to ${assignSuccessInfo.ccCount} CC recipient(s).`
+                      : '.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-1">
+              <div className="space-y-2">
+                <Label htmlFor="assign-designer-select">Assign Designer</Label>
+                <Select
+                  value={selectedDesignerId}
+                  onValueChange={setSelectedDesignerId}
+                  disabled={isLoadingDesigners || isAssigningDesigner}
+                >
+                  <SelectTrigger id="assign-designer-select" className={assignFieldClassName}>
+                    <SelectValue
+                      placeholder={isLoadingDesigners ? 'Loading designers...' : 'Select designer'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent className={assignSelectContentClassName}>
+                    {designerOptions.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No designers available.
+                      </div>
+                    ) : (
+                      designerOptions.map((designer) => (
+                        <SelectItem key={designer.id} value={designer.id}>
+                          {designer.name} ({getDesignerScopeLabel(designer.designerScope)}
+                          {designer.portalId ? ` | ${designer.portalId}` : ''})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="assign-cc-input">CC Email(s)</Label>
+                <Input
+                  id="assign-cc-input"
+                  type="email"
+                  value={ccInput}
+                  onChange={(event) => setCcInput(event.target.value)}
+                  onKeyDown={handleCcInputKeyDown}
+                  onBlur={() => addCcEmail(ccInput)}
+                  placeholder="Type email and press Enter"
+                  disabled={isAssigningDesigner}
+                  className={assignFieldClassName}
+                />
+                {ccEmails.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {ccEmails.map((email) => (
+                      <Badge key={email} variant="secondary" className="flex items-center gap-1">
+                        {email}
+                        <button
+                          type="button"
+                          onClick={() => removeCcEmail(email)}
+                          className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-muted/70"
+                          aria-label={`Remove ${email}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="assign-message">Message (optional)</Label>
+                <Textarea
+                  id="assign-message"
+                  value={assignmentMessage}
+                  onChange={(event) => setAssignmentMessage(event.target.value)}
+                  placeholder="Add an optional assignment note"
+                  rows={4}
+                  disabled={isAssigningDesigner}
+                  className={`resize-none ${assignFieldClassName}`}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="assign-deadline">Deadline</Label>
+                <div className="grid gap-3 md:grid-cols-[1.45fr,1fr] md:items-center">
+                  <Popover open={deadlineCalendarOpen} onOpenChange={setDeadlineCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        id="assign-deadline"
+                        type="button"
+                        variant="outline"
+                        disabled={isAssigningDesigner}
+                        className={`h-10 justify-start text-left font-medium ${assignFieldClassName}`}
+                      >
+                        <Calendar className="mr-2 h-4 w-4 text-[#4863B7] dark:text-[#9FB4FF]" />
+                        {assignmentDeadline
+                          ? format(new Date(`${assignmentDeadline}T00:00:00`), 'PPP')
+                          : 'Pick deadline date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      className="w-auto border-[#C9D7FF] bg-[#F2F6FF]/95 p-2 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:supports-[backdrop-filter]:bg-slate-900/70"
+                    >
+                      <DateCalendar
+                        mode="single"
+                        selected={
+                          assignmentDeadline
+                            ? new Date(`${assignmentDeadline}T00:00:00`)
+                            : undefined
+                        }
+                        onSelect={(date) => {
+                          if (!date) return;
+                          setAssignmentDeadline(format(date, 'yyyy-MM-dd'));
+                          setDeadlineCalendarOpen(false);
+                        }}
+                        disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                        className="rounded-lg border border-[#D9E6FF] bg-white/75 p-2 dark:border-slate-700/60 dark:bg-slate-900/60"
+                        classNames={{
+                          caption_label:
+                            'text-sm font-semibold text-[#253977] dark:text-[#C8D7FF]',
+                          head_cell:
+                            'w-9 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[#5D75B9] dark:text-[#9CB3EE]',
+                          cell:
+                            'h-9 w-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20',
+                          day:
+                            'h-9 w-9 rounded-md border border-transparent p-0 font-medium text-[#223067] hover:bg-[#EAF1FF] hover:text-[#223067] aria-selected:opacity-100 dark:text-[#D6E2FF] dark:hover:bg-[#1A315E] dark:hover:text-[#D6E2FF]',
+                          nav_button:
+                            'h-7 w-7 border border-[#C7D9FF] bg-white text-[#3B54A6] hover:bg-[#EEF4FF] dark:border-[#33508A] dark:bg-[#15274F] dark:text-[#B4C7FF] dark:hover:bg-[#1B315F]',
+                          day_selected:
+                            'bg-[#3550A8] text-white hover:bg-[#2C4391] focus:bg-[#2C4391] focus:text-white',
+                          day_today:
+                            'bg-[#E1EBFF] text-[#1E2E66] dark:bg-[#29447D] dark:text-[#D9E4FF]',
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <div className="rounded-xl border border-[#D9E6FF] bg-white/75 px-3 py-2 backdrop-blur-lg dark:border-slate-700/60 dark:bg-slate-900/60">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6B82C3] dark:text-[#8FA7E6]">
+                          Time
+                        </p>
+                        <p className="mt-0.5 text-sm font-semibold tracking-tight text-[#223067] dark:text-[#D6E2FF]">
+                          {deadlineTimeParts.hour}:{deadlineTimeParts.minute}{' '}
+                          {deadlineTimeParts.period}
+                        </p>
+                      </div>
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/75 text-[#4863B7] ring-1 ring-[#D7E2FF] dark:bg-slate-800/70 dark:text-slate-200 dark:ring-slate-700/60">
+                        <Clock className="h-3.5 w-3.5" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Select
+                        value={deadlineTimeParts.hour}
+                        onValueChange={(value) =>
+                          setAssignmentDeadlineTime(
+                            toTwentyFourHourTime(
+                              value,
+                              deadlineTimeParts.minute,
+                              deadlineTimeParts.period
+                            )
+                          )
+                        }
+                        disabled={isAssigningDesigner}
+                      >
+                        <SelectTrigger className={`h-9 rounded-lg font-semibold ${assignFieldClassName}`}>
+                          <SelectValue placeholder="Hour" />
+                        </SelectTrigger>
+                        <SelectContent className={assignSelectContentClassName}>
+                          {DEADLINE_HOURS.map((hour) => (
+                            <SelectItem key={hour} value={hour}>
+                              {hour}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={deadlineTimeParts.minute}
+                        onValueChange={(value) =>
+                          setAssignmentDeadlineTime(
+                            toTwentyFourHourTime(
+                              deadlineTimeParts.hour,
+                              value,
+                              deadlineTimeParts.period
+                            )
+                          )
+                        }
+                        disabled={isAssigningDesigner}
+                      >
+                        <SelectTrigger className={`h-9 rounded-lg font-semibold ${assignFieldClassName}`}>
+                          <SelectValue placeholder="Min" />
+                        </SelectTrigger>
+                        <SelectContent className={`max-h-72 ${assignSelectContentClassName}`}>
+                          {DEADLINE_MINUTES.map((minute) => (
+                            <SelectItem key={minute} value={minute}>
+                              {minute}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={deadlineTimeParts.period}
+                        onValueChange={(value: (typeof DEADLINE_PERIODS)[number]) =>
+                          setAssignmentDeadlineTime(
+                            toTwentyFourHourTime(
+                              deadlineTimeParts.hour,
+                              deadlineTimeParts.minute,
+                              value
+                            )
+                          )
+                        }
+                        disabled={isAssigningDesigner}
+                      >
+                        <SelectTrigger className={`h-9 rounded-lg font-semibold ${assignFieldClassName}`}>
+                          <SelectValue placeholder="AM/PM" />
+                        </SelectTrigger>
+                        <SelectContent className={assignSelectContentClassName}>
+                          {DEADLINE_PERIODS.map((period) => (
+                            <SelectItem key={period} value={period}>
+                              {period}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Set exact deadline date and time for the assigned junior designer.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            {assignSuccessInfo ? (
+              <Button type="button" onClick={() => handleAssignModalChange(false)}>
+                Done
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleAssignModalChange(false)}
+                  disabled={isAssigningDesigner}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={submitAssignDesigner}
+                  disabled={
+                    !selectedDesignerId ||
+                    !assignmentDeadline ||
+                    !assignmentDeadlineTime ||
+                    isAssigningDesigner ||
+                    isLoadingDesigners
+                  }
+                >
+                  {isAssigningDesigner ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Assigning...
+                    </>
+                  ) : (
+                    'Assign & Notify'
+                  )}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ImageAnnotationDialog
         open={annotationDialogOpen}
         onOpenChange={(open) => {
