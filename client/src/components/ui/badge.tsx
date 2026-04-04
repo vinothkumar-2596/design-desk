@@ -20,7 +20,7 @@ const badgeVariants = cva(
         review:
           "border-transparent bg-status-review-bg text-status-review dark:border-status-review/30 dark:bg-status-review/20 dark:text-status-review",
         completed:
-          "border-transparent bg-status-completed-bg text-status-completed dark:border-status-completed/30 dark:bg-status-completed/20 dark:text-status-completed",
+          "border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] dark:border-white/10 dark:bg-slate-900/70 dark:text-white",
         urgent:
           "border-transparent bg-status-urgent-bg text-status-urgent dark:border-status-urgent/30 dark:bg-status-urgent/20 dark:text-status-urgent",
         clarification:

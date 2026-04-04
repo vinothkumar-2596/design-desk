@@ -74,11 +74,13 @@ import {
 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import {
+  Component,
   Fragment,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ErrorInfo,
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
@@ -197,6 +199,57 @@ const staffTrackerSummary: Record<DisplayTaskStatus, string> = {
   completed: 'Final delivery shared and marked complete',
 };
 type StaffHealthTone = 'on_track' | 'at_risk' | 'overdue' | 'delivered';
+type TaskDetailErrorBoundaryState = {
+  error: Error | null;
+};
+
+class TaskDetailErrorBoundary extends Component<
+  { children: React.ReactNode },
+  TaskDetailErrorBoundaryState
+> {
+  state: TaskDetailErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): TaskDetailErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('TaskDetail render failed:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(111,145,255,0.14),transparent_28%),linear-gradient(180deg,#f6f8ff_0%,#eef3ff_100%)] px-6 py-16 text-slate-950">
+          <div className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center">
+            <div className="w-full rounded-[28px] border border-[#d7e2ff] bg-white/88 p-8 text-center shadow-[0_28px_90px_-42px_rgba(61,92,190,0.35)] backdrop-blur-xl">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#5c74b4]">
+                Task Detail
+              </p>
+              <h2 className="mt-3 text-2xl font-semibold text-[#17305d]">
+                Task page failed to render
+              </h2>
+              <p className="mt-2 text-sm text-[#5a6c8c]">
+                {this.state.error.message || 'Unexpected task-page error.'}
+              </p>
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <Button asChild>
+                  <Link to="/dashboard">Back to Dashboard</Link>
+                </Button>
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                  Reload
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const resolveStaffHealthTone = (
   status: DisplayTaskStatus,
   deadline?: Date | null
@@ -213,7 +266,7 @@ const resolveStaffHealthTone = (
 const getCollateralStatusPillClass = (status?: string) => {
   switch (String(status || '').trim().toLowerCase()) {
     case 'completed':
-      return 'border-emerald-200/80 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-950/30 dark:text-emerald-300';
+      return 'border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] dark:border-white/10 dark:bg-slate-900/70 dark:text-white';
     case 'rework':
       return 'border-amber-200/80 bg-amber-50 text-amber-700 dark:border-amber-500/35 dark:bg-amber-950/30 dark:text-amber-300';
     case 'submitted_for_review':
@@ -228,6 +281,54 @@ const getCollateralStatusPillClass = (status?: string) => {
 const isCollateralStepComplete = (status?: string) => {
   const normalized = String(status || '').trim().toLowerCase();
   return normalized === 'approved' || normalized === 'completed';
+};
+const createTaskBootstrapSeed = (taskId?: string): Task => {
+  const seed = mockTasks[0];
+  const now = new Date();
+
+  return {
+    ...seed,
+    id: taskId || seed.id,
+    _id: taskId || seed._id,
+    title: 'Loading task...',
+    description: '',
+    requesterId: seed.requesterId || 'bootstrap-requester',
+    requesterName: seed.requesterName || 'Loading',
+    requesterEmail: seed.requesterEmail,
+    requesterPhone: seed.requesterPhone,
+    requesterDepartment: seed.requesterDepartment,
+    assignedTo: undefined,
+    assignedToId: undefined,
+    assignedToName: '',
+    assignedDesignerEmail: undefined,
+    ccEmails: [],
+    cc_emails: [],
+    deadline: now,
+    proposedDeadline: undefined,
+    deadlineApprovalStatus: undefined,
+    deadlineApprovedBy: undefined,
+    deadlineApprovedAt: undefined,
+    isModification: false,
+    approvalStatus: undefined,
+    approvedBy: undefined,
+    approvalDate: undefined,
+    changeCount: 0,
+    changeHistory: [],
+    files: [],
+    designVersions: [],
+    activeDesignVersionId: undefined,
+    finalDeliverableVersions: [],
+    finalDeliverableReviewStatus: undefined,
+    finalDeliverableReviewedBy: undefined,
+    finalDeliverableReviewedAt: undefined,
+    finalDeliverableReviewNote: undefined,
+    campaign: undefined,
+    collaterals: [],
+    viewerReadAt: undefined,
+    comments: [],
+    createdAt: now,
+    updatedAt: now,
+  };
 };
 const normalizeTaskStatus = (value?: string): DisplayTaskStatus => {
   const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
@@ -775,7 +876,7 @@ function AttachmentThumbnail({
   );
 }
 
-export default function TaskDetail() {
+function TaskDetailScreen() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -791,11 +892,23 @@ export default function TaskDetail() {
   const stateTask = locationState?.task;
   const highlightChangeId = locationState?.highlightChangeId;
   const focusSection = locationState?.focusSection;
-  const localTask = id ? loadLocalTaskById(id) : undefined;
-  const initialTask = stateTask || localTask || mockTasks.find((t) => t.id === id);
-  const [taskState, setTaskState] = useState<typeof mockTasks[number] | undefined>(initialTask);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isStaffStatusPanelVisible, setIsStaffStatusPanelVisible] = useState(true);
+  const localTask = useMemo(() => (id ? loadLocalTaskById(id) : undefined), [id]);
+  const resolvedInitialTask = useMemo(
+    () => stateTask || localTask || mockTasks.find((t) => t.id === id),
+    [id, localTask, stateTask]
+  );
+  const bootstrapTask = useMemo(() => createTaskBootstrapSeed(id), [id]);
+  const hasInitialTask = Boolean(resolvedInitialTask);
+  const initialTask = useMemo(
+    () => resolvedInitialTask ?? bootstrapTask,
+    [bootstrapTask, resolvedInitialTask]
+  );
+  const [taskState, setTaskState] = useState<Task | undefined>(initialTask);
+  const [isLoading, setIsLoading] = useState(!hasInitialTask && Boolean(id));
+  const [taskRouteState, setTaskRouteState] = useState<'loading' | 'ready' | 'not_found'>(
+    hasInitialTask ? 'ready' : id ? 'loading' : 'not_found'
+  );
+  const [isStaffStatusPanelExpanded, setIsStaffStatusPanelExpanded] = useState(true);
   const [staffStatusPanelPosition, setStaffStatusPanelPosition] = useState<{
     left: number;
     top: number;
@@ -845,6 +958,7 @@ export default function TaskDetail() {
   );
   const [changeCount, setChangeCount] = useState(initialTask?.changeCount ?? 0);
   const lastMarkedViewedTaskRef = useRef('');
+  const taskStateRef = useRef<typeof taskState>(initialTask);
   const staffStatusPanelRef = useRef<HTMLDivElement | null>(null);
   const staffStatusPanelDragOffsetRef = useRef({ x: 0, y: 0 });
   const staffStatusPanelDragActiveRef = useRef(false);
@@ -946,6 +1060,24 @@ export default function TaskDetail() {
     focusSection === 'change-history'
   );
   const [designerHistoryJumpId, setDesignerHistoryJumpId] = useState('');
+  useEffect(() => {
+    setTaskRouteState(hasInitialTask ? 'ready' : id ? 'loading' : 'not_found');
+    setTaskState(initialTask);
+    setIsLoading(!hasInitialTask && Boolean(id));
+    setNewStatus(getStatusSelectValue(initialTask?.status));
+    setChangeCount(initialTask?.changeCount ?? 0);
+    setApprovalStatus(
+      initialTask?.approvalStatus ?? ((initialTask?.changeCount ?? 0) >= 3 ? 'pending' : undefined)
+    );
+    setChangeHistory(
+      (initialTask?.changeHistory ?? []).map((entry, index) => normalizeTaskChangeEntry(entry, index))
+    );
+    setEditedDescription(initialTask?.description ?? '');
+    setEditedDeadline(initialTask ? format(initialTask.deadline, 'yyyy-MM-dd') : '');
+    setDeadlineRequest(
+      initialTask?.proposedDeadline ? format(initialTask.proposedDeadline, 'yyyy-MM-dd') : ''
+    );
+  }, [hasInitialTask, id, initialTask]);
   const storageKey = id ? `designhub.task.${id}` : '';
   const commentDraftKey = useMemo(() => {
     const taskIdForDraft = String(id || taskState?.id || '').trim();
@@ -1615,6 +1747,55 @@ export default function TaskDetail() {
   };
 
   useEffect(() => {
+    taskStateRef.current = taskState;
+  }, [taskState]);
+
+  function applyTaskRealtimeSnapshot(rawTask: any, currentTask = taskStateRef.current) {
+    if (!rawTask) return undefined;
+    const resolvedId =
+      rawTask?.id ||
+      rawTask?._id ||
+      currentTask?.id ||
+      (currentTask as { _id?: string } | undefined)?._id ||
+      id;
+    if (!resolvedId) return undefined;
+    const hydrated = withAccessMetadata(
+      hydrateTask({
+        ...rawTask,
+        id: resolvedId,
+        viewerReadAt: rawTask?.viewerReadAt ?? currentTask?.viewerReadAt,
+      }),
+      currentTask
+    );
+    taskStateRef.current = hydrated;
+    setTaskState(hydrated);
+    setTaskRouteState('ready');
+    setChangeHistory(hydrated?.changeHistory ?? []);
+    setChangeCount(hydrated?.changeCount ?? 0);
+    setApprovalStatus(hydrated?.approvalStatus);
+    persistTask(hydrated);
+    return hydrated;
+  }
+
+  async function refreshTaskRealtimeSnapshot(taskId: string) {
+    if (!apiUrl || !taskId) return;
+    try {
+      const response = await authFetch(`${apiUrl}/api/tasks/${taskId}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      applyTaskRealtimeSnapshot(
+        {
+          ...data,
+          id: data?.id || data?._id || taskId,
+        },
+        taskStateRef.current
+      );
+    } catch (error) {
+      console.error('Failed to refresh realtime task state:', error);
+    }
+  }
+
+  useEffect(() => {
     const roomId = taskState?.id || (taskState as { _id?: string } | undefined)?._id || id;
     if (!apiUrl || !roomId || !user) return;
     if (!clientIdRef.current && typeof window !== 'undefined') {
@@ -1690,19 +1871,8 @@ export default function TaskDetail() {
 
     socket.on('task:updated', (payload: any) => {
       if (!payload || payload.taskId !== roomId || !payload.task) return;
-      setTaskState((prev) => {
-        const hydrated = withAccessMetadata(
-          hydrateTask({
-            ...payload.task,
-            viewerReadAt: payload.task?.viewerReadAt ?? prev?.viewerReadAt,
-          })
-        );
-        setChangeHistory(hydrated?.changeHistory ?? []);
-        setChangeCount(hydrated?.changeCount ?? 0);
-        setApprovalStatus(hydrated?.approvalStatus);
-        persistTask(hydrated);
-        return hydrated;
-      });
+      applyTaskRealtimeSnapshot(payload.task, taskStateRef.current);
+      void refreshTaskRealtimeSnapshot(String(payload.taskId));
     });
 
 
@@ -1724,12 +1894,8 @@ export default function TaskDetail() {
       const payloadId = payload.id || payload._id;
       const currentId = taskState?.id || (taskState as { _id?: string } | undefined)?._id || id;
       if (!payloadId || !currentId || payloadId !== currentId) return;
-      const hydrated = withAccessMetadata(hydrateTask({ ...payload, id: payloadId }));
-      setTaskState(hydrated);
-      setChangeHistory(hydrated?.changeHistory ?? []);
-      setChangeCount(hydrated?.changeCount ?? 0);
-      setApprovalStatus(hydrated?.approvalStatus);
-      persistTask(hydrated);
+      applyTaskRealtimeSnapshot({ ...payload, id: payloadId }, taskStateRef.current);
+      void refreshTaskRealtimeSnapshot(String(payloadId));
     };
     window.addEventListener('designhub:task:updated', handleTaskUpdated);
     return () => window.removeEventListener('designhub:task:updated', handleTaskUpdated);
@@ -2787,23 +2953,6 @@ export default function TaskDetail() {
     );
   };
 
-  if (!taskState) {
-    const fallbackHref = user?.role === 'designer' ? '/tasks' : '/dashboard';
-    const fallbackLabel = user?.role === 'designer' ? 'Go to Task Portal' : 'Back to Dashboard';
-    return (
-      <DashboardLayout>
-        <div className="text-center py-16">
-          <h2 className="text-xl font-semibold">
-            {isLoading ? 'Loading task...' : 'Task not found'}
-          </h2>
-          <Button asChild className="mt-4">
-            <Link to={fallbackHref}>{fallbackLabel}</Link>
-          </Button>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   const addWorkingDays = (start: Date, days: number) => {
     const result = new Date(start);
     let added = 0;
@@ -3200,14 +3349,10 @@ export default function TaskDetail() {
     TASK_STATUS_STEPS.length > 0
       ? Math.round(((deliveryStepIndex + 1) / TASK_STATUS_STEPS.length) * 100)
       : 0;
-  const staffTrackerStepIndex = getStaffTrackerStepIndex(normalizedTaskStatus);
-  const staffTrackerProgressPercent =
+  const baseStaffTrackerStepIndex = getStaffTrackerStepIndex(normalizedTaskStatus);
+  const baseStaffTrackerProgressPercent =
     STAFF_TRACKER_STEPS.length > 0
-      ? Math.round(((staffTrackerStepIndex + 1) / STAFF_TRACKER_STEPS.length) * 100)
-      : 0;
-  const staffWorkflowConnectorPercent =
-    STAFF_TRACKER_STEPS.length > 1
-      ? Math.round((staffTrackerStepIndex / (STAFF_TRACKER_STEPS.length - 1)) * 100)
+      ? Math.round(((baseStaffTrackerStepIndex + 1) / STAFF_TRACKER_STEPS.length) * 100)
       : 0;
   const workflowAssigneeLabel =
     String(taskState.assignedToName || taskState.assignedTo || '').trim() || 'Unassigned';
@@ -3224,6 +3369,130 @@ export default function TaskDetail() {
       ? `${formatDistanceToNow(taskDeadlineSnapshot as Date)} overdue`
       : `Due ${formatDistanceToNow(taskDeadlineSnapshot as Date, { addSuffix: true })}`
     : 'Deadline not set';
+  const trackerViewModel = useMemo(() => {
+    const defaultSupportItems = [
+      compactDeadlineLabel,
+      `${baseStaffTrackerProgressPercent}% complete`,
+      hasWorkflowAssignee ? `Assigned to ${workflowAssigneeLabel}` : 'Unassigned',
+    ];
+
+    if (user?.role === 'treasurer' && approvalStatus === 'pending') {
+      return {
+        stepIndex: 3,
+        headline: 'Approval required',
+        summary: 'Latest staff updates are waiting for your approval decision.',
+        supportItems: [
+          compactDeadlineLabel,
+          `${displayedChangeCount} changes submitted`,
+          hasWorkflowAssignee ? `Assigned to ${workflowAssigneeLabel}` : 'Unassigned',
+        ],
+      };
+    }
+
+    if (isDesignerRole && isMainDesignerUser) {
+      if (!hasWorkflowAssignee || normalizedTaskStatus === 'pending') {
+        return {
+          stepIndex: 1,
+          headline: 'Assignment required',
+          summary: 'Pick a designer and set the delivery path to start execution.',
+          supportItems: [compactDeadlineLabel, 'Awaiting assignment', 'Main designer action'],
+        };
+      }
+
+      if (taskState.deadlineApprovalStatus === 'pending') {
+        return {
+          stepIndex: 1,
+          headline: 'Deadline approval needed',
+          summary: 'A deadline change was requested and needs your review.',
+          supportItems: [
+            compactDeadlineLabel,
+            'Deadline approval pending',
+            `Assigned to ${workflowAssigneeLabel}`,
+          ],
+        };
+      }
+
+      if (finalDeliverableReviewStatus === 'pending') {
+        return {
+          stepIndex: 3,
+          headline: 'Review required',
+          summary: 'Final deliverables are ready for your approval or revision feedback.',
+          supportItems: [
+            compactDeadlineLabel,
+            `${Math.max(baseStaffTrackerProgressPercent, 80)}% complete`,
+            `Assigned to ${workflowAssigneeLabel}`,
+          ],
+        };
+      }
+
+      if (finalDeliverableReviewStatus === 'rejected') {
+        return {
+          stepIndex: 2,
+          headline: 'Revision in progress',
+          summary: 'Feedback was shared. Waiting for the next designer submission.',
+          supportItems: [
+            compactDeadlineLabel,
+            `${Math.max(baseStaffTrackerProgressPercent, 60)}% complete`,
+            `Assigned to ${workflowAssigneeLabel}`,
+          ],
+        };
+      }
+    }
+
+    if (isDesignerRole && !isMainDesignerUser) {
+      if (finalDeliverableReviewStatus === 'rejected') {
+        return {
+          stepIndex: 2,
+          headline: 'Revision required',
+          summary: 'Main designer requested changes to the submitted deliverables.',
+          supportItems: [compactDeadlineLabel, 'Resubmission needed', `Assigned to ${workflowAssigneeLabel}`],
+        };
+      }
+
+      if (finalDeliverableReviewStatus === 'pending') {
+        return {
+          stepIndex: 3,
+          headline: 'Awaiting review',
+          summary: 'Submitted work is with the main designer for final review.',
+          supportItems: [
+            compactDeadlineLabel,
+            `${Math.max(baseStaffTrackerProgressPercent, 80)}% complete`,
+            `Assigned to ${workflowAssigneeLabel}`,
+          ],
+        };
+      }
+    }
+
+    return {
+      stepIndex: baseStaffTrackerStepIndex,
+      headline: staffTrackerHeadline[normalizedTaskStatus],
+      summary: staffTrackerSummary[normalizedTaskStatus],
+      supportItems: defaultSupportItems,
+    };
+  }, [
+    approvalStatus,
+    baseStaffTrackerProgressPercent,
+    baseStaffTrackerStepIndex,
+    compactDeadlineLabel,
+    displayedChangeCount,
+    finalDeliverableReviewStatus,
+    hasWorkflowAssignee,
+    isDesignerRole,
+    isMainDesignerUser,
+    normalizedTaskStatus,
+    taskState.deadlineApprovalStatus,
+    user?.role,
+    workflowAssigneeLabel,
+  ]);
+  const staffTrackerStepIndex = trackerViewModel.stepIndex;
+  const staffTrackerProgressPercent =
+    STAFF_TRACKER_STEPS.length > 0
+      ? Math.round(((staffTrackerStepIndex + 1) / STAFF_TRACKER_STEPS.length) * 100)
+      : 0;
+  const staffWorkflowConnectorPercent =
+    STAFF_TRACKER_STEPS.length > 1
+      ? Math.round((staffTrackerStepIndex / (STAFF_TRACKER_STEPS.length - 1)) * 100)
+      : 0;
   const staffHealthTone = resolveStaffHealthTone(
     normalizedTaskStatus,
     hasValidTaskDeadline ? (taskDeadlineSnapshot as Date) : null
@@ -3259,13 +3528,29 @@ export default function TaskDetail() {
           : status.variant === 'progress'
             ? 'bg-[#3B82F6]'
             : 'bg-slate-400';
+  const shouldAnimateStaffStatusDot =
+    status.variant === 'review' || status.variant === 'progress';
+  const staffStatusDot = (
+    <span className="relative inline-flex h-3 w-3 shrink-0 self-center">
+      {shouldAnimateStaffStatusDot ? (
+        <>
+          <span className="pointer-events-none absolute left-1/2 top-1/2 h-3 w-3 rounded-full bg-[#4E84FF]/18 motion-safe:animate-[staffStatusDotAura_1.9s_ease-in-out_infinite]" />
+          <span className="pointer-events-none absolute left-1/2 top-1/2 h-3 w-3 rounded-full border border-[#9CB2FF]/55 motion-safe:animate-[staffStatusDotHalo_1.9s_ease-out_infinite]" />
+        </>
+      ) : null}
+      <span
+        className={cn(
+          'absolute left-1/2 top-1/2 z-[1] block h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full',
+          staffStatusDotClass,
+          shouldAnimateStaffStatusDot &&
+            'motion-safe:animate-[staffStatusDotCore_1.9s_ease-in-out_infinite]'
+        )}
+      />
+    </span>
+  );
   const staffWorkflowStageLabel = `${STAFF_TRACKER_STEPS[staffTrackerStepIndex]?.label || 'Submitted'} stage`;
-  const staffTrackerSupportItems = [
-    compactDeadlineLabel,
-    `${staffTrackerProgressPercent}% complete`,
-    hasWorkflowAssignee ? `Assigned to ${workflowAssigneeLabel}` : 'Unassigned',
-  ];
-  const shouldShowStaffStatusTracker = isStaffRole && hasFullTaskAccess && !isViewOnlyTask;
+  const staffTrackerSupportItems = trackerViewModel.supportItems;
+  const shouldShowStaffStatusTracker = Boolean(taskState?.id);
   const showWorkflowInsights = secondaryWorkflowSignals.length > 0 || usesCampaignOverviewLayout;
   const activeFinalVersionReviewAnnotations = useMemo(
     () =>
@@ -3326,9 +3611,16 @@ export default function TaskDetail() {
     event.preventDefault();
   };
   useEffect(() => {
-    setIsStaffStatusPanelVisible(true);
+    setIsStaffStatusPanelExpanded(true);
     setStaffStatusPanelPosition(null);
   }, [taskState?.id]);
+  useEffect(() => {
+    if (!staffStatusPanelPosition) return;
+
+    setStaffStatusPanelPosition(
+      clampStaffStatusPanelPosition(staffStatusPanelPosition.left, staffStatusPanelPosition.top)
+    );
+  }, [isStaffStatusPanelExpanded]);
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
@@ -4272,6 +4564,9 @@ export default function TaskDetail() {
     if (!apiUrl || !id) return;
     const loadTask = async () => {
       setIsLoading(true);
+      if (!hasInitialTask) {
+        setTaskRouteState('loading');
+      }
       try {
         const response = await authFetch(`${apiUrl}/api/tasks/${id}`);
         if (!response.ok) {
@@ -4312,6 +4607,7 @@ export default function TaskDetail() {
                       : ''
                   );
                   persistTask(hydrated);
+                  setTaskRouteState('ready');
                   return;
                 }
               }
@@ -4329,6 +4625,7 @@ export default function TaskDetail() {
           })
         );
         setTaskState(hydrated);
+        setTaskRouteState('ready');
         setChangeHistory(hydrated?.changeHistory ?? []);
         setChangeCount(hydrated?.changeCount ?? 0);
         setApprovalStatus(hydrated?.approvalStatus);
@@ -4343,15 +4640,15 @@ export default function TaskDetail() {
         if (message.toLowerCase().includes('session expired')) {
           toast.error(message);
         }
-        if (!initialTask) {
-          setTaskState(undefined);
+        if (!hasInitialTask) {
+          setTaskRouteState('not_found');
         }
       } finally {
         setIsLoading(false);
       }
     };
     loadTask();
-  }, [apiUrl, id]);
+  }, [apiUrl, hasInitialTask, id]);
 
   useEffect(() => {
     if (apiUrl || !id) return;
@@ -4359,6 +4656,7 @@ export default function TaskDetail() {
     if (!local) return;
     const hydrated = withAccessMetadata(hydrateTask(local));
     setTaskState(hydrated);
+    setTaskRouteState('ready');
     setChangeHistory(hydrated?.changeHistory ?? []);
     setChangeCount(hydrated?.changeCount ?? 0);
     setApprovalStatus(hydrated?.approvalStatus);
@@ -7433,17 +7731,28 @@ export default function TaskDetail() {
       }
     : undefined;
   const floatingStaffStatusPanel =
-    shouldShowStaffStatusTracker && isStaffStatusPanelVisible ? (
+    taskRouteState === 'ready' && shouldShowStaffStatusTracker ? (
       <div
-        className="pointer-events-none fixed right-5 top-24 z-30 hidden xl:block 2xl:right-8"
+        className="pointer-events-none fixed right-5 top-24 z-[110] hidden lg:block 2xl:right-8"
         style={floatingStaffStatusPanelStyle}
       >
         <div
           ref={staffStatusPanelRef}
-          onMouseDown={handleStaffStatusPanelDragStart}
-          className="pointer-events-auto relative w-[22rem] cursor-grab select-none overflow-hidden rounded-[32px] border border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-6 pb-6 pt-5 text-white shadow-[0_28px_60px_-34px_rgba(35,68,170,0.62)] backdrop-blur-xl transition-shadow hover:shadow-[0_30px_68px_-32px_rgba(35,68,170,0.72)] active:cursor-grabbing"
+          className={cn(
+            'pointer-events-auto relative w-[23rem] select-none overflow-hidden rounded-[32px] border text-white backdrop-blur-xl transition-[max-height,padding,box-shadow,background] duration-300',
+            isStaffStatusPanelExpanded
+              ? 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-6 pb-6 pt-5 shadow-[0_28px_60px_-34px_rgba(35,68,170,0.62)] hover:shadow-[0_30px_68px_-32px_rgba(35,68,170,0.72)] max-h-[38rem]'
+              : 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-5 pb-5 pt-4 shadow-[0_24px_52px_-30px_rgba(35,68,170,0.62)] hover:shadow-[0_26px_56px_-28px_rgba(35,68,170,0.72)] max-h-[12.5rem]'
+          )}
         >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(98,132,255,0.2),transparent_28%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.08),transparent_18%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0))]" />
+          <div
+            className={cn(
+              'pointer-events-none absolute inset-0',
+              isStaffStatusPanelExpanded
+                ? 'bg-[radial-gradient(circle_at_top,rgba(98,132,255,0.2),transparent_28%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.08),transparent_18%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0))]'
+                : 'bg-[radial-gradient(circle_at_top,rgba(98,132,255,0.2),transparent_28%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.08),transparent_18%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0))]'
+            )}
+          />
           <div
             className="pointer-events-none absolute inset-0 opacity-50"
             style={{
@@ -7457,7 +7766,12 @@ export default function TaskDetail() {
           <div className="pointer-events-none absolute left-1/2 top-24 h-28 w-28 -translate-x-1/2 rounded-full bg-[#1C2E68]/75 blur-3xl" />
 
           <div className="relative">
-          <div className="flex items-start justify-between gap-3">
+          {isStaffStatusPanelExpanded ? (
+          <>
+          <div
+            onMouseDown={handleStaffStatusPanelDragStart}
+            className="flex cursor-grab items-start justify-between gap-3 active:cursor-grabbing"
+          >
             <div className="min-w-0">
               <div className="w-fit rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#B7C7EC] shadow-[0_18px_42px_-32px_rgba(3,7,18,0.92)] backdrop-blur-xl">
                 <span>Task Status</span>
@@ -7466,29 +7780,85 @@ export default function TaskDetail() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => setIsStaffStatusPanelExpanded((current) => !current)}
                 onMouseDown={(event) => event.stopPropagation()}
-                onClick={() => setIsStaffStatusPanelVisible(false)}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/18 bg-white/10 text-white/82 transition-colors hover:bg-white/16 hover:text-white"
-                aria-label="Close live task status"
-                title="Close"
+                aria-label={isStaffStatusPanelExpanded ? 'Collapse task status sidebar' : 'Expand task status sidebar'}
+                title={isStaffStatusPanelExpanded ? 'Collapse' : 'Expand'}
               >
-                <X className="h-4 w-4" />
+                <ChevronDown className={cn('h-4 w-4 transition-transform', isStaffStatusPanelExpanded && 'rotate-180')} />
               </button>
             </div>
           </div>
 
           <div className="mt-4">
-            <div className="flex items-center gap-2">
-              <span className={cn('h-2.5 w-2.5 rounded-full', staffStatusDotClass)} />
-              <h2 className="bg-[linear-gradient(90deg,#F2F5FF_0%,#DCE7FF_56%,#BECEFF_100%)] bg-clip-text text-[1.4rem] font-semibold leading-tight text-transparent">
-                {staffTrackerHeadline[normalizedTaskStatus]}
-              </h2>
+              <div className="flex items-center gap-2">
+                {staffStatusDot}
+                <h2 className="bg-[linear-gradient(90deg,#F2F5FF_0%,#DCE7FF_56%,#BECEFF_100%)] bg-clip-text text-[1.4rem] font-semibold leading-tight text-transparent">
+                  {trackerViewModel.headline}
+                </h2>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-[#A7B6D6]">
+              {trackerViewModel.summary}
+              </p>
             </div>
-            <p className="mt-1 text-sm leading-6 text-[#A7B6D6]">
-              {staffTrackerSummary[normalizedTaskStatus]}
-            </p>
+          </>
+          ) : (
+          <>
+          <div
+            onMouseDown={handleStaffStatusPanelDragStart}
+            className="flex cursor-grab items-start justify-between gap-3 active:cursor-grabbing"
+          >
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#9AA6C7]">
+                {staffWorkflowStageLabel}
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                {staffStatusDot}
+                <h2 className="truncate text-[1.25rem] font-semibold leading-tight text-white">
+                  {trackerViewModel.headline}
+                </h2>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsStaffStatusPanelExpanded((current) => !current)}
+                onMouseDown={(event) => event.stopPropagation()}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/14 bg-white/6 text-white/82 transition-colors hover:bg-white/12 hover:text-white"
+                aria-label="Expand task status sidebar"
+                title="Expand"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
           </div>
+          <p className="mt-2 text-sm leading-6 text-[#AAB4CF]">
+            {trackerViewModel.summary}
+          </p>
+          <div className="mt-4">
+            <div className="relative h-2.5 overflow-hidden rounded-full bg-white/8">
+              <div
+                className="relative h-full rounded-full bg-[linear-gradient(90deg,#3B5EFF_0%,#4E84FF_54%,#90EAFF_100%)] shadow-[0_0_24px_rgba(120,169,255,0.42)]"
+                style={{ width: `${staffTrackerProgressPercent}%` }}
+              >
+                <span className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.8))] opacity-70 blur-sm" />
+              </div>
+            </div>
+            <div className="mt-3 flex items-center justify-between text-[11px] font-medium text-[#C6D0EA]">
+              <span>{compactDeadlineLabel}</span>
+              <span>{staffTrackerProgressPercent}% complete</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[10px] text-[#8F9BB8]">
+              <span>Updated {workflowUpdatedLabel}</span>
+              <span>{staffWorkflowStageLabel}</span>
+            </div>
+          </div>
+          </>
+          )}
 
+          {isStaffStatusPanelExpanded ? (
+          <>
           <div className="relative mt-5 overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4 shadow-[0_18px_42px_-32px_rgba(3,7,18,0.92)] backdrop-blur-xl">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(156,186,255,0.18),transparent_34%),radial-gradient(circle_at_82%_24%,rgba(255,255,255,0.08),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]" />
             <div className="relative">
@@ -7519,18 +7889,26 @@ export default function TaskDetail() {
               <span>Workflow</span>
               <span className="text-[#DCE7FF]">{staffWorkflowStageLabel}</span>
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+            <div className="relative mt-2 h-2 overflow-hidden rounded-full bg-white/10">
               <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,#2A47AE_0%,#3F63D6_58%,#6C8DFF_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-all duration-300 ease-out"
+                className="relative h-full rounded-full bg-[linear-gradient(90deg,#3B5EFF_0%,#4E84FF_54%,#90EAFF_100%)] shadow-[0_0_24px_rgba(120,169,255,0.42),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all duration-300 ease-out"
                 style={{ width: `${staffTrackerProgressPercent}%` }}
-              />
+              >
+                <span className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.78))] opacity-80 blur-sm" />
+              </div>
             </div>
             <div className="mt-4 grid grid-cols-5 gap-2">
               {STAFF_TRACKER_STEPS.map((step, index) => {
                 const isComplete = index < staffTrackerStepIndex;
                 const isCurrent = index === staffTrackerStepIndex;
                 return (
-                  <div key={step.id} className="relative flex flex-col items-center gap-2 text-center">
+                  <div
+                    key={step.id}
+                    className={cn(
+                      'relative flex flex-col items-center gap-2 text-center',
+                      isCurrent ? '' : ''
+                    )}
+                  >
                     {index !== STAFF_TRACKER_STEPS.length - 1 ? (
                       <span
                         className={cn(
@@ -7573,14 +7951,45 @@ export default function TaskDetail() {
               })}
             </div>
           </div>
+          </>
+          ) : null}
           </div>
         </div>
       </div>
     ) : null;
 
+  if (taskRouteState !== 'ready') {
+    const fallbackHref = user?.role === 'designer' ? '/tasks' : '/dashboard';
+    const fallbackLabel = user?.role === 'designer' ? 'Go to Task Portal' : 'Back to Dashboard';
+
+    return (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(111,145,255,0.14),transparent_28%),linear-gradient(180deg,#f6f8ff_0%,#eef3ff_100%)] px-6 py-16 text-slate-950">
+        <div className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center">
+          <div className="w-full rounded-[28px] border border-[#d7e2ff] bg-white/88 p-8 text-center shadow-[0_28px_90px_-42px_rgba(61,92,190,0.35)] backdrop-blur-xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#5c74b4]">
+              Task Detail
+            </p>
+            <h2 className="mt-3 text-2xl font-semibold text-[#17305d]">
+              {taskRouteState === 'loading' ? 'Loading task...' : 'Task not found'}
+            </h2>
+            <p className="mt-2 text-sm text-[#5a6c8c]">
+              {taskRouteState === 'loading'
+                ? 'Preparing the task workspace for this direct link.'
+                : 'This task could not be loaded from the current session.'}
+            </p>
+            <Button asChild className="mt-6">
+              <Link to={fallbackHref}>{fallbackLabel}</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <DashboardLayout hideGrid>
+    <>
       {floatingStaffStatusPanel}
+      <DashboardLayout hideGrid>
       <div className="relative z-10 mx-auto w-[96%] max-w-none select-none space-y-5">
         {/* Back Button */}
         <Button
@@ -7725,7 +8134,7 @@ export default function TaskDetail() {
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-[#E6EBF2] dark:bg-slate-800">
                       <div
-                        className="h-full rounded-full bg-[#F5A623] transition-all duration-300 ease-out"
+                        className="h-full rounded-full bg-gradient-to-r from-[#3657C9] via-[#4F6EE0] to-[#7FA3FF] shadow-[0_0_18px_-8px_rgba(79,110,224,0.85)] transition-all duration-300 ease-out"
                         style={{ width: `${collateralCompletionPercent}%` }}
                       />
                     </div>
@@ -10713,7 +11122,7 @@ export default function TaskDetail() {
                         </div>
                         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E4EBF7] dark:bg-slate-800">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-[#3657C9] via-[#4F6EE0] to-[#7FA3FF] transition-all duration-300 ease-out"
+                            className="h-full rounded-full bg-gradient-to-r from-[#3657C9] via-[#4F6EE0] to-[#7FA3FF] shadow-[0_0_18px_-8px_rgba(79,110,224,0.85)] transition-all duration-300 ease-out"
                             style={{ width: `${collateralCompletionPercent}%` }}
                           />
                         </div>
@@ -11084,6 +11493,15 @@ export default function TaskDetail() {
         onAction={handleHandoverClose}
       />
     </DashboardLayout>
+    </>
+  );
+}
+
+export default function TaskDetail() {
+  return (
+    <TaskDetailErrorBoundary>
+      <TaskDetailScreen />
+    </TaskDetailErrorBoundary>
   );
 }
 
