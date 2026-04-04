@@ -153,6 +153,62 @@ const TASK_STATUS_STEPS: DisplayTaskStatus[] = [
   'under_review',
   'completed',
 ];
+type StaffTrackerStepId = 'submitted' | 'assigned' | 'in_design' | 'review' | 'completed';
+const STAFF_TRACKER_STEPS: Array<{ id: StaffTrackerStepId; label: string }> = [
+  { id: 'submitted', label: 'Submitted' },
+  { id: 'assigned', label: 'Assigned' },
+  { id: 'in_design', label: 'In Design' },
+  { id: 'review', label: 'Review' },
+  { id: 'completed', label: 'Delivered' },
+];
+const getStaffTrackerStepIndex = (status: DisplayTaskStatus) => {
+  switch (status) {
+    case 'assigned':
+    case 'accepted':
+      return 1;
+    case 'in_progress':
+    case 'clarification_required':
+      return 2;
+    case 'under_review':
+      return 3;
+    case 'completed':
+      return 4;
+    case 'pending':
+    default:
+      return 0;
+  }
+};
+const staffTrackerHeadline: Record<DisplayTaskStatus, string> = {
+  pending: 'Request Submitted',
+  assigned: 'Assigned to designer',
+  accepted: 'Designer accepted',
+  in_progress: 'Design in progress',
+  clarification_required: 'Clarification required',
+  under_review: 'Under review',
+  completed: 'Delivered',
+};
+const staffTrackerSummary: Record<DisplayTaskStatus, string> = {
+  pending: 'Request submitted and waiting for assignment',
+  assigned: 'Assigned and queued for design execution',
+  accepted: 'Designer accepted and preparing the first output',
+  in_progress: 'Design work is actively moving forward',
+  clarification_required: 'Waiting for clarification before work continues',
+  under_review: 'Submitted and waiting for review approval',
+  completed: 'Final delivery shared and marked complete',
+};
+type StaffHealthTone = 'on_track' | 'at_risk' | 'overdue' | 'delivered';
+const resolveStaffHealthTone = (
+  status: DisplayTaskStatus,
+  deadline?: Date | null
+): StaffHealthTone => {
+  if (status === 'completed') return 'delivered';
+  if (deadline && !Number.isNaN(deadline.getTime())) {
+    if (isPast(deadline) && !isToday(deadline)) return 'overdue';
+    const daysRemaining = (deadline.getTime() - Date.now()) / 86400000;
+    if (daysRemaining <= 2) return 'at_risk';
+  }
+  return 'on_track';
+};
 
 const getCollateralStatusPillClass = (status?: string) => {
   switch (String(status || '').trim().toLowerCase()) {
@@ -739,6 +795,11 @@ export default function TaskDetail() {
   const initialTask = stateTask || localTask || mockTasks.find((t) => t.id === id);
   const [taskState, setTaskState] = useState<typeof mockTasks[number] | undefined>(initialTask);
   const [isLoading, setIsLoading] = useState(false);
+  const [isStaffStatusPanelVisible, setIsStaffStatusPanelVisible] = useState(true);
+  const [staffStatusPanelPosition, setStaffStatusPanelPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assigningTask, setAssigningTask] = useState<typeof mockTasks[number] | null>(null);
   const [designerOptions, setDesignerOptions] = useState<DesignerOption[]>([]);
@@ -784,6 +845,9 @@ export default function TaskDetail() {
   );
   const [changeCount, setChangeCount] = useState(initialTask?.changeCount ?? 0);
   const lastMarkedViewedTaskRef = useRef('');
+  const staffStatusPanelRef = useRef<HTMLDivElement | null>(null);
+  const staffStatusPanelDragOffsetRef = useRef({ x: 0, y: 0 });
+  const staffStatusPanelDragActiveRef = useRef(false);
   const initialApprovalStatus: ApprovalStatus | undefined =
     initialTask?.approvalStatus ?? ((initialTask?.changeCount ?? 0) >= 3 ? 'pending' : undefined);
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus | undefined>(
@@ -3136,6 +3200,15 @@ export default function TaskDetail() {
     TASK_STATUS_STEPS.length > 0
       ? Math.round(((deliveryStepIndex + 1) / TASK_STATUS_STEPS.length) * 100)
       : 0;
+  const staffTrackerStepIndex = getStaffTrackerStepIndex(normalizedTaskStatus);
+  const staffTrackerProgressPercent =
+    STAFF_TRACKER_STEPS.length > 0
+      ? Math.round(((staffTrackerStepIndex + 1) / STAFF_TRACKER_STEPS.length) * 100)
+      : 0;
+  const staffWorkflowConnectorPercent =
+    STAFF_TRACKER_STEPS.length > 1
+      ? Math.round((staffTrackerStepIndex / (STAFF_TRACKER_STEPS.length - 1)) * 100)
+      : 0;
   const workflowAssigneeLabel =
     String(taskState.assignedToName || taskState.assignedTo || '').trim() || 'Unassigned';
   const hasWorkflowAssignee =
@@ -3143,6 +3216,56 @@ export default function TaskDetail() {
   const workflowUpdatedLabel = taskState.updatedAt
     ? formatDistanceToNow(new Date(taskState.updatedAt), { addSuffix: true })
     : 'Recently updated';
+  const taskDeadlineSnapshot = taskState.deadline ? new Date(taskState.deadline) : null;
+  const hasValidTaskDeadline =
+    Boolean(taskDeadlineSnapshot) && !Number.isNaN(taskDeadlineSnapshot?.getTime?.() ?? Number.NaN);
+  const compactDeadlineLabel = hasValidTaskDeadline
+    ? isPast(taskDeadlineSnapshot as Date) && normalizedTaskStatus !== 'completed'
+      ? `${formatDistanceToNow(taskDeadlineSnapshot as Date)} overdue`
+      : `Due ${formatDistanceToNow(taskDeadlineSnapshot as Date, { addSuffix: true })}`
+    : 'Deadline not set';
+  const staffHealthTone = resolveStaffHealthTone(
+    normalizedTaskStatus,
+    hasValidTaskDeadline ? (taskDeadlineSnapshot as Date) : null
+  );
+  const staffHealthConfig: Record<
+    StaffHealthTone,
+    { label: string; className: string }
+  > = {
+    on_track: {
+      label: 'On Track',
+      className: 'bg-emerald-400/10 text-emerald-100 ring-emerald-200/16',
+    },
+    at_risk: {
+      label: 'At Risk',
+      className: 'bg-amber-400/10 text-amber-100 ring-amber-200/16',
+    },
+    overdue: {
+      label: 'Overdue',
+      className: 'bg-rose-400/10 text-rose-100 ring-rose-200/16',
+    },
+    delivered: {
+      label: 'Delivered',
+      className: 'bg-sky-400/10 text-sky-100 ring-sky-200/16',
+    },
+  };
+  const staffStatusDotClass =
+    status.variant === 'completed'
+      ? 'bg-emerald-500'
+      : status.variant === 'clarification'
+        ? 'bg-amber-400'
+        : status.variant === 'review'
+          ? 'bg-[#4F6EE0]'
+          : status.variant === 'progress'
+            ? 'bg-[#3B82F6]'
+            : 'bg-slate-400';
+  const staffWorkflowStageLabel = `${STAFF_TRACKER_STEPS[staffTrackerStepIndex]?.label || 'Submitted'} stage`;
+  const staffTrackerSupportItems = [
+    compactDeadlineLabel,
+    `${staffTrackerProgressPercent}% complete`,
+    hasWorkflowAssignee ? `Assigned to ${workflowAssigneeLabel}` : 'Unassigned',
+  ];
+  const shouldShowStaffStatusTracker = isStaffRole && hasFullTaskAccess && !isViewOnlyTask;
   const showWorkflowInsights = secondaryWorkflowSignals.length > 0 || usesCampaignOverviewLayout;
   const activeFinalVersionReviewAnnotations = useMemo(
     () =>
@@ -3154,7 +3277,6 @@ export default function TaskDetail() {
   const canMainDesignerReviewFinalDeliverables =
     isDesignerRole &&
     isMainDesignerUser &&
-    hasFinalDeliverables &&
     finalDeliverableReviewStatus === 'pending';
   const shouldShowStaffFinalReviewState =
     isStaffRole &&
@@ -3173,6 +3295,67 @@ export default function TaskDetail() {
     finalDeliverableReviewStatus === 'rejected' &&
     Boolean(latestFinalVersionId) &&
     activeFinalVersion?.id === latestFinalVersionId;
+  const clampStaffStatusPanelPosition = (left: number, top: number) => {
+    if (typeof window === 'undefined') return { left, top };
+
+    const panelWidth = staffStatusPanelRef.current?.offsetWidth ?? 352;
+    const panelHeight = staffStatusPanelRef.current?.offsetHeight ?? 268;
+    const horizontalPadding = 16;
+    const minTop = 88;
+    const maxLeft = Math.max(horizontalPadding, window.innerWidth - panelWidth - horizontalPadding);
+    const maxTop = Math.max(minTop, window.innerHeight - panelHeight - horizontalPadding);
+
+    return {
+      left: Math.min(Math.max(horizontalPadding, left), maxLeft),
+      top: Math.min(Math.max(minTop, top), maxTop),
+    };
+  };
+  const handleStaffStatusPanelDragStart = (event: MouseEvent<HTMLElement>) => {
+    if (!staffStatusPanelRef.current) return;
+    if (event.button !== 0) return;
+
+    const rect = staffStatusPanelRef.current.getBoundingClientRect();
+    staffStatusPanelDragOffsetRef.current = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+    staffStatusPanelDragActiveRef.current = true;
+    setStaffStatusPanelPosition(clampStaffStatusPanelPosition(rect.left, rect.top));
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    event.preventDefault();
+  };
+  useEffect(() => {
+    setIsStaffStatusPanelVisible(true);
+    setStaffStatusPanelPosition(null);
+  }, [taskState?.id]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleMouseMove = (event: globalThis.MouseEvent) => {
+      if (!staffStatusPanelDragActiveRef.current) return;
+      const nextLeft = event.clientX - staffStatusPanelDragOffsetRef.current.x;
+      const nextTop = event.clientY - staffStatusPanelDragOffsetRef.current.y;
+      setStaffStatusPanelPosition(clampStaffStatusPanelPosition(nextLeft, nextTop));
+    };
+
+    const stopDragging = () => {
+      if (!staffStatusPanelDragActiveRef.current) return;
+      staffStatusPanelDragActiveRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', stopDragging);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', stopDragging);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, []);
   useEffect(() => {
     const nextDrafts: Record<string, FinalDeliverableReviewAnnotation> = {};
     activeFinalVersionReviewAnnotations.forEach((annotation, index) => {
@@ -7242,9 +7425,162 @@ export default function TaskDetail() {
       getPreviewUrl(annotationTargetFile) ||
       annotationTargetFile.url
     : '';
+  const floatingStaffStatusPanelStyle = staffStatusPanelPosition
+    ? {
+        left: `${staffStatusPanelPosition.left}px`,
+        top: `${staffStatusPanelPosition.top}px`,
+        right: 'auto' as const,
+      }
+    : undefined;
+  const floatingStaffStatusPanel =
+    shouldShowStaffStatusTracker && isStaffStatusPanelVisible ? (
+      <div
+        className="pointer-events-none fixed right-5 top-24 z-30 hidden xl:block 2xl:right-8"
+        style={floatingStaffStatusPanelStyle}
+      >
+        <div
+          ref={staffStatusPanelRef}
+          onMouseDown={handleStaffStatusPanelDragStart}
+          className="pointer-events-auto relative w-[22rem] cursor-grab select-none overflow-hidden rounded-[32px] border border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-6 pb-6 pt-5 text-white shadow-[0_28px_60px_-34px_rgba(35,68,170,0.62)] backdrop-blur-xl transition-shadow hover:shadow-[0_30px_68px_-32px_rgba(35,68,170,0.72)] active:cursor-grabbing"
+        >
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(98,132,255,0.2),transparent_28%),radial-gradient(circle_at_82%_16%,rgba(255,255,255,0.08),transparent_18%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0))]" />
+          <div
+            className="pointer-events-none absolute inset-0 opacity-50"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
+              backgroundSize: '32px 32px',
+            }}
+          />
+          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+          <div className="pointer-events-none absolute left-1/2 top-8 h-36 w-36 -translate-x-1/2 rounded-full bg-[#5C7BFF]/20 blur-3xl" />
+          <div className="pointer-events-none absolute left-1/2 top-24 h-28 w-28 -translate-x-1/2 rounded-full bg-[#1C2E68]/75 blur-3xl" />
+
+          <div className="relative">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="w-fit rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#B7C7EC] shadow-[0_18px_42px_-32px_rgba(3,7,18,0.92)] backdrop-blur-xl">
+                <span>Task Status</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => setIsStaffStatusPanelVisible(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/18 bg-white/10 text-white/82 transition-colors hover:bg-white/16 hover:text-white"
+                aria-label="Close live task status"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="flex items-center gap-2">
+              <span className={cn('h-2.5 w-2.5 rounded-full', staffStatusDotClass)} />
+              <h2 className="bg-[linear-gradient(90deg,#F2F5FF_0%,#DCE7FF_56%,#BECEFF_100%)] bg-clip-text text-[1.4rem] font-semibold leading-tight text-transparent">
+                {staffTrackerHeadline[normalizedTaskStatus]}
+              </h2>
+            </div>
+            <p className="mt-1 text-sm leading-6 text-[#A7B6D6]">
+              {staffTrackerSummary[normalizedTaskStatus]}
+            </p>
+          </div>
+
+          <div className="relative mt-5 overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4 shadow-[0_18px_42px_-32px_rgba(3,7,18,0.92)] backdrop-blur-xl">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(156,186,255,0.18),transparent_34%),radial-gradient(circle_at_82%_24%,rgba(255,255,255,0.08),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]" />
+            <div className="relative">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8EA5D8]">
+                Delivery Health
+              </p>
+              <span
+                className={cn(
+                  'inline-flex h-6 items-center rounded-full px-2.5 text-[10px] font-semibold leading-none ring-1 ring-inset shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]',
+                  staffHealthConfig[staffHealthTone].className
+                )}
+              >
+                {staffHealthConfig[staffHealthTone].label}
+              </span>
+            </div>
+            <p className="mt-2 text-[12px] font-medium leading-6 text-[#E5ECFF]">
+              {staffTrackerSupportItems.join(' • ')}
+            </p>
+            <p className="mt-1 text-[11px] font-medium text-[#9FB0D4]">
+              Updated {workflowUpdatedLabel}
+            </p>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <div className="flex items-center justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8EA5D8]">
+              <span>Workflow</span>
+              <span className="text-[#DCE7FF]">{staffWorkflowStageLabel}</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,#2A47AE_0%,#3F63D6_58%,#6C8DFF_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-all duration-300 ease-out"
+                style={{ width: `${staffTrackerProgressPercent}%` }}
+              />
+            </div>
+            <div className="mt-4 grid grid-cols-5 gap-2">
+              {STAFF_TRACKER_STEPS.map((step, index) => {
+                const isComplete = index < staffTrackerStepIndex;
+                const isCurrent = index === staffTrackerStepIndex;
+                return (
+                  <div key={step.id} className="relative flex flex-col items-center gap-2 text-center">
+                    {index !== STAFF_TRACKER_STEPS.length - 1 ? (
+                      <span
+                        className={cn(
+                          'pointer-events-none absolute top-[0.95rem] h-px',
+                          isComplete
+                            ? 'bg-[linear-gradient(90deg,rgba(110,255,203,0.78)_0%,rgba(118,186,255,0.72)_100%)]'
+                            : 'bg-white/12'
+                        )}
+                        style={{
+                          left: 'calc(50% + 1rem)',
+                          right: 'calc(-50% + 1rem)',
+                        }}
+                      />
+                    ) : null}
+                    <span
+                      className={cn(
+                        'relative z-[1] flex h-8 w-8 items-center justify-center rounded-full border transition-all duration-300',
+                        isComplete
+                          ? 'border-[#A9E2C8] bg-[#E8FFF3] text-[#169B58] shadow-[0_0_12px_rgba(71,214,154,0.12)]'
+                          : isCurrent
+                            ? 'border-white/70 bg-white text-[#2748B4] shadow-[0_0_0_4px_rgba(122,150,255,0.14),0_0_18px_rgba(120,149,255,0.16)]'
+                            : 'border-white/16 bg-[#20397E]/60 text-white/72'
+                      )}
+                    >
+                      {isCurrent ? (
+                        <span className="pointer-events-none absolute inset-[-4px] rounded-full border border-[#89A9FF]/30" />
+                      ) : null}
+                      {isComplete ? <Check className="h-3.5 w-3.5" /> : <span className="text-[10px] font-semibold">{index + 1}</span>}
+                    </span>
+                    <span
+                      className={cn(
+                        'text-[10px] font-medium leading-[1.25]',
+                        isCurrent ? 'text-[#EEF4FF]' : isComplete ? 'text-[#DDF7EC]' : 'text-[#B8C7E4]'
+                      )}
+                    >
+                      {step.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          </div>
+        </div>
+      </div>
+    ) : null;
 
   return (
     <DashboardLayout hideGrid>
+      {floatingStaffStatusPanel}
       <div className="relative z-10 mx-auto w-[96%] max-w-none select-none space-y-5">
         {/* Back Button */}
         <Button
@@ -8924,6 +9260,22 @@ export default function TaskDetail() {
                 renderFinalFileStatusCard('junior')
               )}
 
+              {canMainDesignerReviewFinalDeliverables && (
+                <div className="mb-4 rounded-xl border border-[#D9E6FF]/75 bg-[#F7FBFF]/88 px-4 py-3.5 dark:border-border/70 dark:bg-card/80">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Final File Status
+                    </p>
+                    <span className="inline-flex items-center rounded-full border border-[#D3E1FF] bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-[#35508A] dark:border-border dark:bg-muted/70 dark:text-slate-200">
+                      Pending Your Review
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-sm text-[#1E2A5A] dark:text-slate-200">
+                    Junior designer has submitted the final files. Review the files below and approve or request updates.
+                  </p>
+                </div>
+              )}
+
               {/* Output Files */}
               {sortedFinalDeliverableVersions.length > 0 && (
                 <div className="mb-6 deliverables-highlight">
@@ -9224,19 +9576,23 @@ export default function TaskDetail() {
                   })()}
 
                   {canMainDesignerReviewFinalDeliverables && (
-                    <div className="mt-3 rounded-lg border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 p-3 dark:border-slate-700/60 dark:bg-slate-900/60">
-                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                        Design Lead review
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Annotated files: {draftReviewAnnotationList.length}
-                      </p>
+                    <div className="mt-4 rounded-xl border border-[#D9E6FF]/75 bg-[#F7FBFF]/88 px-4 py-3.5 dark:border-border/70 dark:bg-card/80">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Design Lead Review
+                        </p>
+                        {draftReviewAnnotationList.length > 0 && (
+                          <span className="text-[11px] text-muted-foreground">
+                            Annotated files: {draftReviewAnnotationList.length}
+                          </span>
+                        )}
+                      </div>
                       <Textarea
                         value={finalReviewNote}
                         onChange={(event) => setFinalReviewNote(event.target.value)}
                         rows={2}
                         placeholder="Add review note (or use image annotations) for Update Needed."
-                        className="mt-2 bg-white/90 dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-400"
+                        className="mt-2.5 bg-white/90 dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-400"
                       />
                       <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                         <Button
@@ -9245,7 +9601,7 @@ export default function TaskDetail() {
                           className="h-9 gap-2 rounded-full px-4"
                         >
                           <CheckCircle2 className="h-4 w-4" />
-                          {finalReviewDecisionInFlight === 'approved' ? 'Approving...' : 'Approve'}
+                          {finalReviewDecisionInFlight === 'approved' ? 'Approving…' : 'Approve'}
                         </Button>
                         <Button
                           variant="outline"
@@ -9253,7 +9609,7 @@ export default function TaskDetail() {
                           disabled={finalReviewDecisionInFlight !== null}
                           className="h-9 rounded-full px-4 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-100 dark:hover:bg-slate-900/70"
                         >
-                          {finalReviewDecisionInFlight === 'rejected' ? 'Marking...' : 'Update Needed'}
+                          {finalReviewDecisionInFlight === 'rejected' ? 'Marking…' : 'Update Needed'}
                         </Button>
                       </div>
                     </div>

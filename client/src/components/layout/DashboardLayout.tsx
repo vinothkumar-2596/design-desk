@@ -40,6 +40,7 @@ import { createSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
 import { GridSmallBackground } from '@/components/ui/background';
 import { GlassCard } from 'react-glass-ui';
+import { UnreadTaskNotificationsContext } from '@/contexts/UnreadTaskNotificationsContext';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -329,6 +330,33 @@ export function DashboardLayout({
       }
     },
     [apiUrl, useServerNotifications]
+  );
+
+  const markTaskRead = useCallback(
+    (taskId: string) => {
+      if (!taskId) return;
+      const toMark = serverNotifications.filter(
+        (n) => String(n.taskId || '').trim() === taskId && !n.readAt
+      );
+      if (toMark.length === 0) return;
+      const readAt = new Date();
+      setServerNotifications((prev) =>
+        prev.map((item) =>
+          String(item.taskId || '').trim() === taskId && !item.readAt
+            ? { ...item, readAt }
+            : item
+        )
+      );
+      setUnreadCount((prev) => Math.max(0, prev - toMark.length));
+      if (useServerNotifications && apiUrl) {
+        toMark.forEach((n) => {
+          if (n.id) {
+            authFetch(`${apiUrl}/api/notifications/${n.id}/read`, { method: 'PATCH' }).catch(() => {});
+          }
+        });
+      }
+    },
+    [serverNotifications, apiUrl, useServerNotifications]
   );
 
   const markAllNotificationsRead = useCallback(async () => {
@@ -991,6 +1019,16 @@ export function DashboardLayout({
     return diffMs >= 0 && diffMs <= 2 * 60 * 1000;
   };
 
+  const unreadTaskNotificationIds = useMemo(() => {
+    const ids = new Set<string>();
+    uiNotifications.forEach((entry) => {
+      const taskId = String(entry.taskId || '').trim();
+      if (!taskId || entry.readAt) return;
+      ids.add(taskId);
+    });
+    return ids;
+  }, [uiNotifications]);
+
   useEffect(() => {
     if (!user || !hasNotifications) return;
     if (user.role === 'staff') return;
@@ -1309,40 +1347,41 @@ export function DashboardLayout({
   }
 
   return (
-    <>
-      <DashboardShell
-        userInitial={user?.name?.charAt(0) || 'U'}
-        background={background}
-        contentScrollRef={contentScrollRef}
-        keepHeaderPinned={keepHeaderPinned}
-        hideGrid={hideGrid}
-        allowContentOverflow={allowContentOverflow}
-        fitContentHeight={fitContentHeight}
-        onContentScroll={() => {
-          if (previewTimeoutRef.current) {
-            clearTimeout(previewTimeoutRef.current);
-            previewTimeoutRef.current = null;
+    <UnreadTaskNotificationsContext.Provider value={{ ids: unreadTaskNotificationIds, markTaskRead }}>
+      <>
+        <DashboardShell
+          userInitial={user?.name?.charAt(0) || 'U'}
+          background={background}
+          contentScrollRef={contentScrollRef}
+          keepHeaderPinned={keepHeaderPinned}
+          hideGrid={hideGrid}
+          allowContentOverflow={allowContentOverflow}
+          fitContentHeight={fitContentHeight}
+          onContentScroll={() => {
+            if (previewTimeoutRef.current) {
+              clearTimeout(previewTimeoutRef.current);
+              previewTimeoutRef.current = null;
+            }
+            setNotificationsOpen(false);
+          }}
+          headerActions={
+            <>
+              {location.pathname !== '/new-request' && (
+                <GeminiBlink
+                  onClick={() => navigate('/new-request', { state: { openTaskBuddy: true } })}
+                  className="mr-2"
+                />
+              )}
+              <ThemeToggle className="mr-2" />
+              {headerPresenceAction}
+              {notificationAction}
+              {headerActions}
+            </>
           }
-          setNotificationsOpen(false);
-        }}
-        headerActions={
-          <>
-            {location.pathname !== '/new-request' && (
-              <GeminiBlink
-                onClick={() => navigate('/new-request', { state: { openTaskBuddy: true } })}
-                className="mr-2"
-              />
-            )}
-            <ThemeToggle className="mr-2" />
-            {headerPresenceAction}
-            {notificationAction}
-            {headerActions}
-          </>
-        }
-      >
-        {children}
-      </DashboardShell>
-      {isGuidelinesOpen && (
+        >
+          {children}
+        </DashboardShell>
+        {isGuidelinesOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
           <button
             type="button"
@@ -1435,8 +1474,9 @@ export function DashboardLayout({
             </div>
           </div>
         </div>
-      )}
-    </>
+        )}
+      </>
+    </UnreadTaskNotificationsContext.Provider>
   );
 }
 

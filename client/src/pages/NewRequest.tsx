@@ -110,6 +110,15 @@ type SubmitSuccessState = {
 
 type SingleRequestStepId = 'details' | 'files' | 'review';
 
+const deriveSingleRequestStep = (
+  detailsValidationMessage: string,
+  filesValidationMessage: string
+): SingleRequestStepId => {
+  if (detailsValidationMessage) return 'details';
+  if (filesValidationMessage) return 'files';
+  return 'review';
+};
+
 type BriefAvatarVariant =
   | 'marble'
   | 'beam'
@@ -706,8 +715,6 @@ export default function NewRequest() {
   const [isPresetDialogOpen, setIsPresetDialogOpen] = useState(false);
   const [isDepartmentSuggestionOpen, setIsDepartmentSuggestionOpen] = useState(false);
   const [shouldRevealSingleValidation, setShouldRevealSingleValidation] = useState(false);
-  const [singleRequestActiveStep, setSingleRequestActiveStep] =
-    useState<SingleRequestStepId>('details');
   const [revealedValidationSteps, setRevealedValidationSteps] = useState<
     Partial<Record<BuilderStepId, boolean>>
   >({});
@@ -872,9 +879,6 @@ export default function NewRequest() {
   const handleDepartmentHeadSelection = (entry: DepartmentHeadDirectoryEntry) => {
     setDepartment(entry.headName);
     setIsDepartmentSuggestionOpen(false);
-    if (selectedRequestType === 'single_task') {
-      setSingleRequestActiveStep('details');
-    }
   };
 
   const handleDepartmentInputFocus = (event: React.FocusEvent<HTMLInputElement>) => {
@@ -1303,13 +1307,12 @@ export default function NewRequest() {
     }
     return '';
   }, [masterAttachments]);
-  const singleCompletedAttachmentCount = useMemo(
-    () => getCompletedAttachmentCount(masterAttachments),
-    [masterAttachments]
+  const singleRequestCurrentStep = deriveSingleRequestStep(
+    singleDetailsValidationMessage,
+    singleFilesValidationMessage
   );
-  const singleFilesStepComplete = singleCompletedAttachmentCount > 0;
   const singleRequestCurrentStepIndex =
-    singleRequestActiveStep === 'files' ? 1 : singleRequestActiveStep === 'review' ? 2 : 0;
+    singleRequestCurrentStep === 'files' ? 1 : singleRequestCurrentStep === 'review' ? 2 : 0;
 
   const validationMessages: Record<BuilderStepId, string> = {
     campaign: campaignValidationMessage,
@@ -1457,11 +1460,8 @@ export default function NewRequest() {
 
       if (validationMessage) {
         setShouldRevealSingleValidation(true);
-        setSingleRequestActiveStep(singleDetailsValidationMessage ? 'details' : 'files');
         return;
       }
-
-      setSingleRequestActiveStep('review');
 
       const normalizedPhone = normalizeIndianPhone(requesterPhone);
       const payload = {
@@ -1763,7 +1763,6 @@ export default function NewRequest() {
   const handleRequestTypeSelect = (nextType: RequestType) => {
     setSelectedRequestType(nextType);
     setShouldRevealSingleValidation(false);
-    setSingleRequestActiveStep('details');
     navigate(
       nextType === 'single_task' ? '/new-request/quick-design' : '/new-request/campaign-suite'
     );
@@ -1779,7 +1778,6 @@ export default function NewRequest() {
   const resetRequestTypeSelection = () => {
     setSelectedRequestType(null);
     setShouldRevealSingleValidation(false);
-    setSingleRequestActiveStep('details');
     setIsPresetDialogOpen(false);
     setIsTourOpen(false);
     setTourSpotlight(null);
@@ -2714,10 +2712,7 @@ export default function NewRequest() {
         </div>
 
         <div className="px-5 py-4">
-          <section
-            className="space-y-5"
-            onFocusCapture={() => setSingleRequestActiveStep('details')}
-          >
+          <section className="space-y-5">
             <div className="grid items-start gap-x-5 gap-y-4 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.2fr)_minmax(0,1.2fr)]">
               <div className="space-y-2">
                 <Label>Creative Title</Label>
@@ -2851,13 +2846,12 @@ export default function NewRequest() {
               />
             </div>
 
-            <div onFocusCapture={() => setSingleRequestActiveStep('files')}>
+            <div>
               <AttachmentUploadField
               label="Attachments & References (Required)"
               description="Upload at least one supporting file to help the designer clearly understand and execute your request — such as logos, brand guidelines, content documents, screenshots, or reference designs."
               attachments={masterAttachments}
               onChange={(next) => {
-                setSingleRequestActiveStep('files');
                 setMasterAttachments(next);
               }}
               taskTitle={requestTitle || 'Quick Design Request'}
@@ -3177,20 +3171,12 @@ export default function NewRequest() {
                 <ol className="relative flex min-w-[620px] items-center px-1.5 py-1.5">
                   {SINGLE_REQUEST_STEPS.map((step, index) => {
                     const isCurrent = index === singleRequestCurrentStepIndex;
-                    const isComplete = !isCurrent && (
-                      index === 0
-                        ? !singleDetailsValidationMessage
-                        : index === 1
-                          ? singleFilesStepComplete
-                          : false
-                    );
+                    const isComplete = index < singleRequestCurrentStepIndex;
                     const StepIcon = step.icon;
                     const trackingLabel = isComplete
                       ? 'Completed'
                       : isCurrent
                         ? 'Current step'
-                        : index === 1 && !singleDetailsValidationMessage && !singleFilesValidationMessage
-                          ? 'Optional'
                         : 'Upcoming';
 
                     return (
@@ -3263,8 +3249,7 @@ export default function NewRequest() {
                         {index < SINGLE_REQUEST_STEPS.length - 1 ? (
                           <div className="relative mx-2 h-[2px] w-10 flex-none overflow-hidden rounded-full lg:w-14">
                             <div className="absolute inset-0 bg-[#D4E2FF]/70 dark:bg-sidebar-border/50" />
-                            {((index === 0 && !singleDetailsValidationMessage) ||
-                              (index === 1 && singleFilesStepComplete)) && (
+                            {index < singleRequestCurrentStepIndex && (
                               <div className="absolute inset-0 bg-gradient-to-r from-[#A5BEFF] to-[#C4D4FF] dark:from-sidebar-primary dark:to-sidebar-primary dark:[background-image:none]" />
                             )}
                           </div>

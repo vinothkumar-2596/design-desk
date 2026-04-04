@@ -2214,3 +2214,33 @@
     transform: translateX(calc(-50% - 0.875rem));
   }
 }
+
+/* ── Unread task card animated gradient border ── */
+@property --unread-border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes unreadBorderSpin {
+  to { --unread-border-angle: 360deg; }
+}
+
+.task-unread-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from var(--unread-border-angle, 0deg), #38bdf8, #6366f1, #f472b6, #38bdf8);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: unreadBorderSpin 4s linear infinite;
+  pointer-events: none;
+}
