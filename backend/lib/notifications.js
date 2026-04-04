@@ -692,14 +692,13 @@ export const sendFinalFilesEmail = async ({
   switch (email_type) {
     case "TASK_ASSIGNED": {
       emailEyebrow = "Task Assignment";
-      emailHeadline = "A new task has been assigned";
-      emailDescription = `${displayAssigner} assigned <strong>${safeTitle}</strong> to <strong>${displayDesigner}</strong>. Review the task details, deadline, and reference files below before work starts.${safeAssignmentMessage ? `<br /><br /><strong>Assignment note:</strong> ${safeAssignmentMessage}` : ""}`;
-      summaryHeading = "Assignment summary";
+      emailHeadline = "New Task Assigned";
+      emailDescription = `Assigned by <strong>${displayAssigner}</strong> to <strong>${displayDesigner}</strong>.`;
+      summaryHeading = "Task brief";
       summaryContent =
         safeTaskDescription ||
-        safeAssignmentMessage ||
-        `${displayAssigner} assigned this request to ${displayDesigner}. Check the deadline and attached reference files before starting.`;
-      taskCtaLabel = "Open Assignment";
+        `${displayAssigner} assigned this request to ${displayDesigner}. Open the task to review the deadline, requester context, and reference files.`;
+      taskCtaLabel = "Open Task";
       supportTitle = "Need clarification?";
       supportMessage =
         "Reply to this email if the assignee needs more context, a revised deadline, or missing reference material.";
@@ -714,7 +713,7 @@ export const sendFinalFilesEmail = async ({
       textIntroLines = [
         `New task assigned: "${safeTitle}".`,
         `${displayAssigner} assigned this task to ${displayDesigner}.`,
-        ...(safeAssignmentMessage ? ["", `Message: ${safeAssignmentMessage}`] : []),
+        ...(safeAssignmentMessage ? ["", `Assignment note: ${safeAssignmentMessage}`] : []),
       ];
       break;
     }
@@ -917,8 +916,8 @@ export const sendFinalFilesEmail = async ({
 
   const taskCta = resolvedTaskUrl
     ? `
-        <a href="${resolvedTaskUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 20px;background:${brandColor};color:#ffffff;text-decoration:none;border-radius:999px;font-weight:600;font-size:14px;font-family:${PROJECT_SANS_FONT_FAMILY};">
-          ${taskCtaLabel}
+        <a href="${resolvedTaskUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 18px;background:${brandColor};color:#ffffff;text-decoration:none;border-radius:12px;font-weight:600;font-size:14px;font-family:${PROJECT_SANS_FONT_FAMILY};box-shadow:0 1px 2px rgba(16,24,40,0.12);">
+          ${taskCtaLabel} &rarr;
         </a>
       `
     : "";
@@ -992,33 +991,39 @@ export const sendFinalFilesEmail = async ({
         `;
 
   const assignedHeaderHtml = `
-      <div style="background:${brandSoft};border-radius:18px;padding:18px 20px;text-align:left;border:1px solid #e6e9f2;">
-        <div style="display:flex;align-items:center;justify-content:flex-start;gap:16px;">
-          <div style="flex:1;">
-            <div style="font-size:13px;color:#475467;font-weight:600;">
-              ${formatDateTime(submittedAt) || formatDateTime(new Date())}
-            </div>
-            <div style="margin-top:10px;font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
-              ${emailEyebrow}
-            </div>
-            <div style="margin-top:6px;font-size:24px;font-weight:700;color:#111827;line-height:1.2;">
-              ${emailHeadline}
-            </div>
-            <div style="margin-top:6px;font-size:16px;font-weight:600;color:${brandColor};">
-              ${safeTitle}
-            </div>
-            <p style="margin:10px 0 0;font-size:14px;color:#475467;line-height:1.6;">
-              ${emailDescription}
-            </p>
-            ${taskCta
+      <div style="background:${brandSoft};border-radius:18px;padding:24px;text-align:left;border:1px solid #e6e9f2;">
+        <div style="font-size:26px;font-weight:700;color:#111827;line-height:1.15;">
+          ${emailHeadline}
+        </div>
+        <div style="margin-top:8px;font-size:20px;font-weight:600;color:${brandColor};line-height:1.3;">
+          ${safeTitle}
+        </div>
+        <div style="margin-top:14px;font-size:14px;color:#475467;line-height:1.6;">
+          ${emailDescription}
+        </div>
+        ${safeAssignmentMessage
       ? `
-            <div style="margin-top:16px;">
-              ${taskCta}
-            </div>
-            `
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid #d8def0;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1.6px;color:#667085;font-weight:700;">
+            Assignment note
+          </div>
+          <div style="margin-top:6px;font-size:14px;color:#344054;line-height:1.6;">
+            ${safeAssignmentMessage}
+          </div>
+        </div>
+        `
       : ""
     }
-          </div>
+        ${taskCta
+      ? `
+        <div style="margin-top:18px;">
+          ${taskCta}
+        </div>
+        `
+      : ""
+    }
+        <div style="margin-top:18px;font-size:12px;color:#98a2b3;line-height:1.4;">
+          ${formatDateTime(submittedAt) || formatDateTime(new Date())}
         </div>
       </div>
     `;

@@ -236,6 +236,8 @@ export default function EmailTask() {
   const selectedCollateral = collaterals.find((item) => item.id === selectedCollateralId) || collaterals[0] || null;
   const workflowIndex = Math.max(0, WORKFLOW_STEPS.findIndex(([key]) => key === normalizeStatus(preview?.status)));
   const workflowProgress = Math.round(((workflowIndex + 1) / WORKFLOW_STEPS.length) * 100);
+  const currentWorkflowStep = WORKFLOW_STEPS[workflowIndex] || WORKFLOW_STEPS[0];
+  const canOpenTask = Boolean(data?.canOpenTask);
   const completedCount = collaterals.filter((item) => isDone(item.status)).length;
   const collateralProgress = collaterals.length > 0 ? Math.round((completedCount / collaterals.length) * 100) : 0;
   const overallBrief = String(preview?.campaign?.brief || preview?.description || "").trim() || "No request brief was included in this preview.";
@@ -243,6 +245,8 @@ export default function EmailTask() {
     () => `/login?redirect=${encodeURIComponent(data?.openPath || (data?.taskId ? `/task/${data.taskId}` : "/dashboard"))}`,
     [data?.openPath, data?.taskId]
   );
+  const primaryActionPath = !viewer.isAuthenticated ? loginRedirectPath : canOpenTask ? data?.openPath || "/dashboard" : "/dashboard";
+  const primaryActionLabel = !viewer.isAuthenticated ? "Sign in to View Task" : canOpenTask ? "View Task" : "Go to Dashboard";
 
   if (isLoading) {
     return <div className={shellClass}><div className="relative mx-auto max-w-6xl"><div className={cn(surfaceClass, "p-6 sm:p-8")}><h1 className="text-2xl font-semibold text-[#12254C]">Opening secure task link</h1><p className="mt-2 text-sm leading-7 text-[#5B6B8A]">Preparing the assignment preview and checking viewer access.</p></div></div></div>;
