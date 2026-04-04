@@ -492,7 +492,7 @@ export default function EmailTask() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#7E8DAB]">Request Overview</p>
-                        <h2 className="mt-1 text-[1.18rem] font-semibold leading-snug text-[#215ABB]">{preview.title}</h2>
+                        <h2 className="mt-1 text-[0.95rem] font-semibold leading-snug text-[#215ABB]">{preview.title}</h2>
                       </div>
                       <span className={cn("inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold", badgeTone(preview.status))}>
                         {humanize(preview.status)}
