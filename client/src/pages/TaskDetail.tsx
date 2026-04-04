@@ -1693,7 +1693,22 @@ export default function TaskDetail() {
 
   const openAssignDesignerModal = (task: typeof mockTasks[number]) => {
     const assignedId = resolveTaskAssignedId(task);
-    setAssigningTask(task);
+    const normalizedTaskId = String(
+      task?.id ||
+        (task as { _id?: string } | null)?._id ||
+        taskState?.id ||
+        (taskState as { _id?: string } | undefined)?._id ||
+        id ||
+        ''
+    ).trim();
+    setAssigningTask(
+      normalizedTaskId
+        ? ({
+            ...task,
+            id: normalizedTaskId,
+          } as typeof mockTasks[number])
+        : task
+    );
     setSelectedDesignerId(assignedId);
     setCcInput('');
     setCcEmails(resolveTaskCcEmails(task));
@@ -1815,7 +1830,14 @@ export default function TaskDetail() {
   ]);
 
   const submitAssignDesigner = async () => {
-    const taskId = assigningTask?.id || (assigningTask as { _id?: string } | null)?._id || '';
+    const taskId = String(
+      assigningTask?.id ||
+        (assigningTask as { _id?: string } | null)?._id ||
+        taskState?.id ||
+        (taskState as { _id?: string } | undefined)?._id ||
+        id ||
+        ''
+    ).trim();
     if (!taskId) {
       toast.error('Task not found.');
       return;
@@ -7237,58 +7259,82 @@ export default function TaskDetail() {
 
         {/* Header */}
         <div className="animate-slide-up border-b border-[#D9E6FF] pb-2 pt-4 dark:border-border/70">
-          <div className="mb-6 flex flex-wrap items-center gap-2">
-            <Badge variant={status.variant} className={badgeGlassClass}>
-              <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
-                <ClipboardCheck className="h-3 w-3" />
-              </span>
-              {status.label}
-            </Badge>
-            {taskState.urgency === 'urgent' && (
-              <Badge variant="urgent" className={badgeGlassClass}>
-                <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
-                  <AlertTriangle className="h-3 w-3" />
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="mb-6 flex flex-wrap items-center gap-2">
+                <Badge variant={status.variant} className={badgeGlassClass}>
+                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                    <ClipboardCheck className="h-3 w-3" />
+                  </span>
+                  {status.label}
+                </Badge>
+                {taskState.urgency === 'urgent' && (
+                  <Badge variant="urgent" className={badgeGlassClass}>
+                    <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                      <AlertTriangle className="h-3 w-3" />
+                    </span>
+                    Urgent
+                  </Badge>
+                )}
+                <Badge variant="secondary" className={badgeGlassClass}>
+                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                    <Edit3 className="h-3 w-3" />
+                  </span>
+                  Changes: {displayedChangeCount}
+                </Badge>
+                {approvalStatus && (
+                  <Badge
+                    variant={
+                      approvalStatus === 'approved'
+                        ? 'completed'
+                        : approvalStatus === 'rejected'
+                          ? 'urgent'
+                          : 'pending'
+                    }
+                    className={badgeGlassClass}
+                  >
+                    <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                      <ShieldCheck className="h-3 w-3" />
+                    </span>
+                    {approvalStatus === 'approved'
+                      ? 'Approved'
+                      : approvalStatus === 'rejected'
+                        ? 'Rejected'
+                        : 'Awaiting Approval'}
+                  </Badge>
+                )}
+                <span className={badgeGlassClass}>
+                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                    <Tag className="h-3 w-3" />
+                  </span>
+                  {categoryLabels[taskState.category]}
                 </span>
-                Urgent
-              </Badge>
-            )}
-            <Badge variant="secondary" className={badgeGlassClass}>
-              <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
-                <Edit3 className="h-3 w-3" />
-              </span>
-              Changes: {displayedChangeCount}
-            </Badge>
-            {approvalStatus && (
-              <Badge
-                variant={
-                  approvalStatus === 'approved'
-                    ? 'completed'
-                    : approvalStatus === 'rejected'
-                      ? 'urgent'
-                      : 'pending'
-                }
-                className={badgeGlassClass}
-              >
-                <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
-                  <ShieldCheck className="h-3 w-3" />
-                </span>
-                {approvalStatus === 'approved'
-                  ? 'Approved'
-                  : approvalStatus === 'rejected'
-                    ? 'Rejected'
-                    : 'Awaiting Approval'}
-              </Badge>
-            )}
-            <span className={badgeGlassClass}>
-              <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
-                <Tag className="h-3 w-3" />
-              </span>
-              {categoryLabels[taskState.category]}
-            </span>
+              </div>
+              <h1 className="mt-3 text-[1.65rem] font-semibold leading-tight text-foreground premium-headline">
+                {taskState.title}
+              </h1>
+            </div>
+
+            {canAssignDesigner ? (
+              <div className="flex w-full sm:w-auto lg:shrink-0 lg:justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={hasWorkflowAssignee ? 'outline' : 'default'}
+                  onClick={() => openAssignDesignerModal(taskState)}
+                  className={cn(
+                    'h-10 w-full rounded-full px-5 text-sm font-semibold shadow-none sm:w-auto',
+                    hasWorkflowAssignee
+                      ? 'border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white'
+                      : 'bg-[#3657C9] text-white hover:bg-[#2F4EBA] dark:bg-[#4E6FE0] dark:text-white dark:hover:bg-[#6080F0]'
+                  )}
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  {hasWorkflowAssignee ? 'Reassign Designer' : 'Assign Designer'}
+                </Button>
+              </div>
+            ) : null}
           </div>
-          <h1 className="mt-3 text-[1.65rem] font-semibold leading-tight text-foreground premium-headline">
-            {taskState.title}
-          </h1>
         </div>
 
         {/* Main Content Grid */}
@@ -7731,8 +7777,9 @@ export default function TaskDetail() {
                   ) : null}
                 </div>
 
-                <div className="hidden mt-5 overflow-hidden rounded-[24px] border border-[#D7E4FF]/90 bg-white/45 supports-[backdrop-filter]:bg-white/28 backdrop-blur-xl dark:border-border dark:bg-card/55 dark:backdrop-blur-none xl:grid xl:grid-cols-[320px_minmax(0,1fr)]">
-                  <aside className="border-b border-[#E5EEFF] bg-[linear-gradient(180deg,rgba(248,251,255,0.9),rgba(240,246,255,0.7))] dark:border-border dark:bg-sidebar/35 xl:border-b-0 xl:border-r">
+                <div className="hidden px-5 pb-5 xl:block">
+                  <div className="mt-5 overflow-hidden rounded-[24px] border border-[#D7E4FF]/90 bg-white/45 supports-[backdrop-filter]:bg-white/28 backdrop-blur-xl dark:border-border dark:bg-card/55 dark:backdrop-blur-none xl:grid xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <aside className="border-b border-[#E5EEFF] bg-[linear-gradient(180deg,rgba(248,251,255,0.9),rgba(240,246,255,0.7))] dark:border-border dark:bg-sidebar/35 xl:border-b-0 xl:border-r">
                     <div className="border-b border-[#E5EEFF] px-5 py-4 dark:border-border">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6C7EA6] dark:text-slate-400">
                         Collateral Flow
@@ -7836,11 +7883,11 @@ export default function TaskDetail() {
                         No collateral items available for this campaign yet.
                       </div>
                     )}
-                  </aside>
+                    </aside>
 
-                  <div className="overflow-y-auto p-5 sm:p-6">
-                    {selectedCampaignCollateral ? (
-                      <>
+                    <div className="overflow-y-auto p-5 sm:p-6">
+                      {selectedCampaignCollateral ? (
+                        <>
                         {/* Header — condensed, no boxed tiles */}
                         <div className="border-b border-[#EEF2FF] pb-5 dark:border-border">
                           <div className="flex flex-wrap items-center gap-2">
@@ -8086,12 +8133,13 @@ export default function TaskDetail() {
                             </div>
                           </div>
                         </div>
-                      </>
-                    ) : (
-                      <div className="flex min-h-[18rem] items-center justify-center text-sm text-muted-foreground">
-                        No collateral is selected for this campaign.
-                      </div>
-                    )}
+                        </>
+                      ) : (
+                        <div className="flex min-h-[18rem] items-center justify-center text-sm text-muted-foreground">
+                          No collateral is selected for this campaign.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -10148,23 +10196,6 @@ export default function TaskDetail() {
                       {workflowUpdatedLabel}
                     </span>
                   </div>
-                  {canAssignDesigner ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={hasWorkflowAssignee ? 'outline' : 'default'}
-                      onClick={() => openAssignDesignerModal(taskState)}
-                      className={cn(
-                        'mt-3 h-9 w-full rounded-full text-sm font-semibold shadow-none',
-                        hasWorkflowAssignee
-                          ? 'border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white'
-                          : 'bg-[#3657C9] text-white hover:bg-[#2F4EBA] dark:bg-[#4E6FE0] dark:text-white dark:hover:bg-[#6080F0]'
-                      )}
-                    >
-                      <User className="mr-2 h-4 w-4" />
-                      {hasWorkflowAssignee ? 'Reassign Designer' : 'Assign Designer'}
-                    </Button>
-                  ) : null}
                 </div>
               </div>
 

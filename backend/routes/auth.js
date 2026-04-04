@@ -362,6 +362,150 @@ const normalizeTaskAssignedRef = (value) => {
 };
 
 const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+const TASK_ROLES = new Set(["staff", "designer", "treasurer", "admin", "other", "manager"]);
+const normalizeTaskRole = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  return TASK_ROLES.has(normalized) ? normalized : "";
+};
+const getLatestTaskChangeValue = (task, targetField) => {
+  const history = Array.isArray(task?.changeHistory) ? task.changeHistory : [];
+  const normalizedField = String(targetField || "").trim().toLowerCase();
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const entry = history[index];
+    if (String(entry?.field || "").trim().toLowerCase() === normalizedField) {
+      return String(entry?.newValue || "").trim();
+    }
+  }
+  return "";
+};
+const parseAssignmentCcEmails = (rawValue) => {
+  if (!rawValue) return [];
+  const text = String(rawValue).trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return Array.from(
+        new Set(parsed.map((entry) => normalizeEmail(entry)).filter(Boolean))
+      );
+    }
+  } catch {
+    // Fall through to delimited parsing.
+  }
+  return Array.from(
+    new Set(
+      text
+        .split(/[,\n;]/g)
+        .map((entry) => normalizeEmail(entry))
+        .filter(Boolean)
+    )
+  );
+};
+const extractTaskCcEmails = (task) => {
+  const directCc = Array.isArray(task?.cc_emails)
+    ? Array.from(new Set(task.cc_emails.map((entry) => normalizeEmail(entry)).filter(Boolean)))
+    : Array.isArray(task?.ccEmails)
+      ? Array.from(new Set(task.ccEmails.map((entry) => normalizeEmail(entry)).filter(Boolean)))
+      : [];
+  if (directCc.length > 0) return directCc;
+  return parseAssignmentCcEmails(getLatestTaskChangeValue(task, "cc_emails"));
+};
+const findLatestTaskChangeEntry = (task, targetField) => {
+  const history = Array.isArray(task?.changeHistory) ? task.changeHistory : [];
+  const normalizedField = String(targetField || "").trim().toLowerCase();
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const entry = history[index];
+    if (String(entry?.field || "").trim().toLowerCase() === normalizedField) {
+      return entry;
+    }
+  }
+  return null;
+};
+const resolveEmailTaskViewerAccess = (task, viewerPayload) => {
+  const ccEmails = extractTaskCcEmails(task);
+  const fallback = {
+    canOpenTask: false,
+    accessMode: "none",
+    accessReason: viewerPayload ? "not_authorized" : "sign_in_required",
+    ccEmails,
+  };
+
+  if (!viewerPayload) return fallback;
+
+  const viewerRole = normalizeTaskRole(viewerPayload.role);
+  const viewerId = normalizeTaskAssignedRef(viewerPayload.sub);
+  const viewerEmail = normalizeEmail(viewerPayload.email);
+  const requesterId = normalizeTaskAssignedRef(task?.requesterId);
+  const requesterEmail = normalizeEmail(task?.requesterEmail);
+  const assignedRef = normalizeTaskAssignedRef(task?.assignedToId || task?.assignedTo);
+  const assignedEmail = assignedRef.includes("@") ? normalizeEmail(assignedRef) : "";
+  const createdEntry = findLatestTaskChangeEntry(task, "created");
+  const createdById = normalizeTaskAssignedRef(createdEntry?.userId);
+  const createdByEmail = normalizeEmail(createdEntry?.userName);
+
+  const isAssignedDesigner =
+    viewerRole === "designer" &&
+    (
+      (viewerId && assignedRef && viewerId === assignedRef) ||
+      (viewerEmail && assignedEmail && viewerEmail === assignedEmail)
+    );
+  const isMainDesigner =
+    viewerRole === "designer" &&
+    isMainDesignerUser({ role: "designer", email: viewerEmail });
+  const isRequester =
+    (requesterId && viewerId && requesterId === viewerId) ||
+    (requesterEmail && viewerEmail && requesterEmail === viewerEmail) ||
+    (createdById && viewerId && createdById === viewerId) ||
+    (createdByEmail && viewerEmail && createdByEmail === viewerEmail);
+  const isCcRecipient = Boolean(viewerEmail && ccEmails.includes(viewerEmail));
+
+  if (viewerRole === "admin" || viewerRole === "treasurer") {
+    return {
+      canOpenTask: true,
+      accessMode: "full",
+      accessReason: viewerRole === "admin" ? "admin" : "treasurer",
+      ccEmails,
+    };
+  }
+
+  if (isAssignedDesigner) {
+    return {
+      canOpenTask: true,
+      accessMode: "full",
+      accessReason: "assigned_designer",
+      ccEmails,
+    };
+  }
+
+  if (isRequester) {
+    return {
+      canOpenTask: true,
+      accessMode: "full",
+      accessReason: "request_owner",
+      ccEmails,
+    };
+  }
+
+  if (isMainDesigner) {
+    return {
+      canOpenTask: true,
+      accessMode: "view_only",
+      accessReason: "design_lead",
+      ccEmails,
+    };
+  }
+
+  if (isCcRecipient) {
+    return {
+      canOpenTask: true,
+      accessMode: "view_only",
+      accessReason: viewerRole === "manager" ? "cc_manager" : "cc_recipient",
+      ccEmails,
+    };
+  }
+
+  return fallback;
+};
 const STAFF_EMAIL_DOMAIN = String(process.env.STAFF_EMAIL_DOMAIN || "smvec.ac.in")
   .trim()
   .replace(/^@+/, "")
@@ -1011,7 +1155,7 @@ router.get("/email-task/resolve", async (req, res) => {
 
     const task = await Task.findById(String(tokenPayload.taskId).trim())
       .select(
-        "_id title description status category urgency approvalStatus isEmergency deadline requesterName requesterDepartment requesterEmail assignedToId assignedTo assignedToName createdAt updatedAt"
+        "_id requestType title description status category urgency approvalStatus isEmergency deadline requesterId requesterName requesterDepartment requesterEmail assignedToId assignedTo assignedToName changeCount createdAt updatedAt campaign collaterals files changeHistory"
       )
       .lean();
 
@@ -1020,24 +1164,16 @@ router.get("/email-task/resolve", async (req, res) => {
     }
 
     const viewerPayload = getOptionalAuthPayload(req);
-    const viewerRole = String(viewerPayload?.role || "").trim().toLowerCase();
-    const viewerId = String(viewerPayload?.sub || "").trim();
+    const viewerRole = normalizeTaskRole(viewerPayload?.role);
     const viewerEmail = normalizeEmail(viewerPayload?.email);
-    const assignedRef = normalizeTaskAssignedRef(task.assignedToId || task.assignedTo);
-    const assignedEmail = assignedRef.includes("@") ? normalizeEmail(assignedRef) : "";
-    const isAssignedDesigner =
-      viewerRole === "designer" &&
-      (
-        (viewerId && assignedRef && viewerId === assignedRef) ||
-        (viewerEmail && assignedEmail && viewerEmail === assignedEmail)
-      );
-    const isMainDesigner =
-      viewerRole === "designer" &&
-      isMainDesignerUser({ role: "designer", email: viewerEmail });
-    const canOpenTask = viewerRole === "treasurer" || isMainDesigner || isAssignedDesigner;
+    const viewerAccess = resolveEmailTaskViewerAccess(task, viewerPayload);
+    const inputReferenceFiles = Array.isArray(task.files)
+      ? task.files.filter((file) => String(file?.type || "").trim().toLowerCase() === "input")
+      : [];
 
     const preview = {
       id: task._id?.toString?.() || "",
+      requestType: task.requestType || "single_task",
       title: task.title || "Task",
       description: task.description || "",
       status: task.status || "pending",
@@ -1046,10 +1182,48 @@ router.get("/email-task/resolve", async (req, res) => {
       approvalStatus: task.approvalStatus || "",
       isEmergency: Boolean(task.isEmergency),
       deadline: task.deadline || null,
+      requesterId: task.requesterId || "",
       requesterName: task.requesterName || "",
       requesterDepartment: task.requesterDepartment || "",
       requesterEmail: task.requesterEmail || "",
+      assignedToId: task.assignedToId || task.assignedTo || "",
       assignedToName: task.assignedToName || "",
+      changeCount: Number(task.changeCount || 0) || 0,
+      referenceFileCount: inputReferenceFiles.length,
+      ccEmails: viewerAccess.ccEmails,
+      campaign: task.campaign
+        ? {
+            requestName: task.campaign.requestName || "",
+            brief: task.campaign.brief || "",
+            deadlineMode: task.campaign.deadlineMode || "common",
+            commonDeadline: task.campaign.commonDeadline || null,
+          }
+        : null,
+      collaterals: Array.isArray(task.collaterals)
+        ? task.collaterals.map((collateral) => ({
+            id: collateral?.id || "",
+            title: collateral?.title || "",
+            collateralType: collateral?.collateralType || "",
+            platform: collateral?.platform || "",
+            usageType: collateral?.usageType || "",
+            width: collateral?.width,
+            height: collateral?.height,
+            unit: collateral?.unit || "px",
+            sizeLabel: collateral?.sizeLabel || "",
+            ratioLabel: collateral?.ratioLabel || "",
+            customSizeLabel: collateral?.customSizeLabel || "",
+            orientation: collateral?.orientation || "portrait",
+            brief: collateral?.brief || "",
+            deadline: collateral?.deadline || null,
+            priority: collateral?.priority || "normal",
+            status: collateral?.status || "pending",
+            assignedToId: collateral?.assignedToId || "",
+            assignedToName: collateral?.assignedToName || "",
+            referenceFileCount: Array.isArray(collateral?.referenceFiles)
+              ? collateral.referenceFiles.length
+              : 0,
+          }))
+        : [],
       createdAt: task.createdAt || null,
       updatedAt: task.updatedAt || task.createdAt || null
     };
@@ -1057,12 +1231,14 @@ router.get("/email-task/resolve", async (req, res) => {
     return res.json({
       taskId: preview.id,
       preview,
-      canOpenTask,
+      canOpenTask: viewerAccess.canOpenTask,
       openPath: preview.id ? `/task/${preview.id}` : "/dashboard",
       viewer: {
         isAuthenticated: Boolean(viewerPayload),
         role: viewerRole || "",
-        email: viewerEmail || ""
+        email: viewerEmail || "",
+        accessMode: viewerAccess.accessMode,
+        accessReason: viewerAccess.accessReason,
       }
     });
   } catch {

@@ -1,22 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import {
   ArrowRight,
-  Building2,
-  CalendarClock,
+  Calendar,
   Clock3,
   LockKeyhole,
+  Paperclip,
   ShieldCheck,
   UserRound,
-  type LucideIcon,
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { API_URL, authFetch } from "@/lib/api";
+import {
+  formatCollateralStatusLabel,
+  getCollateralDisplayName,
+  getCollateralSizeSummary,
+} from "@/lib/campaignRequest";
+import type { CollateralItem } from "@/types";
 import { cn } from "@/lib/utils";
 
-type EmailTaskPreview = {
+type PreviewCollateral = {
   id: string;
+  title?: string;
+  collateralType: string;
+  platform?: string;
+  usageType?: string;
+  width?: number;
+  height?: number;
+  unit?: string;
+  sizeLabel?: string;
+  customSizeLabel?: string;
+  orientation?: string;
+  brief: string;
+  deadline: string | null;
+  priority?: string;
+  status: string;
+  assignedToName?: string;
+  referenceFileCount: number;
+};
+
+type PreviewTask = {
+  id: string;
+  requestType: string;
   title: string;
   description: string;
   status: string;
@@ -31,32 +57,47 @@ type EmailTaskPreview = {
   assignedToName: string;
   createdAt: string | null;
   updatedAt: string | null;
+  campaign: {
+    requestName: string;
+    brief: string;
+    deadlineMode: string;
+    commonDeadline: string | null;
+  } | null;
+  collaterals: PreviewCollateral[];
 };
 
-type EmailTaskResolveResponse = {
+type ResolveResponse = {
   taskId: string;
-  preview: EmailTaskPreview;
+  preview: PreviewTask;
   canOpenTask: boolean;
   openPath: string;
   viewer: {
     isAuthenticated: boolean;
     role: string;
     email: string;
+    accessMode: "full" | "view_only" | "none";
+    accessReason: string;
   };
 };
 
-const glassPanelClass =
-  "bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF]/35 ring-0 rounded-[30px] shadow-none dark:bg-card dark:border-border/55 dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent";
-const glassCardClass =
-  "rounded-2xl border border-[#D9E6FF]/65 bg-gradient-to-br from-white/88 via-[#F5F9FF]/78 to-[#EAF2FF]/72 supports-[backdrop-filter]:bg-[#F5F9FF]/62 backdrop-blur-xl shadow-none dark:border-slate-700/60 dark:bg-slate-900/60 dark:supports-[backdrop-filter]:bg-slate-900/52";
-const glassMetaClass =
-  "rounded-2xl border border-[#D5E2FB]/80 bg-white/80 supports-[backdrop-filter]:bg-white/55 backdrop-blur-md p-4 dark:border-border/60 dark:bg-background/70 dark:backdrop-blur-none";
-const glassBadgeClass =
-  "rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none";
-const primaryButtonClass =
-  "h-11 rounded-xl border border-white/20 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 px-5 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl transition-all duration-200 hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)]";
-const secondaryButtonClass =
-  "h-11 rounded-xl border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-5 text-[#223467] shadow-none transition supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#BFD1F4] hover:bg-[#EAF2FF]/90 dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-500/80 dark:hover:bg-slate-800/80";
+const WORKFLOW_STEPS = [
+  ["pending", "Pending", "Request submitted"],
+  ["assigned", "Assigned", "Task assigned to designer"],
+  ["accepted", "Accepted", "Designer accepted the task"],
+  ["in_progress", "In Progress", "Design work in motion"],
+  ["clarification_required", "Clarification Required", "Waiting on clarifications"],
+  ["under_review", "Under Review", "Review in progress"],
+  ["completed", "Completed", "Delivery complete"],
+] as const;
+
+const shellClass =
+  "relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(221,233,255,0.92),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(238,244,255,0.88),_transparent_24%),linear-gradient(180deg,#F7FAFF_0%,#EEF4FF_100%)] px-4 py-8 text-foreground sm:py-12";
+const surfaceClass =
+  "overflow-hidden rounded-[30px] border border-[#D9E6FF]/80 bg-white/82 supports-[backdrop-filter]:bg-white/60 backdrop-blur-2xl";
+const panelClass =
+  "rounded-[24px] border border-[#D7E4FF]/90 bg-white/80 supports-[backdrop-filter]:bg-white/62 backdrop-blur-xl";
+const pillClass =
+  "inline-flex items-center rounded-full border border-[#C9D7FF] bg-[#F5F8FF] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#23407A]";
 
 const humanize = (value: string) =>
   String(value || "")
@@ -64,40 +105,63 @@ const humanize = (value: string) =>
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
-const formatDateTime = (value?: string | null) => {
-  if (!value) return "N/A";
+const normalizeStatus = (value?: string) => {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "clarification") return "clarification_required";
+  if (normalized === "submitted_for_review") return "under_review";
+  return normalized || "pending";
+};
+
+const formatDate = (value?: string | null, withTime = false) => {
+  if (!value) return "Not set";
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "N/A";
-  return parsed.toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-};
-
-type MetaItemProps = {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-};
-
-function MetaItem({ icon: Icon, label, value }: MetaItemProps) {
-  return (
-    <div className={glassMetaClass}>
-      <div className="flex items-center gap-2 text-[#5C7098] dark:text-slate-400">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[#D9E6FF]/85 bg-gradient-to-br from-white/90 via-[#EEF4FF]/85 to-[#E2ECFF]/75 supports-[backdrop-filter]:bg-white/65 backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-900/75">
-          <Icon className="h-4 w-4" />
-        </span>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em]">{label}</p>
-      </div>
-      <p className="mt-3 break-words text-[15px] font-semibold leading-6 text-[#13264C] dark:text-slate-100">
-        {value}
-      </p>
-    </div>
+  if (Number.isNaN(parsed.getTime())) return "Not set";
+  return parsed.toLocaleString(
+    "en-US",
+    withTime
+      ? { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
+      : { year: "numeric", month: "short", day: "2-digit" }
   );
-}
+};
+
+const relativeTime = (value?: string | null) => {
+  if (!value) return "Recently updated";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Recently updated";
+  return formatDistanceToNow(parsed, { addSuffix: true });
+};
+
+const isDone = (status?: string) => ["approved", "completed"].includes(normalizeStatus(status));
+
+const badgeTone = (status?: string) => {
+  const normalized = normalizeStatus(status);
+  if (["completed", "approved"].includes(normalized)) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (["assigned", "accepted", "in_progress", "under_review"].includes(normalized)) return "border-[#C9D7FF] bg-[#EEF4FF] text-[#2E4FBA]";
+  if (normalized === "clarification_required") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-[#E4EBF8] bg-white text-[#6E7D9E]";
+};
+
+const accessCopy = (viewer: ResolveResponse["viewer"], canOpenTask: boolean) => {
+  if (!viewer.isAuthenticated) {
+    return "Sign in with the requester, assigned designer, Design Lead, treasurer, or CC'd manager account to open the full task page.";
+  }
+  if (!canOpenTask) {
+    return "This signed-in account is not linked to the assignment, requester, or CC list for this task.";
+  }
+  if (viewer.accessReason === "cc_manager") {
+    return "This manager account was copied on the assignment, so it can open the task page in view mode.";
+  }
+  if (viewer.accessReason === "cc_recipient") {
+    return "This account was included in the assignment CC list, so it can open the task page in view mode.";
+  }
+  if (viewer.accessReason === "design_lead") {
+    return "This Design Lead account can review the full task page in oversight mode.";
+  }
+  if (viewer.accessReason === "request_owner") {
+    return "This requester account can open the full task page and track delivery progress.";
+  }
+  return "This account can open the linked task directly in the main DesignDesk workspace.";
+};
 
 export default function EmailTask() {
   const navigate = useNavigate();
@@ -105,10 +169,11 @@ export default function EmailTask() {
   const token = String(searchParams.get("token") || "").trim();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [data, setData] = useState<EmailTaskResolveResponse | null>(null);
+  const [data, setData] = useState<ResolveResponse | null>(null);
+  const [selectedCollateralId, setSelectedCollateralId] = useState("");
 
   useEffect(() => {
-    let isMounted = true;
+    let active = true;
     const resolveLink = async () => {
       if (!token) {
         setError("Missing task link token.");
@@ -121,514 +186,474 @@ export default function EmailTask() {
         return;
       }
       try {
-        const response = await authFetch(
-          `${API_URL}/api/auth/email-task/resolve?token=${encodeURIComponent(token)}`
-        );
-        const payload = (await response.json().catch(() => null)) as
-          | EmailTaskResolveResponse
-          | { error?: string }
-          | null;
+        const response = await authFetch(`${API_URL}/api/auth/email-task/resolve?token=${encodeURIComponent(token)}`);
+        const payload = await response.json().catch(() => null);
         if (!response.ok) {
-          const message =
+          throw new Error(
             payload && typeof payload.error === "string" && payload.error.trim()
               ? payload.error.trim()
-              : "Unable to open this task link.";
-          throw new Error(message);
+              : "Unable to open this task link."
+          );
         }
-        if (!isMounted) return;
-        const resolved = payload as EmailTaskResolveResponse;
+        if (!active) return;
+        const resolved = payload as ResolveResponse;
         setData(resolved);
-        if (resolved?.viewer?.isAuthenticated && resolved?.canOpenTask && resolved?.openPath) {
+        if (resolved.viewer.isAuthenticated && resolved.canOpenTask && resolved.openPath) {
           navigate(resolved.openPath, { replace: true });
-          return;
         }
       } catch (linkError) {
-        if (!isMounted) return;
-        const message =
-          linkError instanceof Error && linkError.message
-            ? linkError.message
-            : "Unable to open this task link.";
-        setError(message);
+        if (!active) return;
+        setError(linkError instanceof Error ? linkError.message : "Unable to open this task link.");
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
     resolveLink();
     return () => {
-      isMounted = false;
+      active = false;
     };
   }, [navigate, token]);
 
   const preview = data?.preview ?? null;
-  const previewDescription = String(preview?.description || "").trim();
-  const viewerIsAuthenticated = Boolean(data?.viewer?.isAuthenticated);
-  const viewerRole = String(data?.viewer?.role || "").trim().toLowerCase();
-  const isAuthorizedRole = viewerRole === "designer" || viewerRole === "treasurer";
+  const viewer = data?.viewer ?? {
+    isAuthenticated: false,
+    role: "",
+    email: "",
+    accessMode: "none" as const,
+    accessReason: "sign_in_required",
+  };
+  const collaterals = preview?.collaterals ?? [];
+  const isCampaign = Boolean(preview) && (preview.requestType === "campaign_request" || collaterals.length > 0);
 
-  const loginRedirectPath = useMemo(() => {
-    const path = data?.openPath || (data?.taskId ? `/task/${data.taskId}` : "/dashboard");
-    return `/login?redirect=${encodeURIComponent(path)}`;
-  }, [data?.openPath, data?.taskId]);
-
-  const headerDescription = useMemo(() => {
-    if (isLoading) {
-      return "Validating secure access and preparing the task preview.";
+  useEffect(() => {
+    if (collaterals.length === 0) {
+      setSelectedCollateralId("");
+      return;
     }
-    if (error) {
-      return "This access link could not be verified. You can return to the workspace from the main application.";
-    }
-    if (viewerIsAuthenticated && data?.canOpenTask) {
-      return "Your access has been verified. Open the full task workspace when permissions allow.";
-    }
-    if (viewerIsAuthenticated) {
-      return "You are signed in. Preview access is available, while full task access depends on your role permissions.";
-    }
-    return "Review a limited preview of the assigned task. Sign in with an authorized account to access the full workspace.";
-  }, [data?.canOpenTask, error, isLoading, viewerIsAuthenticated]);
+    setSelectedCollateralId((current) => (collaterals.some((item) => item.id === current) ? current : collaterals[0].id));
+  }, [collaterals]);
 
-  const requesterLabel = preview
-    ? [preview.requesterName || "N/A", preview.requesterDepartment || "", preview.requesterEmail || ""]
-        .filter(Boolean)
-        .join(" | ")
-    : "N/A";
+  const selectedCollateral = collaterals.find((item) => item.id === selectedCollateralId) || collaterals[0] || null;
+  const workflowIndex = Math.max(0, WORKFLOW_STEPS.findIndex(([key]) => key === normalizeStatus(preview?.status)));
+  const workflowProgress = Math.round(((workflowIndex + 1) / WORKFLOW_STEPS.length) * 100);
+  const completedCount = collaterals.filter((item) => isDone(item.status)).length;
+  const collateralProgress = collaterals.length > 0 ? Math.round((completedCount / collaterals.length) * 100) : 0;
+  const overallBrief = String(preview?.campaign?.brief || preview?.description || "").trim() || "No request brief was included in this preview.";
+  const loginRedirectPath = useMemo(
+    () => `/login?redirect=${encodeURIComponent(data?.openPath || (data?.taskId ? `/task/${data.taskId}` : "/dashboard"))}`,
+    [data?.openPath, data?.taskId]
+  );
 
-  const priorityLabel = preview
-    ? preview.isEmergency
-      ? "Emergency override"
-      : humanize(preview.urgency || "normal")
-    : "N/A";
+  if (isLoading) {
+    return <div className={shellClass}><div className="relative mx-auto max-w-6xl"><div className={cn(surfaceClass, "p-6 sm:p-8")}><h1 className="text-2xl font-semibold text-[#12254C]">Opening secure task link</h1><p className="mt-2 text-sm leading-7 text-[#5B6B8A]">Preparing the assignment preview and checking viewer access.</p></div></div></div>;
+  }
 
-  const stageLabel = preview
-    ? [
-        humanize(preview.status),
-        preview.approvalStatus ? `Approval ${humanize(preview.approvalStatus)}` : "",
-      ]
-        .filter(Boolean)
-        .join(" | ")
-    : "N/A";
+  if (error) {
+    return <div className={shellClass}><div className="relative mx-auto max-w-6xl"><div className={cn(surfaceClass, "p-6 sm:p-8")}><h1 className="text-2xl font-semibold text-[#12254C]">Task link unavailable</h1><p className="mt-2 text-sm leading-7 text-[#5B6B8A]">{error}</p><div className="mt-4 flex flex-wrap gap-3"><Button asChild className="h-11 rounded-xl px-5"><Link to="/login">Go to Login</Link></Button><Button asChild variant="outline" className="h-11 rounded-xl px-5"><Link to="/">Home</Link></Button></div></div></div></div>;
+  }
 
-  const requestContextLine = preview
-    ? [
-        requesterLabel !== "N/A" ? `Requested by ${requesterLabel}` : "",
-        preview.assignedToName ? `Assigned to ${preview.assignedToName}` : "Assignment pending",
-        preview.deadline ? `Due ${formatDateTime(preview.deadline)}` : "",
-      ]
-        .filter(Boolean)
-        .join(" | ")
-    : "";
-
-  const accessHeading = useMemo(() => {
-    if (viewerIsAuthenticated && data?.canOpenTask) {
-      return "Full task access confirmed";
-    }
-    if (viewerIsAuthenticated) {
-      return `Signed in as ${humanize(viewerRole || "member")}`;
-    }
-    return "Preview only until sign-in";
-  }, [data?.canOpenTask, viewerIsAuthenticated, viewerRole]);
-
-  const accessDescription = useMemo(() => {
-    if (viewerIsAuthenticated && data?.canOpenTask) {
-      return "Your account can open the full workspace directly from this secure link.";
-    }
-    if (viewerIsAuthenticated) {
-      return "This account can review the request snapshot here, but full workspace entry is limited by role and assignment.";
-    }
-    return "Sign in with the assigned designer, Design Lead, or treasurer account to continue into the full task workspace.";
-  }, [data?.canOpenTask, viewerIsAuthenticated]);
-
-  const previewNoteTitle = viewerIsAuthenticated
-    ? "What this secure link shows"
-    : "Sign in to continue";
-  const previewNotePrimary = preview
-    ? `${preview.title} is shown here as a quick snapshot so you can verify the request owner, current stage, assignment, and delivery timeline before entering the main workspace.`
-    : "";
-  const previewNoteSecondary = viewerIsAuthenticated
-    ? data?.canOpenTask
-      ? "If the workspace does not open automatically, use the Open Task action below."
-      : "Files, comments, approvals, and editing actions still stay inside the full task page."
-    : "This preview stays readable, but comments, approvals, uploads, and deeper task actions require an authorized DesignDesk sign-in.";
-
-  const previewMeta = preview
-    ? [
-        {
-          icon: Building2,
-          label: "Requester",
-          value: requesterLabel,
-        },
-        {
-          icon: UserRound,
-          label: "Assigned To",
-          value: preview.assignedToName || "Pending assignment",
-        },
-        {
-          icon: Clock3,
-          label: "Deadline",
-          value: formatDateTime(preview.deadline),
-        },
-        {
-          icon: CalendarClock,
-          label: "Submitted",
-          value: formatDateTime(preview.createdAt),
-        },
-      ]
-    : [];
-
-  const noticeToneClass =
-    viewerIsAuthenticated && data?.canOpenTask
-      ? "border-[#BFD6FF]/80 bg-gradient-to-r from-[#F6FAFF]/90 via-[#EEF4FF]/80 to-[#EAF2FF]/88 text-[#21407D] dark:border-sky-500/25 dark:bg-slate-900/65 dark:text-sky-100"
-      : "border-dashed border-[#C7D7FF] bg-[#F4F8FF]/78 text-[#516483] dark:border-[#33508A]/65 dark:bg-[#102348]/70 dark:text-slate-300";
-  const showShellHeader = isLoading || Boolean(error) || !preview;
+  if (!preview) {
+    return <div className={shellClass}><div className="relative mx-auto max-w-6xl"><div className={cn(surfaceClass, "p-6 sm:p-8")}><h1 className="text-2xl font-semibold text-[#12254C]">Task preview unavailable</h1><p className="mt-2 text-sm leading-7 text-[#5B6B8A]">This link did not return any task data.</p></div></div></div>;
+  }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(221,233,255,0.92),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(238,244,255,0.88),_transparent_24%),linear-gradient(180deg,#F7FAFF_0%,#EEF4FF_100%)] px-4 py-8 text-foreground dark:bg-[radial-gradient(circle_at_top_left,rgba(56,83,145,0.22),transparent_26%),radial-gradient(circle_at_top_right,rgba(20,40,87,0.28),transparent_24%),linear-gradient(180deg,#081024_0%,#09162E_100%)] sm:py-12">
+    <div className={shellClass}>
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-16 top-0 h-56 w-56 rounded-full bg-[#DDE9FF]/55 blur-3xl dark:bg-[#28406D]/25" />
-        <div className="absolute right-[-6rem] top-20 h-72 w-72 rounded-full bg-[#EAF2FF]/70 blur-3xl dark:bg-[#1B335F]/25" />
-        <div className="absolute bottom-[-5rem] left-1/3 h-64 w-64 rounded-full bg-white/65 blur-3xl dark:bg-[#102348]/22" />
+        <div className="absolute -left-16 top-0 h-56 w-56 rounded-full bg-[#DDE9FF]/55 blur-3xl" />
+        <div className="absolute right-[-6rem] top-20 h-72 w-72 rounded-full bg-[#EAF2FF]/70 blur-3xl" />
       </div>
+      <div className="relative mx-auto w-full max-w-6xl">
+        <div className={surfaceClass}>
+          <div className="border-b border-[#D9E6FF]/70 px-6 py-5 sm:px-8">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#C9D7FF]/80 bg-white/72">
+                  <img src="/favicon.png" alt="DesignDesk" className="h-7 w-7 object-contain" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#60749C]">DesignDesk</p>
+                  <p className="mt-1 text-sm font-semibold text-[#12254C]">Secure assignment preview</p>
+                </div>
+              </div>
+              <span className={cn("inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em]", viewer.isAuthenticated ? "border-[#C9D7FF] bg-white/72 text-[#1E2A5A]" : "border-[#D7E4FF] bg-[#F7FAFF]/82 text-[#5E729A]")}>
+                {viewer.isAuthenticated ? <ShieldCheck className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />}
+                {viewer.isAuthenticated ? "Signed In" : "Restricted Preview"}
+              </span>
+            </div>
+          </div>
+          <div className="grid gap-6 px-6 py-6 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,1.55fr)_340px] lg:items-start">
+            <div className="space-y-6">
+              <div className="border-b border-[#D9E6FF] pb-4">
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <span className={pillClass}>{humanize(preview.status)}</span>
+                  {preview.category ? <span className={pillClass}>{humanize(preview.category)}</span> : null}
+                  {preview.approvalStatus ? <span className={pillClass}>Approval {humanize(preview.approvalStatus)}</span> : null}
+                </div>
+                <h1 className="text-[1.95rem] font-semibold leading-tight tracking-[-0.04em] text-[#12254C]">
+                  {preview.campaign?.requestName || preview.title}
+                </h1>
+                <p className="mt-3 max-w-3xl text-[15px] leading-8 text-[#5B6B8A]">
+                  {`Requested by ${[preview.requesterName, preview.requesterDepartment, preview.requesterEmail].filter(Boolean).join(" | ")}${preview.assignedToName ? ` | Assigned to ${preview.assignedToName}` : ""}${preview.deadline ? ` | Due ${formatDate(preview.deadline, true)}` : ""}`}
+                </p>
+              </div>
+              {isCampaign ? (
+                <div className={panelClass}>
+                  <div className="border-b border-[#E7EDF8] px-5 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#7E8DAB]">Campaign Overview</p>
+                        <h2 className="mt-1 text-[1.35rem] font-semibold text-[#215ABB]">{preview.campaign?.requestName || preview.title}</h2>
+                      </div>
+                      <span className={cn("inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold", badgeTone(preview.status))}>
+                        {humanize(preview.status)}
+                      </span>
+                    </div>
+                    <div className="mt-4">
+                      <div className="mb-1.5 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">
+                        <span>Collateral Progress</span>
+                        <span>{completedCount} / {collaterals.length || 0} completed</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-[#E6EBF2]">
+                        <div className="h-full rounded-full bg-[#4A68D8]" style={{ width: `${collateralProgress}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid border-b border-[#E7EDF8] md:grid-cols-4">
+                    <div className="px-5 py-3.5"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF]">Request Structure</p><p className="mt-1 text-sm font-semibold text-[#1F2F4B]">{preview.campaign?.deadlineMode === "common" ? "Common deadline" : "Item-wise deadlines"}</p></div>
+                    <div className="border-t border-[#E7EDF8] px-5 py-3.5 md:border-l md:border-t-0"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF]">Collaterals</p><p className="mt-1 text-sm font-semibold text-[#1F2F4B]">{collaterals.length} {collaterals.length === 1 ? "Item" : "Items"}</p></div>
+                    <div className="border-t border-[#E7EDF8] px-5 py-3.5 md:border-l md:border-t-0"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF]">Delivery Target</p><p className="mt-1 text-sm font-semibold text-[#1F2F4B]">{formatDate(preview.campaign?.commonDeadline || preview.deadline)}</p></div>
+                    <div className="border-t border-[#E7EDF8] px-5 py-3.5 md:border-l md:border-t-0"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF]">Requested On</p><p className="mt-1 text-sm font-semibold text-[#1F2F4B]">{formatDate(preview.createdAt)}</p></div>
+                  </div>
+                  <div className="grid gap-5 px-5 py-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                    <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Description</p><p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-[#516483]">{overallBrief}</p></div>
+                    <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Collateral Scope</p><div className="mt-2 space-y-1.5 text-[13px] leading-6 text-[#516483]">{collaterals.map((item, index) => <p key={item.id || index}>{`${index + 1}. ${getCollateralDisplayName(item as Partial<CollateralItem>)}${getCollateralSizeSummary(item as Partial<CollateralItem>) ? ` | ${getCollateralSizeSummary(item as Partial<CollateralItem>)}` : ""}`}</p>)}</div></div>
+                  </div>
+                  <div className="border-t border-[#E7EDF8] px-5 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h3 className="font-semibold text-foreground">Deliverables</h3>
+                      <div className="flex gap-2">
+                        <span className="rounded-full border border-[#D7E4FF] bg-white px-2.5 py-1 text-[11px] font-medium text-[#40557E]">{collaterals.length} collateral{collaterals.length === 1 ? "" : "s"}</span>
+                        <span className="rounded-full border border-[#D7E4FF] bg-white px-2.5 py-1 text-[11px] font-medium text-[#40557E]">{preview.campaign?.deadlineMode === "common" ? "Common deadline" : "Item-wise deadlines"}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+                    <div className="overflow-hidden rounded-[26px] border border-[#CFE0FF] bg-[#FBFDFF] lg:grid lg:grid-cols-[320px_minmax(0,1fr)]">
+                      <div className="border-b border-[#DCE7FB] lg:border-b-0 lg:border-r">
+                        <div className="px-4 pb-3 pt-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Collateral Flow</p>
+                          <p className="mt-2 max-w-[15rem] text-sm leading-6 text-[#6B7C9F]">
+                            Select an item to review its brief, references, and delivery details.
+                          </p>
+                        </div>
+                        <div className="space-y-3 px-3 pb-4">
+                          {collaterals.map((item, index) => {
+                            const isActive = selectedCollateral?.id === item.id;
+                            const sizeLabel = getCollateralSizeSummary(item as Partial<CollateralItem>);
+                            return (
+                              <button
+                                key={item.id || index}
+                                type="button"
+                                onClick={() => setSelectedCollateralId(item.id)}
+                                className={cn(
+                                  "w-full rounded-[20px] border px-4 py-4 text-left transition",
+                                  isActive
+                                    ? "border-[#7EA2FF] bg-[#EEF4FF] shadow-[0_16px_40px_-32px_rgba(54,90,187,0.65)]"
+                                    : "border-[#D9E6FF] bg-white hover:border-[#BFD1FF] hover:bg-[#F9FBFF]"
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex min-w-0 items-start gap-3">
+                                    <span className={cn("mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold", isActive ? "bg-[#3366E8] text-white" : "border border-[#D7E4FF] bg-[#F7FAFF] text-[#5270C7]")}>
+                                      {index + 1}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <p className="truncate text-sm font-semibold text-[#203254]">
+                                        {getCollateralDisplayName(item as Partial<CollateralItem>)}
+                                      </p>
+                                      <p className="mt-1 truncate text-xs text-[#7A8AA9]">
+                                        {[humanize(item.collateralType || item.usageType || item.platform || "Collateral"), sizeLabel].filter(Boolean).join(" · ")}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span className={cn("shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold", badgeTone(item.status))}>
+                                    {formatCollateralStatusLabel(item.status)}
+                                  </span>
+                                </div>
+                                <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-[#7A8AA9]">
+                                  <span className="inline-flex items-center gap-1">
+                                    <Calendar className="h-3.5 w-3.5" />
+                                    {formatDate(item.deadline)}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <Paperclip className="h-3.5 w-3.5" />
+                                    {item.referenceFileCount} ref{item.referenceFileCount === 1 ? "" : "s"}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="p-4 sm:p-5">
+                        {selectedCollateral ? (
+                          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_270px]">
+                            <div className="space-y-5">
+                              <div className="border-b border-[#E6EEF9] pb-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <h4 className="text-[1.7rem] font-semibold tracking-[-0.03em] text-[#18315F]">
+                                      {getCollateralDisplayName(selectedCollateral as Partial<CollateralItem>)}
+                                    </h4>
+                                    <p className="mt-1 text-sm text-[#7383A3]">
+                                      {[humanize(selectedCollateral.collateralType || selectedCollateral.usageType || selectedCollateral.platform || "Collateral"), getCollateralSizeSummary(selectedCollateral as Partial<CollateralItem>)].filter(Boolean).join(" · ")}
+                                    </p>
+                                  </div>
+                                  <span className={cn("inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold", badgeTone(selectedCollateral.status))}>
+                                    {formatCollateralStatusLabel(selectedCollateral.status)}
+                                  </span>
+                                </div>
+                                <p className="mt-3 text-sm text-[#617291]">
+                                  {`Deadline: ${formatDate(selectedCollateral.deadline)} · Progress: ${humanize(selectedCollateral.status || "pending")}${selectedCollateral.assignedToName ? ` · Owner: ${selectedCollateral.assignedToName}` : ""}`}
+                                </p>
+                              </div>
 
-      <div className="relative mx-auto w-full max-w-5xl">
-        <div className={cn(glassPanelClass, "overflow-hidden")}>
-          {showShellHeader ? (
-            <div className="relative border-b border-[#D9E6FF]/70 px-6 py-6 sm:px-8 sm:py-7 dark:border-slate-700/60">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.9),_transparent_38%),linear-gradient(135deg,rgba(255,255,255,0.28),rgba(230,241,255,0.06))] opacity-90 dark:bg-[radial-gradient(circle_at_top_right,rgba(96,165,250,0.09),transparent_36%),linear-gradient(135deg,rgba(15,23,42,0.18),rgba(30,41,59,0.08))]" />
-              <div className="relative flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex items-start gap-4">
-                  <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#C9D7FF] bg-gradient-to-br from-white/88 via-[#EAF2FF]/84 to-[#DDE9FF]/74 backdrop-blur-xl dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80">
-                    <img src="/favicon.png" alt="DesignDesk" className="h-9 w-9 object-contain" />
-                  </span>
-                  <div className="space-y-2.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
-                      DesignDesk
-                    </p>
-                    <h1 className="text-[2rem] font-semibold tracking-[-0.03em] text-[#12254C] premium-headline dark:text-slate-50 sm:text-[2.35rem]">
-                      Secure Task Preview
-                    </h1>
-                    <p className="max-w-2xl text-[15px] leading-7 text-[#5B6B8A] premium-body dark:text-slate-300">
-                      {headerDescription}
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Overall Brief</p>
+                                <div className="mt-2 border-t border-[#E7EDF8] pt-3 text-sm leading-7 text-[#536482]">
+                                  {overallBrief}
+                                </div>
+                              </div>
+
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Content Brief</p>
+                                <div className="mt-2 border-t border-[#E7EDF8] pt-3 text-sm leading-7 text-[#536482]">
+                                  {selectedCollateral.brief || "No collateral-specific brief was added for this item."}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">
+                                  <span>References</span>
+                                  <span>{selectedCollateral.referenceFileCount} file{selectedCollateral.referenceFileCount === 1 ? "" : "s"}</span>
+                                </div>
+                                <div className="mt-2 rounded-2xl border border-[#E4ECFB] bg-white px-4 py-3 text-sm text-[#536482]">
+                                  {selectedCollateral.referenceFileCount > 0
+                                    ? `${selectedCollateral.referenceFileCount} reference file${selectedCollateral.referenceFileCount === 1 ? " is" : "s are"} attached and available inside the full task workspace.`
+                                    : "No reference files attached yet."}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-5">
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Specifications</p>
+                                <div className="mt-2 space-y-2 border-t border-[#E7EDF8] pt-3 text-sm text-[#536482]">
+                                  <div className="flex items-center justify-between gap-4"><span>Platform</span><span className="text-right font-medium text-[#1E2E52]">{selectedCollateral.platform || "Not specified"}</span></div>
+                                  <div className="flex items-center justify-between gap-4"><span>Usage</span><span className="text-right font-medium text-[#1E2E52]">{selectedCollateral.usageType || humanize(selectedCollateral.collateralType || "Collateral")}</span></div>
+                                  <div className="flex items-center justify-between gap-4"><span>Size</span><span className="text-right font-medium text-[#1E2E52]">{getCollateralSizeSummary(selectedCollateral as Partial<CollateralItem>) || "Not specified"}</span></div>
+                                  <div className="flex items-center justify-between gap-4"><span>Orientation</span><span className="text-right font-medium text-[#1E2E52]">{humanize(selectedCollateral.orientation || "portrait")}</span></div>
+                                  <div className="flex items-center justify-between gap-4"><span>Priority</span><span className="text-right font-medium text-[#1E2E52]">{humanize(selectedCollateral.priority || "normal")}</span></div>
+                                  <div className="flex items-center justify-between gap-4"><span>Owner</span><span className="text-right font-medium text-[#1E2E52]">{selectedCollateral.assignedToName || preview.assignedToName || "Unassigned"}</span></div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Delivery</p>
+                                <div className="mt-2 space-y-2 border-t border-[#E7EDF8] pt-3 text-sm text-[#536482]">
+                                  <div className="flex items-center justify-between gap-4"><span>Deadline</span><span className="text-right font-medium text-[#1E2E52]">{formatDate(selectedCollateral.deadline || preview.deadline)}</span></div>
+                                  <div className="flex items-center justify-between gap-4"><span>References</span><span className="text-right font-medium text-[#1E2E52]">{selectedCollateral.referenceFileCount} file{selectedCollateral.referenceFileCount === 1 ? "" : "s"}</span></div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Status</p>
+                                <div className="mt-2 rounded-full border border-[#C9D7FF] bg-white px-4 py-2 text-sm font-semibold text-[#1E2E52]">
+                                  {formatCollateralStatusLabel(selectedCollateral.status)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-[22px] border border-dashed border-[#D7E4FF] px-5 py-10 text-center text-sm text-[#6C7D9F]">
+                            No collateral item is available in this preview.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className={panelClass}>
+                  <div className="border-b border-[#E7EDF8] px-5 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#7E8DAB]">Request Overview</p>
+                        <h2 className="mt-1 text-[1.35rem] font-semibold text-[#215ABB]">{preview.title}</h2>
+                      </div>
+                      <span className={cn("inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold", badgeTone(preview.status))}>
+                        {humanize(preview.status)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid border-b border-[#E7EDF8] md:grid-cols-4">
+                    <div className="px-5 py-3.5"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF]">Category</p><p className="mt-1 text-sm font-semibold text-[#1F2F4B]">{humanize(preview.category || "General")}</p></div>
+                    <div className="border-t border-[#E7EDF8] px-5 py-3.5 md:border-l md:border-t-0"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF]">Priority</p><p className="mt-1 text-sm font-semibold text-[#1F2F4B]">{humanize(preview.urgency || "normal")}</p></div>
+                    <div className="border-t border-[#E7EDF8] px-5 py-3.5 md:border-l md:border-t-0"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF]">Delivery Target</p><p className="mt-1 text-sm font-semibold text-[#1F2F4B]">{formatDate(preview.deadline)}</p></div>
+                    <div className="border-t border-[#E7EDF8] px-5 py-3.5 md:border-l md:border-t-0"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF]">Requested On</p><p className="mt-1 text-sm font-semibold text-[#1F2F4B]">{formatDate(preview.createdAt)}</p></div>
+                  </div>
+                  <div className="px-5 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Description</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[#536482]">{overallBrief}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-6">
+              <div className={cn(panelClass, "p-5")}>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Access</p>
+                <h2 className="mt-3 text-[1.65rem] font-semibold tracking-[-0.03em] text-[#17305D]">
+                  {!viewer.isAuthenticated
+                    ? "Sign in to continue"
+                    : data?.canOpenTask
+                      ? "Task access confirmed"
+                      : "Signed in with another account"}
+                </h2>
+                <p className="mt-3 text-sm leading-7 text-[#5A6C8C]">{accessCopy(viewer, data?.canOpenTask ?? false)}</p>
+                <div className="mt-5 space-y-3">
+                  <div className="rounded-[20px] border border-[#D9E6FF] bg-white/88 px-4 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8A99B6]">Viewer</p>
+                    <p className="mt-2 text-sm font-semibold text-[#1E2E52]">{viewer.email || "Guest preview"}</p>
+                    <p className="mt-1 text-xs text-[#7182A5]">{viewer.role ? humanize(viewer.role) : "Not signed in"}</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[#D9E6FF] bg-white/88 px-4 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8A99B6]">Task ID</p>
+                    <p className="mt-2 break-all font-mono text-sm font-semibold text-[#1E2E52]">{preview.id}</p>
+                    <p className="mt-1 text-xs text-[#7182A5]">
+                      {data?.canOpenTask ? `Access mode: ${humanize(viewer.accessMode)}` : "Preview only until the right account signs in."}
                     </p>
                   </div>
                 </div>
+              </div>
 
-                <div
-                  className={cn(
-                    "inline-flex items-center gap-2 self-start rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] backdrop-blur-xl",
-                    viewerIsAuthenticated
-                      ? "border-[#C9D7FF] bg-white/72 text-[#1E2A5A] dark:border-slate-700/70 dark:bg-slate-900/72 dark:text-slate-100"
-                      : "border-[#D7E4FF] bg-[#F7FAFF]/82 text-[#5E729A] dark:border-slate-700/70 dark:bg-slate-900/72 dark:text-slate-300"
-                  )}
-                >
-                  {viewerIsAuthenticated ? (
-                    <ShieldCheck className="h-4 w-4" />
-                  ) : (
-                    <LockKeyhole className="h-4 w-4" />
-                  )}
-                  {viewerIsAuthenticated ? "Authenticated" : "Restricted Preview"}
+              <div className={cn(panelClass, "p-5")}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Delivery Workflow</p>
+                    <h3 className="mt-2 text-[1.55rem] font-semibold text-[#17305D]">{WORKFLOW_STEPS[workflowIndex]?.[1] || humanize(preview.status)}</h3>
+                    <p className="mt-1 text-sm text-[#6D7D9F]">{WORKFLOW_STEPS[workflowIndex]?.[2] || "Task progress is available inside the main workspace."}</p>
+                  </div>
+                  <span className="rounded-full border border-[#D7E4FF] bg-white px-3 py-1 text-[11px] font-semibold text-[#4860A8]">
+                    Step {workflowIndex + 1} of {WORKFLOW_STEPS.length}
+                  </span>
+                </div>
+
+                <div className="mt-5">
+                  <div className="mb-1.5 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7E8DAB]">
+                    <span>Progress</span>
+                    <span>{workflowProgress}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-[#E5EBF5]">
+                    <div className="h-full rounded-full bg-[#4166D5]" style={{ width: `${workflowProgress}%` }} />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {preview.assignedToName ? (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-[#D7E4FF] bg-white px-3 py-1.5 text-xs text-[#4D628E]">
+                      <UserRound className="h-3.5 w-3.5" />
+                      {preview.assignedToName}
+                    </span>
+                  ) : null}
+                  <span className="inline-flex items-center gap-2 rounded-full border border-[#D7E4FF] bg-white px-3 py-1.5 text-xs text-[#4D628E]">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    {relativeTime(preview.updatedAt)}
+                  </span>
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  {WORKFLOW_STEPS.map(([key, label, description], index) => {
+                    const isCurrent = index === workflowIndex;
+                    const isComplete = index < workflowIndex;
+                    return (
+                      <div
+                        key={key}
+                        className={cn(
+                          "rounded-[20px] border px-4 py-4 transition",
+                          isCurrent
+                            ? "border-[#9FB8FF] bg-white shadow-[0_18px_34px_-30px_rgba(55,93,189,0.7)]"
+                            : isComplete
+                              ? "border-emerald-200 bg-emerald-50/80"
+                              : "border-[#E2EAF8] bg-white/72"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <span className={cn("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold", isCurrent ? "border-[#5F87FF] bg-[#3366E8] text-white" : isComplete ? "border-emerald-200 bg-white text-emerald-600" : "border-[#D7E4FF] bg-[#F8FAFF] text-[#7D8FB2]")}>
+                              {index + 1}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-[#203254]">{label}</p>
+                              <p className="mt-1 text-xs leading-5 text-[#7182A5]">{description}</p>
+                            </div>
+                          </div>
+                          <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]", isCurrent ? "bg-[#EEF4FF] text-[#3A5BC9]" : isComplete ? "bg-white text-emerald-600" : "bg-[#F5F8FF] text-[#8A99B5]")}>
+                            {isCurrent ? "Current" : isComplete ? "Done" : `Step ${index + 1}`}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {isCampaign ? (
+                  <div className="mt-5 border-t border-[#E5EDF9] pt-5">
+                    <div className="rounded-[20px] border border-[#D7E4FF] bg-white px-4 py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Campaign Progress</p>
+                          <p className="mt-1 text-sm font-semibold text-[#1E2E52]">{completedCount} / {collaterals.length} collateral items completed</p>
+                        </div>
+                        <p className="text-sm font-semibold text-[#4860A8]">{collateralProgress}%</p>
+                      </div>
+                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E5EBF5]">
+                        <div className="h-full rounded-full bg-[#4166D5]" style={{ width: `${collateralProgress}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className={cn(panelClass, "p-5")}>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Next Step</p>
+                <h3 className="mt-3 text-[1.45rem] font-semibold tracking-[-0.03em] text-[#17305D]">
+                  {!viewer.isAuthenticated
+                    ? "Sign in with an approved account"
+                    : data?.canOpenTask
+                      ? "Open the full task workspace"
+                      : "Switch to the linked account"}
+                </h3>
+                <p className="mt-3 text-sm leading-7 text-[#5A6C8C]">
+                  {!viewer.isAuthenticated
+                    ? "Use the requester, assigned designer, Design Lead, treasurer, or copied manager account to continue into the full task page."
+                    : data?.canOpenTask
+                      ? "This assignment can now open in the standard task detail view."
+                      : "This account can preview the snapshot, but the full task page requires the account that was assigned or copied on the task."}
+                </p>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <Button asChild className="h-11 rounded-xl px-5">
+                    <Link to={!viewer.isAuthenticated ? loginRedirectPath : data?.canOpenTask ? data.openPath : "/dashboard"}>
+                      {!viewer.isAuthenticated ? "Sign in to View Task" : data?.canOpenTask ? "View Task" : "Go to Dashboard"}
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" className="h-11 rounded-xl px-5">
+                    <Link to="/">Home</Link>
+                  </Button>
                 </div>
               </div>
             </div>
-          ) : null}
-
-          <div className={cn("relative", showShellHeader ? "px-6 py-6 sm:px-8 sm:py-8" : "")}>
-            {isLoading ? (
-              <div className={cn(glassCardClass, "p-6 sm:p-7")}>
-                <div className="flex items-start gap-4">
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#D9E6FF]/80 bg-white/72 backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/75">
-                    <Clock3 className="h-5 w-5 text-[#3B4BA8]" />
-                  </span>
-                  <div className="space-y-2">
-                    <h2 className="text-xl font-semibold text-[#12254C] premium-headline dark:text-slate-100">
-                      Opening secure task link
-                    </h2>
-                    <p className="text-sm leading-7 text-[#5B6B8A] premium-body dark:text-slate-300">
-                      Please wait while we prepare the protected preview.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : error ? (
-              <div className={cn(glassCardClass, "p-6 sm:p-7")}>
-                <div className="flex items-start gap-4">
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#D9E6FF]/80 bg-white/72 backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/75">
-                    <LockKeyhole className="h-5 w-5 text-[#3B4BA8]" />
-                  </span>
-                  <div className="flex-1 space-y-3">
-                    <h2 className="text-xl font-semibold text-[#12254C] premium-headline dark:text-slate-100">
-                      Task link unavailable
-                    </h2>
-                    <p className="text-sm leading-7 text-[#5B6B8A] premium-body dark:text-slate-300">
-                      {error}
-                    </p>
-                    <div className="flex flex-wrap gap-3 pt-1">
-                      <Button asChild className={primaryButtonClass}>
-                        <Link to="/login" className="inline-flex items-center gap-2">
-                          Go to Login
-                          <ArrowRight className="h-4 w-4" />
-                        </Link>
-                      </Button>
-                      <Button asChild variant="outline" className={secondaryButtonClass}>
-                        <Link to="/">Go to Home</Link>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : preview ? (
-              <div className="overflow-hidden rounded-[28px] border border-[#D9E6FF]/70 bg-white/35 shadow-none">
-                <div className="border-b border-[#D9E6FF]/70 px-6 py-4 sm:px-8 dark:border-slate-700/60">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#C9D7FF]/80 bg-white/72 backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/72">
-                        <img src="/favicon.png" alt="DesignDesk" className="h-7 w-7 object-contain" />
-                      </span>
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
-                          DesignDesk
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-[#12254C] dark:text-slate-100">
-                          Secure link preview
-                        </p>
-                      </div>
-                    </div>
-                    <div
-                      className={cn(
-                        "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] backdrop-blur-xl",
-                        viewerIsAuthenticated
-                          ? "border-[#C9D7FF] bg-white/72 text-[#1E2A5A] dark:border-slate-700/70 dark:bg-slate-900/72 dark:text-slate-100"
-                          : "border-[#D7E4FF] bg-[#F7FAFF]/82 text-[#5E729A] dark:border-slate-700/70 dark:bg-slate-900/72 dark:text-slate-300"
-                      )}
-                    >
-                      {viewerIsAuthenticated ? (
-                        <ShieldCheck className="h-4 w-4" />
-                      ) : (
-                        <LockKeyhole className="h-4 w-4" />
-                      )}
-                      {viewerIsAuthenticated ? "Authenticated Preview" : "Restricted Preview"}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid border-b border-[#D9E6FF]/70 lg:grid-cols-[minmax(0,1.25fr)_340px] dark:border-slate-700/60">
-                  <div className="px-6 py-8 sm:px-8 sm:py-10">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
-                      Task Overview
-                    </p>
-                    <h2 className="mt-4 max-w-3xl text-[2.15rem] font-semibold leading-tight tracking-[-0.04em] text-[#12254C] premium-headline dark:text-slate-50 sm:text-[2.85rem]">
-                      Review this task snapshot
-                    </h2>
-                    <p className="mt-4 max-w-2xl text-[15px] leading-8 text-[#5B6B8A] premium-body dark:text-slate-300">
-                      Use this secure preview to confirm the request brief, owner, assignment, and
-                      timeline before opening the full workspace.
-                    </p>
-
-                    <div className="mt-6 flex flex-wrap gap-2">
-                      <Badge variant="secondary" className={glassBadgeClass}>
-                        {humanize(preview.status)}
-                      </Badge>
-                      {preview.category ? (
-                        <Badge variant="outline" className={glassBadgeClass}>
-                          {humanize(preview.category)}
-                        </Badge>
-                      ) : null}
-                      {(preview.isEmergency || (preview.urgency && preview.urgency !== "normal")) ? (
-                        <Badge variant="outline" className={glassBadgeClass}>
-                          {priorityLabel}
-                        </Badge>
-                      ) : null}
-                      {preview.approvalStatus ? (
-                        <Badge variant="outline" className={glassBadgeClass}>
-                          Approval {humanize(preview.approvalStatus)}
-                        </Badge>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-8 max-w-2xl rounded-[26px] border border-[#D9E6FF]/80 bg-gradient-to-br from-white/86 via-[#F7FAFF]/75 to-[#EDF4FF]/74 p-5 supports-[backdrop-filter]:bg-white/58 backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/62">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
-                        Request
-                      </p>
-                      <h3 className="mt-3 text-[1.6rem] font-semibold leading-tight tracking-[-0.03em] text-[#12254C] premium-headline dark:text-slate-100">
-                        {preview.title}
-                      </h3>
-                      <p className="mt-4 text-sm leading-7 text-[#516483] dark:text-slate-300">
-                        {requestContextLine ||
-                          "Open the full workspace to review the complete owner, assignment, and delivery details for this request."}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="relative border-t border-[#D9E6FF]/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.2),rgba(234,242,255,0.38))] px-6 py-8 sm:px-8 lg:border-l lg:border-t-0 dark:border-slate-700/60 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.15),rgba(15,23,42,0.34))]">
-                    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                      <div className="absolute right-[-2.5rem] top-[-2rem] h-36 w-36 rounded-full bg-white/55 blur-3xl dark:bg-[#27406B]/25" />
-                      <img
-                        src="/favicon.png"
-                        alt=""
-                        className="absolute right-8 top-8 h-20 w-20 object-contain opacity-[0.08] dark:opacity-[0.06]"
-                      />
-                    </div>
-
-                    <div className="relative space-y-4">
-                      <div className={cn(glassCardClass, "p-5")}>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
-                          Access
-                        </p>
-                        <p className="mt-3 text-lg font-semibold leading-7 text-[#12254C] dark:text-slate-100">
-                          {accessHeading}
-                        </p>
-                        <p className="mt-3 text-sm leading-7 text-[#5B6B8A] dark:text-slate-300">
-                          {accessDescription}
-                        </p>
-                      </div>
-
-                      <div className={glassMetaClass}>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
-                          Task ID
-                        </p>
-                        <p className="mt-3 break-all font-mono text-sm font-semibold leading-7 text-[#12254C] dark:text-slate-100">
-                          {preview.id}
-                        </p>
-                      </div>
-
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                        <div className={glassMetaClass}>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
-                            Current Stage
-                          </p>
-                          <p className="mt-3 text-sm font-semibold leading-6 text-[#12254C] dark:text-slate-100">
-                            {stageLabel}
-                          </p>
-                        </div>
-                        <div className={glassMetaClass}>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#60749C] dark:text-slate-400">
-                            Priority
-                          </p>
-                          <p className="mt-3 text-sm font-semibold leading-6 text-[#12254C] dark:text-slate-100">
-                            {priorityLabel}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-8 px-6 py-8 sm:px-8 sm:py-10">
-                  <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
-                    <div className="space-y-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
-                        Preview Note
-                      </p>
-                      <div className={cn(glassCardClass, "p-6")}>
-                        <h3 className="text-[1.7rem] font-semibold tracking-[-0.03em] text-[#12254C] premium-headline dark:text-slate-100">
-                          {previewNoteTitle}
-                        </h3>
-                        <p className="mt-4 text-[15px] leading-8 text-[#3C5181] premium-body dark:text-slate-300">
-                          {previewNotePrimary}
-                        </p>
-                        <p className="mt-4 text-[15px] leading-8 text-[#3C5181] premium-body dark:text-slate-300">
-                          {previewNoteSecondary}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className={cn("rounded-2xl p-4 sm:p-5", glassCardClass, noticeToneClass)}>
-                      <div className="flex items-start gap-3">
-                        {viewerIsAuthenticated ? (
-                          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />
-                        ) : (
-                          <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0" />
-                        )}
-                        <p className="text-sm leading-7">
-                          {viewerIsAuthenticated ? (
-                            data?.canOpenTask ? (
-                              <span>
-                                Your account is authorized for this task. If automatic redirect does
-                                not complete, use the action below to open the workspace directly.
-                              </span>
-                            ) : (
-                              <span>
-                                You are signed in
-                                {isAuthorizedRole
-                                  ? ""
-                                  : " with a role that cannot open this task from email"}
-                                . This preview remains visible, but full task access is restricted.
-                              </span>
-                            )
-                          ) : (
-                            <span>
-                              You are not signed in. Preview is visible, but full task access is
-                              limited to assigned designers, Design Leads, and treasurer.
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
-                      Request Brief
-                    </p>
-                    <div className={cn(glassCardClass, "p-6")}>
-                      <p className="whitespace-pre-wrap rounded-2xl border border-[#D9E6FF]/80 bg-white/78 p-5 text-sm leading-8 text-[#243B6A] supports-[backdrop-filter]:bg-white/56 backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/68 dark:text-slate-200">
-                        {previewDescription ||
-                          "No detailed brief was added to this request. Open the full workspace for files, comments, and the complete task record."}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#60749C] dark:text-slate-400">
-                      Task Details
-                    </p>
-                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                      {previewMeta.map((item) => (
-                        <MetaItem key={item.label} icon={item.icon} label={item.label} value={item.value} />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="border-t border-[#D9E6FF]/70 pt-6 dark:border-slate-700/60">
-                    <div className="flex flex-wrap gap-3">
-                      {!viewerIsAuthenticated ? (
-                        <Button asChild className={primaryButtonClass}>
-                          <Link to={loginRedirectPath} className="inline-flex items-center gap-2">
-                            Login to Continue
-                            <ArrowRight className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                      ) : data?.canOpenTask && data?.openPath ? (
-                        <Button asChild className={primaryButtonClass}>
-                          <Link to={data.openPath} className="inline-flex items-center gap-2">
-                            Open Task
-                            <ArrowRight className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                      ) : (
-                        <Button asChild className={primaryButtonClass}>
-                          <Link to="/dashboard" className="inline-flex items-center gap-2">
-                            Go to Dashboard
-                            <ArrowRight className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                      )}
-
-                      <Button asChild variant="outline" className={secondaryButtonClass}>
-                        <Link to="/">Home</Link>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className={cn(glassCardClass, "p-6 sm:p-7")}>
-                <h2 className="text-xl font-semibold text-[#12254C] premium-headline dark:text-slate-100">
-                  Task preview unavailable
-                </h2>
-                <p className="mt-2 text-sm leading-7 text-[#5B6B8A] premium-body dark:text-slate-300">
-                  This link did not return any task data.
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </div>
