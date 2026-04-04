@@ -3,6 +3,7 @@ import { formatDistanceToNow } from "date-fns";
 import {
   ArrowRight,
   Calendar,
+  Check,
   Clock3,
   LockKeyhole,
   Paperclip,
@@ -143,24 +144,12 @@ const badgeTone = (status?: string) => {
 
 const accessCopy = (viewer: ResolveResponse["viewer"], canOpenTask: boolean) => {
   if (!viewer.isAuthenticated) {
-    return "Sign in with the requester, assigned designer, Design Lead, treasurer, or CC'd manager account to open the full task page.";
+    return "This preview is readable, but the full task workspace requires a linked DesignDesk account.";
   }
   if (!canOpenTask) {
-    return "This signed-in account is not linked to the assignment, requester, or CC list for this task.";
+    return "This account can view the secure snapshot, but the full task page is limited to linked task participants.";
   }
-  if (viewer.accessReason === "cc_manager") {
-    return "This manager account was copied on the assignment, so it can open the task page in view mode.";
-  }
-  if (viewer.accessReason === "cc_recipient") {
-    return "This account was included in the assignment CC list, so it can open the task page in view mode.";
-  }
-  if (viewer.accessReason === "design_lead") {
-    return "This Design Lead account can review the full task page in oversight mode.";
-  }
-  if (viewer.accessReason === "request_owner") {
-    return "This requester account can open the full task page and track delivery progress.";
-  }
-  return "This account can open the linked task directly in the main DesignDesk workspace.";
+  return "This account is linked to the task and can continue into the full DesignDesk workspace.";
 };
 
 export default function EmailTask() {
@@ -247,6 +236,21 @@ export default function EmailTask() {
   );
   const primaryActionPath = !viewer.isAuthenticated ? loginRedirectPath : canOpenTask ? data?.openPath || "/dashboard" : "/dashboard";
   const primaryActionLabel = !viewer.isAuthenticated ? "Sign in to View Task" : canOpenTask ? "View Task" : "Go to Dashboard";
+  const accessHeading = !viewer.isAuthenticated
+    ? "Restricted Preview"
+    : canOpenTask
+      ? "Access Confirmed"
+      : "Limited Access";
+  const actionHeading = !viewer.isAuthenticated
+    ? "Sign in with an approved account to continue"
+    : canOpenTask
+      ? "Open the full task workspace"
+      : "Switch to the linked account to continue";
+  const actionDescription = !viewer.isAuthenticated
+    ? "Use the requester, assigned designer, Design Lead, treasurer, or copied manager account to move into the full task page."
+    : canOpenTask
+      ? "Continue into the task page to review files, comments, and workflow updates."
+      : "This preview is available, but the full task page requires the assigned or copied account for this request.";
 
   if (isLoading) {
     return <div className={shellClass}><div className="relative mx-auto max-w-6xl"><div className={cn(surfaceClass, "p-6 sm:p-8")}><h1 className="text-2xl font-semibold text-[#12254C]">Opening secure task link</h1><p className="mt-2 text-sm leading-7 text-[#5B6B8A]">Preparing the assignment preview and checking viewer access.</p></div></div></div>;
@@ -514,149 +518,118 @@ export default function EmailTask() {
               )}
             </div>
 
-            <div className="space-y-6">
-              <div className={cn(panelClass, "p-5")}>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Access</p>
-                <h2 className="mt-3 text-[1.65rem] font-semibold tracking-[-0.03em] text-[#17305D]">
-                  {!viewer.isAuthenticated
-                    ? "Sign in to continue"
-                    : data?.canOpenTask
-                      ? "Task access confirmed"
-                      : "Signed in with another account"}
-                </h2>
-                <p className="mt-3 text-sm leading-7 text-[#5A6C8C]">{accessCopy(viewer, data?.canOpenTask ?? false)}</p>
-                <div className="mt-5 space-y-3">
-                  <div className="rounded-[20px] border border-[#D9E6FF] bg-white/88 px-4 py-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8A99B6]">Viewer</p>
-                    <p className="mt-2 text-sm font-semibold text-[#1E2E52]">{viewer.email || "Guest preview"}</p>
-                    <p className="mt-1 text-xs text-[#7182A5]">{viewer.role ? humanize(viewer.role) : "Not signed in"}</p>
-                  </div>
-                  <div className="rounded-[20px] border border-[#D9E6FF] bg-white/88 px-4 py-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8A99B6]">Task ID</p>
-                    <p className="mt-2 break-all font-mono text-sm font-semibold text-[#1E2E52]">{preview.id}</p>
-                    <p className="mt-1 text-xs text-[#7182A5]">
-                      {data?.canOpenTask ? `Access mode: ${humanize(viewer.accessMode)}` : "Preview only until the right account signs in."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className={cn(panelClass, "p-5")}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Delivery Workflow</p>
-                    <h3 className="mt-2 text-[1.55rem] font-semibold text-[#17305D]">{WORKFLOW_STEPS[workflowIndex]?.[1] || humanize(preview.status)}</h3>
-                    <p className="mt-1 text-sm text-[#6D7D9F]">{WORKFLOW_STEPS[workflowIndex]?.[2] || "Task progress is available inside the main workspace."}</p>
-                  </div>
-                  <span className="rounded-full border border-[#D7E4FF] bg-white px-3 py-1 text-[11px] font-semibold text-[#4860A8]">
-                    Step {workflowIndex + 1} of {WORKFLOW_STEPS.length}
-                  </span>
-                </div>
-
-                <div className="mt-5">
-                  <div className="mb-1.5 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7E8DAB]">
-                    <span>Progress</span>
-                    <span>{workflowProgress}%</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-[#E5EBF5]">
-                    <div className="h-full rounded-full bg-[#4166D5]" style={{ width: `${workflowProgress}%` }} />
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {preview.assignedToName ? (
-                    <span className="inline-flex items-center gap-2 rounded-full border border-[#D7E4FF] bg-white px-3 py-1.5 text-xs text-[#4D628E]">
-                      <UserRound className="h-3.5 w-3.5" />
-                      {preview.assignedToName}
-                    </span>
-                  ) : null}
-                  <span className="inline-flex items-center gap-2 rounded-full border border-[#D7E4FF] bg-white px-3 py-1.5 text-xs text-[#4D628E]">
-                    <Clock3 className="h-3.5 w-3.5" />
-                    {relativeTime(preview.updatedAt)}
-                  </span>
-                </div>
-
-                <div className="mt-5 space-y-3">
-                  {WORKFLOW_STEPS.map(([key, label, description], index) => {
-                    const isCurrent = index === workflowIndex;
-                    const isComplete = index < workflowIndex;
-                    return (
-                      <div
-                        key={key}
-                        className={cn(
-                          "rounded-[20px] border px-4 py-4 transition",
-                          isCurrent
-                            ? "border-[#9FB8FF] bg-white shadow-[0_18px_34px_-30px_rgba(55,93,189,0.7)]"
-                            : isComplete
-                              ? "border-emerald-200 bg-emerald-50/80"
-                              : "border-[#E2EAF8] bg-white/72"
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-3">
-                            <span className={cn("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold", isCurrent ? "border-[#5F87FF] bg-[#3366E8] text-white" : isComplete ? "border-emerald-200 bg-white text-emerald-600" : "border-[#D7E4FF] bg-[#F8FAFF] text-[#7D8FB2]")}>
-                              {index + 1}
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-[#203254]">{label}</p>
-                              <p className="mt-1 text-xs leading-5 text-[#7182A5]">{description}</p>
-                            </div>
-                          </div>
-                          <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]", isCurrent ? "bg-[#EEF4FF] text-[#3A5BC9]" : isComplete ? "bg-white text-emerald-600" : "bg-[#F5F8FF] text-[#8A99B5]")}>
-                            {isCurrent ? "Current" : isComplete ? "Done" : `Step ${index + 1}`}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {isCampaign ? (
-                  <div className="mt-5 border-t border-[#E5EDF9] pt-5">
-                    <div className="rounded-[20px] border border-[#D7E4FF] bg-white px-4 py-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Campaign Progress</p>
-                          <p className="mt-1 text-sm font-semibold text-[#1E2E52]">{completedCount} / {collaterals.length} collateral items completed</p>
-                        </div>
-                        <p className="text-sm font-semibold text-[#4860A8]">{collateralProgress}%</p>
-                      </div>
-                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E5EBF5]">
-                        <div className="h-full rounded-full bg-[#4166D5]" style={{ width: `${collateralProgress}%` }} />
+            <div className="lg:sticky lg:top-6">
+              <aside className={cn(panelClass, "overflow-hidden")}>
+                <div className="px-5 py-5">
+                  <div className={cn("rounded-[20px] border px-4 py-4", canOpenTask ? "border-[#D7E4FF] bg-[#F8FBFF]" : "border-[#E2EAF8] bg-[#F9FBFF]")}>
+                    <div className="flex items-start gap-3">
+                      <span className={cn("inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border", canOpenTask ? "border-[#C9D7FF] bg-white text-[#3557C5]" : "border-[#D7E4FF] bg-white text-[#60749C]")}>
+                        {canOpenTask ? <ShieldCheck className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">{accessHeading}</p>
+                        <p className="mt-2 text-sm leading-6 text-[#556782]">{accessCopy(viewer, canOpenTask)}</p>
+                        <p className="mt-2 text-xs text-[#7C8DAE]">
+                          {viewer.email
+                            ? `Signed in as ${viewer.email}`
+                            : "Use a linked requester, designer, Design Lead, treasurer, or copied manager account."}
+                        </p>
                       </div>
                     </div>
                   </div>
-                ) : null}
-              </div>
-
-              <div className={cn(panelClass, "p-5")}>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Next Step</p>
-                <h3 className="mt-3 text-[1.45rem] font-semibold tracking-[-0.03em] text-[#17305D]">
-                  {!viewer.isAuthenticated
-                    ? "Sign in with an approved account"
-                    : data?.canOpenTask
-                      ? "Open the full task workspace"
-                      : "Switch to the linked account"}
-                </h3>
-                <p className="mt-3 text-sm leading-7 text-[#5A6C8C]">
-                  {!viewer.isAuthenticated
-                    ? "Use the requester, assigned designer, Design Lead, treasurer, or copied manager account to continue into the full task page."
-                    : data?.canOpenTask
-                      ? "This assignment can now open in the standard task detail view."
-                      : "This account can preview the snapshot, but the full task page requires the account that was assigned or copied on the task."}
-                </p>
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <Button asChild className="h-11 rounded-xl px-5">
-                    <Link to={!viewer.isAuthenticated ? loginRedirectPath : data?.canOpenTask ? data.openPath : "/dashboard"}>
-                      {!viewer.isAuthenticated ? "Sign in to View Task" : data?.canOpenTask ? "View Task" : "Go to Dashboard"}
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" className="h-11 rounded-xl px-5">
-                    <Link to="/">Home</Link>
-                  </Button>
                 </div>
-              </div>
+
+                <div className="border-t border-[#E5EDF9] px-5 py-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Delivery Workflow</p>
+                      <h3 className="mt-2 text-[1.5rem] font-semibold tracking-[-0.03em] text-[#17305D]">{currentWorkflowStep[1]}</h3>
+                      <p className="mt-1 text-sm leading-6 text-[#6D7D9F]">{currentWorkflowStep[2]}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7E8DAB]">Progress</p>
+                      <p className="mt-1 text-lg font-semibold text-[#17305D]">{workflowProgress}%</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-[#E5EBF5]">
+                    <div className="h-full rounded-full bg-[#4166D5]" style={{ width: `${workflowProgress}%` }} />
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-2 text-sm text-[#4F638A]">
+                    <div className="flex items-center gap-2">
+                      <UserRound className="h-3.5 w-3.5 text-[#5C74B4]" />
+                      <span>{preview.assignedToName || "Unassigned"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock3 className="h-3.5 w-3.5 text-[#5C74B4]" />
+                      <span>{relativeTime(preview.updatedAt)}</span>
+                    </div>
+                    {isCampaign ? (
+                      <div className="pt-1 text-xs text-[#7C8DAE]">
+                        {completedCount} of {collaterals.length} collateral items completed
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-5">
+                    {WORKFLOW_STEPS.map(([key, label, description], index) => {
+                      const isCurrent = index === workflowIndex;
+                      const isComplete = index < workflowIndex;
+                      const isLast = index === WORKFLOW_STEPS.length - 1;
+                      return (
+                        <div key={key} className="relative flex gap-3 pb-5 last:pb-0">
+                          <div className="relative flex w-8 shrink-0 justify-center">
+                            {!isLast ? (
+                              <span
+                                className={cn(
+                                  "absolute top-8 h-[calc(100%-0.25rem)] w-px",
+                                  isComplete ? "bg-[#9FB8FF]" : "bg-[#DCE6F7]"
+                                )}
+                              />
+                            ) : null}
+                            <span
+                              className={cn(
+                                "relative z-10 mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-white text-sm font-semibold",
+                                isCurrent
+                                  ? "border-[#5F87FF] bg-[#3366E8] text-white"
+                                  : isComplete
+                                    ? "border-emerald-200 text-emerald-600"
+                                    : "border-[#D7E4FF] text-[#8CA0C4]"
+                              )}
+                            >
+                              {isComplete ? <Check className="h-4 w-4" /> : index + 1}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <p className={cn("text-sm font-semibold", isCurrent ? "text-[#17305D]" : isComplete ? "text-[#203254]" : "text-[#60749C]")}>
+                              {label}
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-[#7A8AA9]">{description}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="border-t border-[#E5EDF9] px-5 py-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Next Action</p>
+                  <h3 className="mt-2 text-base font-semibold tracking-[-0.02em] text-[#17305D]">{actionHeading}</h3>
+                  <p className="mt-2 text-[13px] leading-6 text-[#5A6C8C]">{actionDescription}</p>
+                  <div className="mt-4 flex flex-col gap-2.5">
+                    <Button asChild className="h-10 rounded-xl px-4">
+                      <Link to={primaryActionPath}>
+                        {primaryActionLabel}
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline" className="h-10 rounded-xl px-4">
+                      <Link to="/">Home</Link>
+                    </Button>
+                  </div>
+                </div>
+              </aside>
             </div>
           </div>
         </div>
