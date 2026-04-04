@@ -5,9 +5,7 @@ import {
   Calendar,
   Check,
   Clock3,
-  LockKeyhole,
   Paperclip,
-  ShieldCheck,
   UserRound,
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -142,16 +140,6 @@ const badgeTone = (status?: string) => {
   return "border-[#E4EBF8] bg-white text-[#6E7D9E]";
 };
 
-const accessCopy = (viewer: ResolveResponse["viewer"], canOpenTask: boolean) => {
-  if (!viewer.isAuthenticated) {
-    return "This preview is readable, but the full task workspace requires a linked DesignDesk account.";
-  }
-  if (!canOpenTask) {
-    return "This account can view the secure snapshot, but the full task page is limited to linked task participants.";
-  }
-  return "This account is linked to the task and can continue into the full DesignDesk workspace.";
-};
-
 export default function EmailTask() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -236,11 +224,6 @@ export default function EmailTask() {
   );
   const primaryActionPath = !viewer.isAuthenticated ? loginRedirectPath : canOpenTask ? data?.openPath || "/dashboard" : "/dashboard";
   const primaryActionLabel = !viewer.isAuthenticated ? "Sign in to View Task" : canOpenTask ? "View Task" : "Go to Dashboard";
-  const accessHeading = !viewer.isAuthenticated
-    ? "Restricted Preview"
-    : canOpenTask
-      ? "Access Confirmed"
-      : "Limited Access";
   const actionHeading = !viewer.isAuthenticated
     ? "Sign in with an approved account to continue"
     : canOpenTask
@@ -283,10 +266,6 @@ export default function EmailTask() {
                   <p className="mt-1 text-sm font-semibold text-[#12254C]">Secure assignment preview</p>
                 </div>
               </div>
-              <span className={cn("inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em]", viewer.isAuthenticated ? "border-[#C9D7FF] bg-white/72 text-[#1E2A5A]" : "border-[#D7E4FF] bg-[#F7FAFF]/82 text-[#5E729A]")}>
-                {viewer.isAuthenticated ? <ShieldCheck className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />}
-                {viewer.isAuthenticated ? "Signed In" : "Restricted Preview"}
-              </span>
             </div>
           </div>
           <div className="grid gap-6 px-6 py-6 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,1.55fr)_340px] lg:items-start">
@@ -490,6 +469,22 @@ export default function EmailTask() {
                       </div>
                     </div>
                   </div>
+                  <div className="border-t border-[#E7EDF8] px-5 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Next Action</p>
+                    <h3 className="mt-2 text-[1.15rem] font-semibold tracking-[-0.02em] text-[#17305D]">{actionHeading}</h3>
+                    <p className="mt-2 max-w-2xl text-[13px] leading-6 text-[#5A6C8C]">{actionDescription}</p>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <Button asChild className="h-10 rounded-xl px-4">
+                        <Link to={primaryActionPath}>
+                          {primaryActionLabel}
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Link>
+                      </Button>
+                      <Button asChild variant="outline" className="h-10 rounded-xl px-4">
+                        <Link to="/">Home</Link>
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className={panelClass}>
@@ -497,7 +492,7 @@ export default function EmailTask() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#7E8DAB]">Request Overview</p>
-                        <h2 className="mt-1 text-[1.35rem] font-semibold text-[#215ABB]">{preview.title}</h2>
+                        <h2 className="mt-1 text-[1.18rem] font-semibold leading-snug text-[#215ABB]">{preview.title}</h2>
                       </div>
                       <span className={cn("inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold", badgeTone(preview.status))}>
                         {humanize(preview.status)}
@@ -514,6 +509,22 @@ export default function EmailTask() {
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB]">Description</p>
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[#536482]">{overallBrief}</p>
                   </div>
+                  <div className="border-t border-[#E7EDF8] px-5 py-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Next Action</p>
+                    <h3 className="mt-2 text-[1.15rem] font-semibold tracking-[-0.02em] text-[#17305D]">{actionHeading}</h3>
+                    <p className="mt-2 max-w-2xl text-[13px] leading-6 text-[#5A6C8C]">{actionDescription}</p>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <Button asChild className="h-10 rounded-xl px-4">
+                        <Link to={primaryActionPath}>
+                          {primaryActionLabel}
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Link>
+                      </Button>
+                      <Button asChild variant="outline" className="h-10 rounded-xl px-4">
+                        <Link to="/">Home</Link>
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -521,25 +532,6 @@ export default function EmailTask() {
             <div className="lg:sticky lg:top-6">
               <aside className={cn(panelClass, "overflow-hidden")}>
                 <div className="px-5 py-5">
-                  <div className={cn("rounded-[20px] border px-4 py-4", canOpenTask ? "border-[#D7E4FF] bg-[#F8FBFF]" : "border-[#E2EAF8] bg-[#F9FBFF]")}>
-                    <div className="flex items-start gap-3">
-                      <span className={cn("inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border", canOpenTask ? "border-[#C9D7FF] bg-white text-[#3557C5]" : "border-[#D7E4FF] bg-white text-[#60749C]")}>
-                        {canOpenTask ? <ShieldCheck className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">{accessHeading}</p>
-                        <p className="mt-2 text-sm leading-6 text-[#556782]">{accessCopy(viewer, canOpenTask)}</p>
-                        <p className="mt-2 text-xs text-[#7C8DAE]">
-                          {viewer.email
-                            ? `Signed in as ${viewer.email}`
-                            : "Use a linked requester, designer, Design Lead, treasurer, or copied manager account."}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border-t border-[#E5EDF9] px-5 py-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Delivery Workflow</p>
@@ -610,23 +602,6 @@ export default function EmailTask() {
                         </div>
                       );
                     })}
-                  </div>
-                </div>
-
-                <div className="border-t border-[#E5EDF9] px-5 py-5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB]">Next Action</p>
-                  <h3 className="mt-2 text-base font-semibold tracking-[-0.02em] text-[#17305D]">{actionHeading}</h3>
-                  <p className="mt-2 text-[13px] leading-6 text-[#5A6C8C]">{actionDescription}</p>
-                  <div className="mt-4 flex flex-col gap-2.5">
-                    <Button asChild className="h-10 rounded-xl px-4">
-                      <Link to={primaryActionPath}>
-                        {primaryActionLabel}
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Link>
-                    </Button>
-                    <Button asChild variant="outline" className="h-10 rounded-xl px-4">
-                      <Link to="/">Home</Link>
-                    </Button>
                   </div>
                 </div>
               </aside>
