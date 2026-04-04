@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import {
@@ -71,6 +72,7 @@ import {
   Folder,
   MoreHorizontal,
   Search,
+  Archive,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import {
@@ -670,7 +672,15 @@ type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' |
 type UploadStatus = 'uploading' | 'done' | 'error';
 type ApprovalDecision = 'approved' | 'rejected';
 type TaskUploadChannel = 'attachment' | 'working';
-type UploadItem = { id: string; name: string; status: UploadStatus; progress?: number };
+type UploadItem = {
+  id: string;
+  name: string;
+  status: UploadStatus;
+  progress?: number;
+  size?: number;
+  url?: string;
+  error?: string;
+};
 type WorkingUploadStatus = 'preparing' | 'uploading' | 'done' | 'error';
 type WorkingUploadItem = {
   id: string;
@@ -893,6 +903,7 @@ function TaskDetailScreen() {
   const highlightChangeId = locationState?.highlightChangeId;
   const focusSection = locationState?.focusSection;
   const localTask = useMemo(() => (id ? loadLocalTaskById(id) : undefined), [id]);
+  const shouldAwaitFreshTaskOnEntry = Boolean(apiUrl && id && !stateTask);
   const resolvedInitialTask = useMemo(
     () => stateTask || localTask || mockTasks.find((t) => t.id === id),
     [id, localTask, stateTask]
@@ -904,9 +915,11 @@ function TaskDetailScreen() {
     [bootstrapTask, resolvedInitialTask]
   );
   const [taskState, setTaskState] = useState<Task | undefined>(initialTask);
-  const [isLoading, setIsLoading] = useState(!hasInitialTask && Boolean(id));
+  const [isLoading, setIsLoading] = useState(
+    shouldAwaitFreshTaskOnEntry || (!hasInitialTask && Boolean(id))
+  );
   const [taskRouteState, setTaskRouteState] = useState<'loading' | 'ready' | 'not_found'>(
-    hasInitialTask ? 'ready' : id ? 'loading' : 'not_found'
+    shouldAwaitFreshTaskOnEntry ? 'loading' : hasInitialTask ? 'ready' : id ? 'loading' : 'not_found'
   );
   const [isStaffStatusPanelExpanded, setIsStaffStatusPanelExpanded] = useState(true);
   const [staffStatusPanelPosition, setStaffStatusPanelPosition] = useState<{
@@ -1009,9 +1022,10 @@ function TaskDetailScreen() {
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [isAcceptingTask, setIsAcceptingTask] = useState(false);
   const [emergencyDecisionReason, setEmergencyDecisionReason] = useState('');
-  const [showReferenceFileList, setShowReferenceFileList] = useState(true);
   const [showWorkingFileList, setShowWorkingFileList] = useState(true);
   const [showFinalDeliverableList, setShowFinalDeliverableList] = useState(true);
+  const [selectedDeliverableIds, setSelectedDeliverableIds] = useState<Set<string>>(new Set());
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [isEditAttachmentDragging, setIsEditAttachmentDragging] = useState(false);
   const [isWorkingUploadDragging, setIsWorkingUploadDragging] = useState(false);
   const [isCommentComposerDragging, setIsCommentComposerDragging] = useState(false);
@@ -1061,9 +1075,11 @@ function TaskDetailScreen() {
   );
   const [designerHistoryJumpId, setDesignerHistoryJumpId] = useState('');
   useEffect(() => {
-    setTaskRouteState(hasInitialTask ? 'ready' : id ? 'loading' : 'not_found');
+    setTaskRouteState(
+      shouldAwaitFreshTaskOnEntry ? 'loading' : hasInitialTask ? 'ready' : id ? 'loading' : 'not_found'
+    );
     setTaskState(initialTask);
-    setIsLoading(!hasInitialTask && Boolean(id));
+    setIsLoading(shouldAwaitFreshTaskOnEntry || (!hasInitialTask && Boolean(id)));
     setNewStatus(getStatusSelectValue(initialTask?.status));
     setChangeCount(initialTask?.changeCount ?? 0);
     setApprovalStatus(
@@ -1077,7 +1093,7 @@ function TaskDetailScreen() {
     setDeadlineRequest(
       initialTask?.proposedDeadline ? format(initialTask.proposedDeadline, 'yyyy-MM-dd') : ''
     );
-  }, [hasInitialTask, id, initialTask]);
+  }, [hasInitialTask, id, initialTask, shouldAwaitFreshTaskOnEntry]);
   const storageKey = id ? `designhub.task.${id}` : '';
   const commentDraftKey = useMemo(() => {
     const taskIdForDraft = String(id || taskState?.id || '').trim();
@@ -3127,7 +3143,6 @@ function TaskDetailScreen() {
     }
     return '';
   }, [taskState?.changeHistory]);
-  const inputFiles = taskState.files.filter((f) => f.type === 'input');
   const workingFiles = taskState.files.filter((f) => f.type === 'working');
   const outputFiles = taskState.files.filter((f) => f.type === 'output');
   const finalDeliverableVersions = useMemo<FinalDeliverableVersion[]>(() => {
@@ -3684,6 +3699,11 @@ function TaskDetailScreen() {
       : 'Submit for Review';
   const submitActionHint =
     'Submit creates the next version (V1, V2, ...) and moves the task into review.';
+  const shouldShowFileManagementPanel =
+    hasFinalDeliverables ||
+    canFinalizeTaskActions ||
+    canManageWorkingFiles ||
+    (canViewWorkingFiles && workingFiles.length > 0);
   const currentSelectedVersionNote = activeFinalVersionNote;
   const isFinalVersionNoteDirty = finalVersionNote.trim() !== currentSelectedVersionNote;
   const canAcceptTask =
@@ -3715,9 +3735,29 @@ function TaskDetailScreen() {
   const finalUploadLabel =
     hasPendingFinalUploads
       ? `Uploading ${finalUploadItems.length} item${finalUploadItems.length === 1 ? '' : 's'} (${finalUploadProgress}%)`
-      : finalUploadTotals.error > 0 && finalUploadTotals.done === 0
-        ? 'Upload failed'
-        : `${finalUploadTotals.done || finalUploadItems.length} upload${(finalUploadTotals.done || finalUploadItems.length) === 1 ? '' : 's'} complete`;
+      : finalUploadTotals.error > 0
+        ? `${finalUploadTotals.done} completed, ${finalUploadTotals.error} issue${finalUploadTotals.error === 1 ? '' : 's'}`
+        : `${finalUploadTotals.done} item${finalUploadTotals.done === 1 ? '' : 's'} completed`;
+  const hasFinalUploadQueueIssues = finalUploadTotals.error > 0;
+  const isFinalUploadQueueComplete =
+    finalUploadItems.length > 0 &&
+    finalUploadTotals.uploading === 0 &&
+    finalUploadTotals.error === 0 &&
+    finalUploadTotals.done === finalUploadItems.length;
+  const finalUploadStatusText = isFinalUploadQueueComplete
+    ? `${finalUploadTotals.done} completed, ready to submit`
+    : hasPendingFinalUploads
+      ? `${finalUploadTotals.uploading} uploading, ${finalUploadTotals.done} ready, ${finalUploadTotals.error} issues`
+      : hasFinalUploadQueueIssues
+        ? `${finalUploadTotals.done} completed, ${finalUploadTotals.error} issue${finalUploadTotals.error === 1 ? '' : 's'}`
+        : `${finalUploadTotals.done} completed, ready to submit`;
+  const finalUploadFooterText =
+    hasPendingFinalUploads
+      ? `Upload in progress: ${finalUploadProgress}%`
+      : hasFinalUploadQueueIssues
+        ? `${finalUploadTotals.error} item${finalUploadTotals.error === 1 ? '' : 's'} need attention before submit.`
+        : `${finalUploadTotals.done} completed, ready to submit`;
+  const shouldCompactFinalUploadQueue = finalUploadItems.length > 6;
 
   const getVersionLabel = (version: DesignVersion) => `V${version.version}`;
   const formatVersionTimestamp = (value?: Date | string) => {
@@ -4224,8 +4264,116 @@ function TaskDetailScreen() {
 
     window.open(fileLinkUrl, '_blank', 'noopener,noreferrer');
   };
+
+  const handleDownloadAll = async () => {
+    const files = (activeFinalVersion?.files ?? [])
+      .map((f, i) => toOutputFile(f, i))
+      .filter((f) => !isLinkOnlyFile(f));
+    if (files.length === 0) return;
+    setIsDownloadingAll(true);
+    for (let i = 0; i < files.length; i++) {
+      if (i > 0) await new Promise<void>((res) => setTimeout(res, 650));
+      await handleFileAction(files[i]).catch(() => {});
+    }
+    setIsDownloadingAll(false);
+  };
+
+  const getFinalDeliverableSelectionId = (file: FinalDeliverableFile, index: number) => {
+    const persistedId = String(file.id || (file as FinalDeliverableFile & { _id?: string })._id || '').trim();
+    if (persistedId) return persistedId;
+    const driveId = String(file.driveId || '').trim();
+    if (driveId) return driveId;
+    const resolvedUrl = resolveStoredFileUrl(file as FinalDeliverableFile & FileLinkLike);
+    if (resolvedUrl) return resolvedUrl;
+    return `final-file-${index}`;
+  };
+
+  const getFinalDeliverableZipRequestIds = (selectionIds?: string[]) => {
+    const selectedIds = Array.isArray(selectionIds)
+      ? selectionIds.map((value) => String(value || '').trim()).filter(Boolean)
+      : [];
+
+    return (activeFinalVersion?.files ?? [])
+      .map((file, index) => {
+        const displayFile = toOutputFile(file, index);
+        const requestId =
+          String(file.id || (file as FinalDeliverableFile & { _id?: string })._id || '').trim() ||
+          String(file.driveId || '').trim() ||
+          String(resolveStoredFileUrl(file as FinalDeliverableFile & FileLinkLike) || '').trim();
+        return {
+          displayFile,
+          requestId,
+          selectionId: displayFile.id,
+        };
+      })
+      .filter(({ displayFile, requestId, selectionId }) => {
+        if (isLinkOnlyFile(displayFile) || !requestId) return false;
+        if (selectedIds.length === 0) return true;
+        return selectedIds.includes(selectionId);
+      })
+      .map(({ requestId }) => requestId);
+  };
+
+  const handleDownloadZip = async (fileIds?: string[]) => {
+    const versionId = activeFinalVersion?.id;
+    if (!versionId || !taskId || !apiUrl) {
+      toast.error('Cannot download ZIP — missing task or version info.');
+      return;
+    }
+    const requestedIds = getFinalDeliverableZipRequestIds(fileIds);
+    if ((fileIds?.length ?? 0) > 0 && requestedIds.length === 0) {
+      toast.error('Selected files are not available for ZIP download.');
+      return;
+    }
+    try {
+      const body = requestedIds.length > 0 ? JSON.stringify({ fileIds: requestedIds }) : '{}';
+      const response = await authFetch(
+        `${apiUrl}/api/tasks/${taskId}/deliverables/${versionId}/zip`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }
+      );
+      if (!response.ok) {
+        let message = 'Failed to generate ZIP archive.';
+        try {
+          const payload = await response.clone().json();
+          if (payload && typeof payload.error === 'string' && payload.error.trim()) {
+            message = payload.error.trim();
+          }
+        } catch {
+          const detail = await response.text().catch(() => '');
+          if (detail.trim()) {
+            message = detail.trim();
+          }
+        }
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `deliverables-v${versionId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : 'Failed to generate ZIP.';
+      toast.error(`${message} Downloading files individually.`);
+      const allFiles = (activeFinalVersion?.files ?? []).map((f, i) => toOutputFile(f, i));
+      const targets = fileIds && fileIds.length > 0
+        ? allFiles.filter((f) => fileIds.includes(f.id) && !isLinkOnlyFile(f))
+        : allFiles.filter((f) => !isLinkOnlyFile(f));
+      for (let i = 0; i < targets.length; i++) {
+        if (i > 0) await new Promise<void>((res) => setTimeout(res, 650));
+        await handleFileAction(targets[i]).catch(() => {});
+      }
+    }
+  };
+
   const toOutputFile = (file: FinalDeliverableFile, index: number): OutputDisplayFile => ({
-    id: file.id || `final-file-${index}`,
+    id: getFinalDeliverableSelectionId(file, index),
     name: file.name || inferDriveItemNameFromUrl(file.url || ''),
     url: resolveStoredFileUrl(file as FinalDeliverableFile & FileLinkLike),
     type: 'output' as const,
@@ -4564,7 +4712,7 @@ function TaskDetailScreen() {
     if (!apiUrl || !id) return;
     const loadTask = async () => {
       setIsLoading(true);
-      if (!hasInitialTask) {
+      if (shouldAwaitFreshTaskOnEntry || !hasInitialTask) {
         setTaskRouteState('loading');
       }
       try {
@@ -4642,13 +4790,15 @@ function TaskDetailScreen() {
         }
         if (!hasInitialTask) {
           setTaskRouteState('not_found');
+        } else if (shouldAwaitFreshTaskOnEntry) {
+          setTaskRouteState('ready');
         }
       } finally {
         setIsLoading(false);
       }
     };
     loadTask();
-  }, [apiUrl, hasInitialTask, id]);
+  }, [apiUrl, hasInitialTask, id, shouldAwaitFreshTaskOnEntry]);
 
   useEffect(() => {
     if (apiUrl || !id) return;
@@ -5879,7 +6029,9 @@ function TaskDetailScreen() {
         const nextProgress = Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100)));
         setFinalUploadItems((prev) =>
           prev.map((item) =>
-            item.id === uploadId ? { ...item, status: 'uploading', progress: nextProgress } : item
+            item.id === uploadId
+              ? { ...item, status: 'uploading', progress: nextProgress, error: undefined }
+              : item
           )
         );
       };
@@ -5939,6 +6091,7 @@ function TaskDetailScreen() {
       name: file.name,
       status: 'uploading' as const,
       progress: 0,
+      size: file.size,
     }));
     setFinalUploadItems((prev) => [...prev, ...uploadItems]);
     setShowFinalUploadList(true);
@@ -5992,7 +6145,14 @@ function TaskDetailScreen() {
             setFinalUploadItems((prev) =>
               prev.map((item) =>
                 item.id === uploadId
-                  ? { ...item, status: 'done', progress: 100 }
+                  ? {
+                      ...item,
+                      status: 'done',
+                      progress: 100,
+                      size: file.size,
+                      url: uploadedUrl,
+                      error: undefined,
+                    }
                   : item
               )
             );
@@ -6000,15 +6160,6 @@ function TaskDetailScreen() {
         } catch (error) {
           const maybeAbortError = error as { name?: string; message?: string };
           if (maybeAbortError?.name === 'AbortError') {
-            if (uploadId) {
-              setFinalUploadItems((prev) =>
-                prev.map((item) =>
-                  item.id === uploadId
-                    ? { ...item, status: 'error', progress: item.progress ?? 0 }
-                    : item
-                )
-              );
-            }
             throw error;
           }
           const errorMsg = maybeAbortError?.message || 'Upload failed';
@@ -6016,7 +6167,7 @@ function TaskDetailScreen() {
             setFinalUploadItems((prev) =>
               prev.map((item) =>
                 item.id === uploadId
-                  ? { ...item, status: 'error', progress: item.progress ?? 0 }
+                  ? { ...item, status: 'error', progress: item.progress ?? 0, error: errorMsg }
                   : item
               )
             );
@@ -6028,6 +6179,9 @@ function TaskDetailScreen() {
         }
       }
       if (!controller.signal.aborted) {
+        if (uploadedFiles.length > 0) {
+          setPendingFinalFiles((prev) => [...prev, ...uploadedFiles]);
+        }
         if (needsDriveAuth) {
           toast.error('Google Drive Disconnected', {
             description: 'Reconnect Drive access and try uploading again.',
@@ -6045,11 +6199,13 @@ function TaskDetailScreen() {
             duration: 10000,
           });
         } else if (hasFailure) {
-          toast.error('File upload failed', {
-            description: 'One or more files could not be uploaded. Please retry.',
+          toast.error('Some files need attention', {
+            description:
+              uploadedFiles.length > 0
+                ? `${uploadedFiles.length} file${uploadedFiles.length === 1 ? '' : 's'} staged. Review failed uploads before submit.`
+                : 'One or more files could not be uploaded. Please retry.',
           });
         } else if (uploadedFiles.length > 0) {
-          setPendingFinalFiles((prev) => [...prev, ...uploadedFiles]);
           toast.success('Files staged. Click Submit to create the next version.');
         }
       }
@@ -6169,6 +6325,7 @@ function TaskDetailScreen() {
         name: selectedFile.name,
         status: 'uploading',
         progress: 0,
+        size: selectedFile.size,
       },
     ]);
     setShowFinalUploadList(true);
@@ -6201,7 +6358,16 @@ function TaskDetailScreen() {
       setPendingFinalFiles(nextPending);
       setFinalUploadItems((prev) =>
         prev.map((item) =>
-          item.id === uploadId ? { ...item, status: 'done', progress: 100 } : item
+          item.id === uploadId
+            ? {
+                ...item,
+                status: 'done',
+                progress: 100,
+                size: selectedFile.size,
+                url: uploadedUrl,
+                error: undefined,
+              }
+            : item
         )
       );
       try {
@@ -6224,7 +6390,9 @@ function TaskDetailScreen() {
           : error?.message || 'File replacement failed.';
       setFinalUploadItems((prev) =>
         prev.map((item) =>
-          item.id === uploadId ? { ...item, status: 'error', progress: item.progress ?? 0 } : item
+          item.id === uploadId
+            ? { ...item, status: 'error', progress: item.progress ?? 0, error: message }
+            : item
         )
       );
       toast.error(message);
@@ -6279,11 +6447,36 @@ function TaskDetailScreen() {
       finalUploadAbortRef.current.abort();
     }
     setFinalUploadItems((prev) =>
-      prev.map((item) =>
-        item.status !== 'done' ? { ...item, status: 'error' } : item
-      )
+      prev.filter((item) => item.status === 'done' || item.status === 'error')
     );
     setIsUploadingFinal(false);
+  };
+
+  const handleRemoveFinalUploadItem = (uploadId: string) => {
+    const target = finalUploadItems.find((item) => item.id === uploadId);
+    if (!target) return;
+
+    setFinalUploadItems((prev) => prev.filter((item) => item.id !== uploadId));
+
+    if (target.url) {
+      let removed = false;
+      setPendingFinalFiles((prev) =>
+        prev.filter((file) => {
+          if (removed) return true;
+          const matchesUrl =
+            String(file.url || '').trim() !== '' &&
+            String(file.url || '').trim() === String(target.url || '').trim();
+          const matchesName =
+            String(file.name || '').trim().toLowerCase() ===
+            String(target.name || '').trim().toLowerCase();
+          if (matchesUrl || (!String(target.url || '').trim() && matchesName)) {
+            removed = true;
+            return false;
+          }
+          return true;
+        })
+      );
+    }
   };
 
   const clearFinalUploadItems = () => {
@@ -6992,8 +7185,8 @@ function TaskDetailScreen() {
             status: 'error',
             error: message,
           });
-          toast.error(`Working file upload failed: ${file.name}`, {
-            description: message,
+          toast.error('Working file upload failed', {
+            description: `${file.name}\n${message}`,
           });
         }
       }
@@ -7842,7 +8035,8 @@ function TaskDetailScreen() {
                 className="relative h-full rounded-full bg-[linear-gradient(90deg,#3B5EFF_0%,#4E84FF_54%,#90EAFF_100%)] shadow-[0_0_24px_rgba(120,169,255,0.42)]"
                 style={{ width: `${staffTrackerProgressPercent}%` }}
               >
-                <span className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.8))] opacity-70 blur-sm" />
+                <span className="pointer-events-none absolute inset-y-[-3px] right-0 w-8 rounded-full bg-[radial-gradient(circle_at_left_center,rgba(255,255,255,0.96)_0%,rgba(214,245,255,0.84)_36%,rgba(144,234,255,0.22)_58%,rgba(144,234,255,0)_78%)] blur-[5px] motion-safe:animate-[progressEndPulse_1.75s_ease-in-out_infinite]" />
+                <span className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.24)_26%,rgba(255,255,255,0.88)_56%,rgba(208,245,255,0.76)_76%,transparent_100%)] opacity-80 blur-[2px] motion-safe:animate-[progressEndShimmer_1.75s_ease-in-out_infinite]" />
               </div>
             </div>
             <div className="mt-3 flex items-center justify-between text-[11px] font-medium text-[#C6D0EA]">
@@ -7894,7 +8088,9 @@ function TaskDetailScreen() {
                 className="relative h-full rounded-full bg-[linear-gradient(90deg,#3B5EFF_0%,#4E84FF_54%,#90EAFF_100%)] shadow-[0_0_24px_rgba(120,169,255,0.42),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all duration-300 ease-out"
                 style={{ width: `${staffTrackerProgressPercent}%` }}
               >
-                <span className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.78))] opacity-80 blur-sm" />
+                <span className="pointer-events-none absolute right-[-3px] top-1/2 h-4 w-6 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(248,253,255,0.98)_0%,rgba(206,243,255,0.94)_40%,rgba(144,234,255,0.48)_66%,rgba(144,234,255,0)_84%)] blur-[5px] motion-safe:animate-[progressEndPulse_1.45s_ease-in-out_infinite]" />
+                <span className="pointer-events-none absolute inset-y-[-1px] right-[-1px] w-12 rounded-full bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.12)_22%,rgba(255,255,255,0.85)_52%,rgba(201,244,255,0.94)_72%,rgba(201,244,255,0)_100%)] opacity-95 blur-[1.5px] motion-safe:animate-[progressEndShimmer_1.45s_ease-in-out_infinite]" />
+                <span className="pointer-events-none absolute right-[2px] top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-white/95 shadow-[0_0_10px_rgba(255,255,255,0.92),0_0_18px_rgba(144,234,255,0.82)] motion-safe:animate-[progressEndPulse_1.45s_ease-in-out_infinite]" />
               </div>
             </div>
             <div className="mt-4 grid grid-cols-5 gap-2">
@@ -7929,12 +8125,12 @@ function TaskDetailScreen() {
                         isComplete
                           ? 'border-[#A9E2C8] bg-[#E8FFF3] text-[#169B58] shadow-[0_0_12px_rgba(71,214,154,0.12)]'
                           : isCurrent
-                            ? 'border-white/70 bg-white text-[#2748B4] shadow-[0_0_0_4px_rgba(122,150,255,0.14),0_0_18px_rgba(120,149,255,0.16)]'
+                            ? 'border-[#E2ECFF] bg-[linear-gradient(135deg,#FFFFFF_0%,#F4F9FF_46%,#DDEBFF_100%)] text-[#335BB6] shadow-[0_0_0_4px_rgba(191,214,255,0.2),0_10px_24px_-14px_rgba(120,149,255,0.46)]'
                             : 'border-white/16 bg-[#20397E]/60 text-white/72'
                       )}
                     >
                       {isCurrent ? (
-                        <span className="pointer-events-none absolute inset-[-4px] rounded-full border border-[#89A9FF]/30" />
+                        <span className="pointer-events-none absolute inset-[-4px] rounded-full border border-[#C6DBFF]/55" />
                       ) : null}
                       {isComplete ? <Check className="h-3.5 w-3.5" /> : <span className="text-[10px] font-semibold">{index + 1}</span>}
                     </span>
@@ -8134,9 +8330,12 @@ function TaskDetailScreen() {
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-[#E6EBF2] dark:bg-slate-800">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#3657C9] via-[#4F6EE0] to-[#7FA3FF] shadow-[0_0_18px_-8px_rgba(79,110,224,0.85)] transition-all duration-300 ease-out"
+                        className="relative h-full rounded-full bg-gradient-to-r from-[#3657C9] via-[#4F6EE0] to-[#7FA3FF] shadow-[0_0_18px_-8px_rgba(79,110,224,0.85)] transition-all duration-300 ease-out"
                         style={{ width: `${collateralCompletionPercent}%` }}
-                      />
+                      >
+                        <span className="pointer-events-none absolute inset-y-[-3px] right-0 w-7 rounded-full bg-[radial-gradient(circle_at_left_center,rgba(255,255,255,0.96)_0%,rgba(214,245,255,0.84)_36%,rgba(144,234,255,0.22)_58%,rgba(144,234,255,0)_78%)] blur-[5px] motion-safe:animate-[progressEndPulse_1.75s_ease-in-out_infinite]" />
+                        <span className="pointer-events-none absolute inset-y-0 right-0 w-7 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.24)_26%,rgba(255,255,255,0.88)_56%,rgba(208,245,255,0.76)_76%,transparent_100%)] opacity-80 blur-[2px] motion-safe:animate-[progressEndShimmer_1.75s_ease-in-out_infinite]" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -9308,139 +9507,16 @@ function TaskDetailScreen() {
             {/* 60/40 split: Job+Chat (60%) + Progress (40%) */}
             <div className="grid gap-5 items-start xl:grid-cols-[3fr_2fr]">
             <div className="min-w-0 space-y-5">
-            {/* Job Requirement File */}
+            {shouldShowFileManagementPanel ? (
             <div className={`${glassPanelClass} p-5 animate-slide-up`}>
-              <h2 className="font-semibold text-foreground mb-4">Job Requirement File</h2>
-
-              {/* Input Files */}
-              {inputFiles.length > 0 && (
-                <div className="mb-6">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-medium text-muted-foreground">
-                      Associated Files
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => setShowReferenceFileList((prev) => !prev)}
-                      className="inline-flex items-center gap-1 rounded-full border border-[#D9E6FF] bg-white/85 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition hover:bg-[#F3F7FF] dark:border-border dark:bg-card/85 dark:hover:bg-muted/80"
-                      aria-expanded={showReferenceFileList}
-                      aria-label="Toggle associated files list"
-                    >
-                      <span>{inputFiles.length}</span>
-                      <ChevronDown
-                        className={cn(
-                          'h-3.5 w-3.5 transition-transform',
-                          showReferenceFileList ? 'rotate-180' : ''
-                        )}
-                      />
-                    </button>
-                  </div>
-                  {showReferenceFileList && (
-                    <div className={cn('min-w-0', inputFiles.length > 8 && fileListShellClass)}>
-                      <div className={cn('min-w-0 space-y-1.5', inputFiles.length > 8 && fileListScrollClass)}>
-                      {inputFiles.map((file, index) => {
-                        const isCopied = copiedFileKey === getFileCopyFeedbackKey(file);
-                        const isPreviewable = canPreviewFile(file);
-                        return (
-                        <div
-                          key={getFileListItemKey(file, index)}
-                          className={cn(
-                            fileRowClass,
-                            'min-w-0 items-start',
-                            isPreviewable &&
-                              'cursor-pointer transition-colors hover:bg-white/55 dark:hover:bg-slate-800/85'
-                          )}
-                          onClick={(event) => handleFileRowPreviewClick(event, file)}
-                        >
-                          <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
-                            {renderFilePreview(file)}
-                            <div className="min-w-0 flex-1">
-                              <span className="block pr-2 text-[13px] font-medium leading-5 text-foreground line-clamp-2 [overflow-wrap:anywhere]">
-                                {toTitleCaseFileName(file.name)}
-                              </span>
-                              <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                                {(() => {
-                                  const sizeLabel = formatFileSize(file.size);
-                                  return sizeLabel || '';
-                                })()}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            {canRemoveFiles && (
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                disabled={approvalLockedForStaff || staffChangeLimitReached}
-                                className={fileActionButtonClass}
-                                onClick={() => handleRemoveFile(file.id, file.name, file.type)}
-                              >
-                                <Trash2 className="h-4 w-4 text-status-urgent" />
-                              </Button>
-                            )}
-                            {isPreviewable && (
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className={fileActionButtonClass}
-                                onClick={() => openFilePreviewDialog(file)}
-                                title="View"
-                                aria-label="View file"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              disabled={!getFileShareUrl(file)}
-                              data-success={isCopied}
-                              className={cn(
-                                fileActionButtonClass,
-                                isCopied &&
-                                  'border-primary/50 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/20 dark:text-primary'
-                              )}
-                              onClick={() => void handleCopyFileLink(file)}
-                              title={isCopied ? 'Copied' : 'Copy link'}
-                              aria-label={isCopied ? 'File link copied' : 'Copy file link'}
-                            >
-                              {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                            </Button>
-                            {(() => {
-                              const fileLinkUrl = getFileActionUrl(file);
-                              return (
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  disabled={!fileLinkUrl || fileLinkUrl === '#'}
-                                  className={fileActionButtonClass}
-                                  onClick={() => handleFileAction(file)}
-                                >
-                                  {shouldUseLinkIcon(file) ? (
-                                    <ExternalLink className="h-4 w-4" />
-                                  ) : (
-                                    <Download className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      )})}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
               {canViewWorkingFiles && (workingFiles.length > 0 || canManageWorkingFiles) && (
                 <div className="mb-6">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-medium text-muted-foreground">
+                      <h3 className="text-[13px] font-semibold text-[#1B3260] dark:text-slate-100">
                         Designer Working Files
                       </h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         Upload PSD, AI, ZIP, or source files for designer handoff. These are saved
                         inside the task Drive folder under `PSD Working Files`.
                       </p>
@@ -9688,253 +9764,344 @@ function TaskDetailScreen() {
               {/* Output Files */}
               {sortedFinalDeliverableVersions.length > 0 && (
                 <div className="mb-6 deliverables-highlight">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-status-completed" />
-                      Final Deliverables
-                    </h3>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        Version
-                      </span>
-                      <Select
-                        value={selectedFinalVersionId || activeFinalVersion?.id || ''}
-                        onValueChange={setSelectedFinalVersionId}
-                      >
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <SelectTrigger
-                              className="h-8 w-[200px]"
-                              aria-label="Final deliverable version selector"
-                            >
-                              <SelectValue placeholder="Select version" />
-                            </SelectTrigger>
-                          </TooltipTrigger>
-                          <TooltipContent
-                            side="bottom"
-                            align="start"
-                            sideOffset={8}
-                            className="max-w-[320px] text-xs leading-relaxed"
-                          >
-                            {finalVersionTooltip}
-                          </TooltipContent>
-                        </Tooltip>
-                        <SelectContent>
-                          {sortedFinalDeliverableVersions.map((version, index) => (
-                            <SelectItem key={`${version.id}-${index}`} value={version.id}>
-                              {getFinalVersionLabel(version)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <button
-                        type="button"
-                        onClick={() => setShowFinalDeliverableList((prev) => !prev)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#D9E6FF] bg-white/85 text-muted-foreground transition hover:bg-[#F3F7FF] dark:border-border dark:bg-card/85 dark:hover:bg-muted/80"
-                        aria-expanded={showFinalDeliverableList}
-                        aria-label="Toggle final deliverables list"
-                      >
-                        <ChevronDown
-                          className={cn(
-                            'h-4 w-4 transition-transform',
-                            showFinalDeliverableList ? 'rotate-180' : ''
-                          )}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                  {showFinalDeliverableList && (
-                    <>
-                      {activeFinalVersionNote && (
-                        <div className="mb-3 rounded-lg border border-[#D9E6FF]/60 bg-[#F8FBFF]/70 px-3 py-2 dark:border-border/70 dark:bg-card/70">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                            Version note
-                          </p>
-                          <p className="mt-1 text-sm text-foreground/90 dark:text-slate-200">
-                            {activeFinalVersionNote}
-                          </p>
-                        </div>
-                      )}
-                      <div className={cn(finalDeliverableFiles.length > 8 && fileListShellClass)}>
-                        <div className={cn('space-y-1.5', finalDeliverableFiles.length > 8 && fileListScrollClass)}>
-                        {finalDeliverableFiles.map((file, index) => {
-                          const displayFile = toOutputFile(file, index);
-                          const isLinkCard = isLinkOnlyFile(displayFile) && isGoogleDriveLinkFile(displayFile);
-                          const displayName = isLinkCard
-                            ? sanitizeLinkDisplayName(displayFile.name, displayFile.url || '')
-                            : toTitleCaseFileName(displayFile.name);
-                          const isCopied = copiedFileKey === getFileCopyFeedbackKey(displayFile);
-                          const annotationKey = getReviewAnnotationFileKey(displayFile);
-                          const fileAnnotation = annotationKey
-                            ? draftReviewAnnotationsByFile[annotationKey]
-                            : undefined;
-                          const fileHasReviewFeedback = hasReviewAnnotationContent(fileAnnotation);
-                          const fileCommentCount = Array.isArray(fileAnnotation?.comments)
-                            ? fileAnnotation.comments.length
-                            : 0;
-                          const fileShapeCount = Array.isArray(fileAnnotation?.shapes)
-                            ? fileAnnotation.shapes.length
-                            : Array.isArray(fileAnnotation?.strokes)
-                              ? fileAnnotation.strokes.length
-                              : 0;
-                          const canAnnotateFile =
-                            canMainDesignerReviewFinalDeliverables &&
-                            isAnnotatableImageOutputFile(displayFile);
-                          const canViewFeedbackFile =
-                            fileHasReviewFeedback &&
-                            (canAnnotateFile || shouldAllowViewingRejectedAnnotations);
-                          const canReplaceThisFile = canReplaceRejectedFinalFile && !isLinkCard;
-                          const isPreviewable = canPreviewFile(displayFile);
-                          return (
-                            <div
-                              key={getFileListItemKey(displayFile, index)}
-                              className={cn(
-                                fileRowClass,
-                                isPreviewable &&
-                                  'cursor-pointer transition-colors hover:bg-white/55 dark:hover:bg-slate-800/85'
-                              )}
-                              onClick={(event) => handleFileRowPreviewClick(event, displayFile)}
-                            >
-                              {isLinkCard ? (
-                                <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
-                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#CFDBF8]/65 bg-gradient-to-br from-[#EEF4FF]/90 to-[#DCE8FF]/75 dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-800/90 dark:to-slate-700/70">
-                                    <Folder className="h-4 w-4 text-[#4A5EA1] dark:text-slate-200" />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <span className="block truncate text-[13px] font-semibold text-foreground">
-                                      {displayName}
-                                    </span>
-                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                                      {getLinkSubLabel(displayFile.url || '')}
-                                    </span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex min-w-0 flex-1 items-center gap-2.5 pr-3">
-                                  {renderFilePreview(displayFile)}
-                                  <div className="min-w-0 flex-1">
-                                    <span className="block truncate text-[13px] font-medium text-foreground">
-                                      {displayName}
-                                    </span>
-                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                                      {(() => {
-                                        const sizeLabel = formatFileSize(displayFile.size);
-                                        return sizeLabel || '';
-                                      })()}
-                                    </span>
-                                    {fileHasReviewFeedback && (
-                                      <span className="mt-0.5 block text-[11px] text-[#475FB9] dark:text-[#B8C7FF]">
-                                        {fileCommentCount} comment(s), {fileShapeCount} drawing mark(s)
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                              <div className="flex shrink-0 items-center gap-1.5">
-                                {canAnnotateFile && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    className={fileGlassIconButtonClass}
-                                    aria-label={fileHasReviewFeedback ? 'Edit feedback' : 'Annotate file'}
-                                    title={fileHasReviewFeedback ? 'Edit Feedback' : 'Annotate'}
-                                    onClick={() => openReviewAnnotationDialog(displayFile)}
-                                  >
-                                    <Edit3 className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                {canViewFeedbackFile && !canAnnotateFile && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    className={fileGlassIconButtonClass}
-                                    aria-label="View feedback"
-                                    title="View Feedback"
-                                    onClick={() => openReviewAnnotationDialog(displayFile, true)}
-                                  >
-                                    <MessageSquare className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                {canReplaceThisFile && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    className={fileGlassIconButtonClass}
-                                    disabled={isUploadingFinal}
-                                    aria-label="Replace file"
-                                    title="Replace"
-                                    onClick={() => triggerReplaceFinalFile(displayFile, index)}
-                                  >
-                                    <Upload className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                {canRemoveFiles && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    disabled={approvalLockedForStaff || staffChangeLimitReached}
-                                    className={fileActionButtonClass}
-                                    onClick={() =>
-                                      handleRemoveFile(displayFile.id, displayFile.name, displayFile.type)
-                                    }
-                                  >
-                                    <Trash2 className="h-4 w-4 text-status-urgent" />
-                                  </Button>
-                                )}
-                                {isPreviewable && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    className={fileActionButtonClass}
-                                    onClick={() => openFilePreviewDialog(displayFile)}
-                                    title="View"
-                                    aria-label="View file"
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  disabled={!getFileShareUrl(displayFile)}
-                                  data-success={isCopied}
-                                  className={cn(
-                                    fileActionButtonClass,
-                                    isCopied &&
-                                      'border-primary/50 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/20 dark:text-primary'
-                                  )}
-                                  onClick={() => void handleCopyFileLink(displayFile)}
-                                  title={isCopied ? 'Copied' : 'Copy link'}
-                                  aria-label={isCopied ? 'File link copied' : 'Copy file link'}
-                                >
-                                  {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                                </Button>
-                              {(() => {
-                                  const fileLinkUrl = getFileActionUrl(displayFile);
-                                  return (
-                                    <Button
-                                      variant="ghost"
-                                      size="icon-sm"
-                                      disabled={!fileLinkUrl || fileLinkUrl === '#'}
-                                      className={fileActionButtonClass}
-                                      onClick={() => handleFileAction(displayFile)}
-                                    >
-                                      {shouldUseLinkIcon(displayFile) ? (
-                                        <ExternalLink className="h-4 w-4" />
-                                      ) : (
-                                        <Download className="h-4 w-4" />
-                                      )}
-                                    </Button>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        </div>
+                  {/* ── Panel header ── */}
+                  <div className="overflow-hidden rounded-xl border border-[#D9E6FF] bg-white dark:border-border dark:bg-card">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#EAF0FA] px-4 py-3 dark:border-border">
+                      {/* Left: title + file count */}
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-status-completed" />
+                        <span className="text-[13px] font-semibold text-[#1B3260] dark:text-slate-100">
+                          Final Deliverables
+                        </span>
+                        {finalDeliverableFiles.length > 0 && (
+                          <span className="rounded-full bg-[#EEF3FF] px-2 py-0.5 text-[10.5px] font-medium text-[#4B6BAE] dark:bg-muted dark:text-slate-400">
+                            {finalDeliverableFiles.length} {finalDeliverableFiles.length === 1 ? 'file' : 'files'}
+                          </span>
+                        )}
                       </div>
-                    </>
-                  )}
+
+                      {/* Right: version selector + bulk actions + collapse */}
+                      <div className="flex items-center gap-1.5">
+                        <Select
+                          value={selectedFinalVersionId || activeFinalVersion?.id || ''}
+                          onValueChange={setSelectedFinalVersionId}
+                        >
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <SelectTrigger
+                                className="h-7 w-[170px] rounded-lg border-[#D9E6FF] bg-[#F8FBFF] text-xs dark:border-border dark:bg-muted"
+                                aria-label="Final deliverable version selector"
+                              >
+                                <SelectValue placeholder="Select version" />
+                              </SelectTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" align="start" sideOffset={8} className="max-w-[320px] text-xs leading-relaxed">
+                              {finalVersionTooltip}
+                            </TooltipContent>
+                          </Tooltip>
+                          <SelectContent>
+                            {sortedFinalDeliverableVersions.map((version, index) => (
+                              <SelectItem key={`${version.id}-${index}`} value={version.id}>
+                                {getFinalVersionLabel(version)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleDownloadAll()}
+                          disabled={isDownloadingAll || finalDeliverableFiles.filter(f => !isLinkOnlyFile(toOutputFile(f, 0))).length === 0}
+                          className="h-7 gap-1.5 rounded-lg border-[#D0DCFF] px-2.5 text-[11.5px] text-[#3D5A9E] hover:bg-[#EEF2FF] dark:border-border dark:text-slate-300 dark:hover:bg-muted/60"
+                        >
+                          {isDownloadingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                          {isDownloadingAll ? 'Downloading…' : 'Download All'}
+                        </Button>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleDownloadZip()}
+                          disabled={finalDeliverableFiles.filter(f => !isLinkOnlyFile(toOutputFile(f, 0))).length === 0}
+                          className="h-7 gap-1.5 rounded-lg border-[#D0DCFF] px-2.5 text-[11.5px] text-[#3D5A9E] hover:bg-[#EEF2FF] dark:border-border dark:text-slate-300 dark:hover:bg-muted/60"
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                          ZIP
+                        </Button>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowFinalDeliverableList((prev) => !prev)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-[#D9E6FF] bg-transparent text-muted-foreground transition hover:bg-[#F3F7FF] dark:border-border dark:hover:bg-muted/80"
+                          aria-expanded={showFinalDeliverableList}
+                          aria-label="Toggle final deliverables list"
+                        >
+                          <ChevronDown className={cn('h-4 w-4 transition-transform', showFinalDeliverableList ? 'rotate-180' : '')} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {showFinalDeliverableList && (
+                      <>
+                        {/* Version note */}
+                        {activeFinalVersionNote && (
+                          <div className="border-b border-[#EAF0FA] bg-[#F8FBFF]/60 px-4 py-2.5 dark:border-border dark:bg-muted/20">
+                            <span className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Version note </span>
+                            <span className="text-[12.5px] text-foreground/90 dark:text-slate-200">{activeFinalVersionNote}</span>
+                          </div>
+                        )}
+
+                        {/* Selection toolbar — visible when files are checked */}
+                        {selectedDeliverableIds.size > 0 && (
+                          <div className="flex items-center justify-between border-b border-[#E0EAFF] bg-primary/5 px-4 py-2 dark:border-border dark:bg-primary/10">
+                            <span className="text-[12px] font-medium text-primary dark:text-slate-300">
+                              {selectedDeliverableIds.size} selected
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const files = (activeFinalVersion?.files ?? [])
+                                    .map((f, i) => toOutputFile(f, i))
+                                    .filter((f) => selectedDeliverableIds.has(f.id) && !isLinkOnlyFile(f));
+                                  void (async () => {
+                                    for (let i = 0; i < files.length; i++) {
+                                      if (i > 0) await new Promise<void>((res) => setTimeout(res, 650));
+                                      await handleFileAction(files[i]).catch(() => {});
+                                    }
+                                  })();
+                                }}
+                                className="h-7 gap-1.5 rounded-lg border-[#D0DCFF] px-2.5 text-[11.5px] text-[#3D5A9E] hover:bg-white dark:border-border dark:text-slate-300"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                Download Selected
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleDownloadZip(Array.from(selectedDeliverableIds))}
+                                className="h-7 gap-1.5 rounded-lg border-[#D0DCFF] px-2.5 text-[11.5px] text-[#3D5A9E] hover:bg-white dark:border-border dark:text-slate-300"
+                              >
+                                <Archive className="h-3.5 w-3.5" />
+                                ZIP Selected
+                              </Button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedDeliverableIds(new Set())}
+                                className="ml-1 flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Column header row with Select All */}
+                        {finalDeliverableFiles.length > 0 && (
+                          <div className="flex items-center gap-3 border-b border-[#EAF0FA] px-4 py-2 dark:border-border">
+                            <Checkbox
+                              id="select-all-deliverables"
+                              checked={
+                                finalDeliverableFiles.length > 0 &&
+                                finalDeliverableFiles
+                                  .map((f, i) => toOutputFile(f, i))
+                                  .filter((f) => !isLinkOnlyFile(f))
+                                  .every((f) => selectedDeliverableIds.has(f.id))
+                              }
+                              onCheckedChange={(checked) => {
+                                const downloadable = finalDeliverableFiles
+                                  .map((f, i) => toOutputFile(f, i))
+                                  .filter((f) => !isLinkOnlyFile(f));
+                                setSelectedDeliverableIds(
+                                  checked ? new Set(downloadable.map((f) => f.id)) : new Set()
+                                );
+                              }}
+                              className="h-3.5 w-3.5"
+                            />
+                            <span className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              File
+                            </span>
+                            <span className="ml-auto text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                              Actions
+                            </span>
+                          </div>
+                        )}
+
+                        {/* File rows */}
+                        <div className={cn(finalDeliverableFiles.length > 8 && 'max-h-[30rem] overflow-y-auto overflow-x-hidden scrollbar-thin')}>
+                          <div className="divide-y divide-[#EEF2FB] dark:divide-border">
+                          {finalDeliverableFiles.map((file, index) => {
+                            const displayFile = toOutputFile(file, index);
+                            const isLinkCard = isLinkOnlyFile(displayFile) && isGoogleDriveLinkFile(displayFile);
+                            const isSelected = selectedDeliverableIds.has(displayFile.id);
+                            const displayName = isLinkCard
+                              ? sanitizeLinkDisplayName(displayFile.name, displayFile.url || '')
+                              : toTitleCaseFileName(displayFile.name);
+                            const isCopied = copiedFileKey === getFileCopyFeedbackKey(displayFile);
+                            const annotationKey = getReviewAnnotationFileKey(displayFile);
+                            const fileAnnotation = annotationKey
+                              ? draftReviewAnnotationsByFile[annotationKey]
+                              : undefined;
+                            const fileHasReviewFeedback = hasReviewAnnotationContent(fileAnnotation);
+                            const fileCommentCount = Array.isArray(fileAnnotation?.comments)
+                              ? fileAnnotation.comments.length
+                              : 0;
+                            const fileShapeCount = Array.isArray(fileAnnotation?.shapes)
+                              ? fileAnnotation.shapes.length
+                              : Array.isArray(fileAnnotation?.strokes)
+                                ? fileAnnotation.strokes.length
+                                : 0;
+                            const canAnnotateFile =
+                              canMainDesignerReviewFinalDeliverables &&
+                              isAnnotatableImageOutputFile(displayFile);
+                            const canViewFeedbackFile =
+                              fileHasReviewFeedback &&
+                              (canAnnotateFile || shouldAllowViewingRejectedAnnotations);
+                            const canReplaceThisFile = canReplaceRejectedFinalFile && !isLinkCard;
+                            const isPreviewable = canPreviewFile(displayFile);
+                            return (
+                              <div
+                                key={getFileListItemKey(displayFile, index)}
+                                className={cn(
+                                  'flex items-center gap-3 px-4 py-2.5 transition-colors',
+                                  isSelected ? 'bg-primary/5 dark:bg-primary/10' : 'hover:bg-[#F8FBFF] dark:hover:bg-muted/30',
+                                  isPreviewable && 'cursor-pointer'
+                                )}
+                                onClick={(event) => handleFileRowPreviewClick(event, displayFile)}
+                              >
+                                {/* Checkbox */}
+                                {!isLinkCard && (
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onCheckedChange={(checked) => {
+                                      setSelectedDeliverableIds((prev) => {
+                                        const next = new Set(prev);
+                                        if (checked) next.add(displayFile.id);
+                                        else next.delete(displayFile.id);
+                                        return next;
+                                      });
+                                    }}
+                                    className="h-3.5 w-3.5 shrink-0"
+                                  />
+                                )}
+                                {isLinkCard && <span className="h-3.5 w-3.5 shrink-0" />}
+
+                                {/* File icon / preview thumbnail */}
+                                {isLinkCard ? (
+                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#CFDBF8]/65 bg-[#EEF4FF]/90 dark:border-slate-700/70 dark:bg-slate-800/70">
+                                    <Folder className="h-4 w-4 text-[#4A5EA1] dark:text-slate-300" />
+                                  </div>
+                                ) : (
+                                  <div className="shrink-0">{renderFilePreview(displayFile)}</div>
+                                )}
+
+                                {/* Name + meta */}
+                                <div className="min-w-0 flex-1">
+                                  <span className="block truncate text-[12.5px] font-medium text-foreground dark:text-slate-200">
+                                    {displayName}
+                                  </span>
+                                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                    {isLinkCard
+                                      ? getLinkSubLabel(displayFile.url || '')
+                                      : formatFileSize(displayFile.size) || ''}
+                                  </span>
+                                  {fileHasReviewFeedback && (
+                                    <span className="mt-0.5 block text-[11px] text-[#475FB9] dark:text-[#B8C7FF]">
+                                      {fileCommentCount} comment(s), {fileShapeCount} mark(s)
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Row actions */}
+                                <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                  {canAnnotateFile && (
+                                    <Button variant="ghost" size="icon-sm" className={fileGlassIconButtonClass}
+                                      aria-label={fileHasReviewFeedback ? 'Edit feedback' : 'Annotate file'}
+                                      title={fileHasReviewFeedback ? 'Edit Feedback' : 'Annotate'}
+                                      onClick={() => openReviewAnnotationDialog(displayFile)}
+                                    >
+                                      <Edit3 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  {canViewFeedbackFile && !canAnnotateFile && (
+                                    <Button variant="ghost" size="icon-sm" className={fileGlassIconButtonClass}
+                                      aria-label="View feedback" title="View Feedback"
+                                      onClick={() => openReviewAnnotationDialog(displayFile, true)}
+                                    >
+                                      <MessageSquare className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  {canReplaceThisFile && (
+                                    <Button variant="ghost" size="icon-sm" className={fileGlassIconButtonClass}
+                                      disabled={isUploadingFinal} aria-label="Replace file" title="Replace"
+                                      onClick={() => triggerReplaceFinalFile(displayFile, index)}
+                                    >
+                                      <Upload className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  {canRemoveFiles && (
+                                    <Button variant="ghost" size="icon-sm"
+                                      disabled={approvalLockedForStaff || staffChangeLimitReached}
+                                      className={fileActionButtonClass}
+                                      onClick={() => handleRemoveFile(displayFile.id, displayFile.name, displayFile.type)}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-status-urgent" />
+                                    </Button>
+                                  )}
+                                  {isPreviewable && (
+                                    <Button variant="ghost" size="icon-sm" className={fileActionButtonClass}
+                                      onClick={() => openFilePreviewDialog(displayFile)}
+                                      title="Preview" aria-label="Preview file"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="ghost" size="icon-sm"
+                                    disabled={!getFileShareUrl(displayFile)}
+                                    data-success={isCopied}
+                                    className={cn(fileActionButtonClass, isCopied && 'border-primary/50 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/20 dark:text-primary')}
+                                    onClick={() => void handleCopyFileLink(displayFile)}
+                                    title={isCopied ? 'Copied' : 'Copy link'}
+                                    aria-label={isCopied ? 'File link copied' : 'Copy file link'}
+                                  >
+                                    {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                  </Button>
+                                  {(() => {
+                                    const fileLinkUrl = getFileActionUrl(displayFile);
+                                    return (
+                                      <Button variant="ghost" size="icon-sm"
+                                        disabled={!fileLinkUrl || fileLinkUrl === '#'}
+                                        className={fileActionButtonClass}
+                                        onClick={() => handleFileAction(displayFile)}
+                                        title={shouldUseLinkIcon(displayFile) ? 'Open link' : 'Download'}
+                                        aria-label={shouldUseLinkIcon(displayFile) ? 'Open link' : 'Download file'}
+                                      >
+                                        {shouldUseLinkIcon(displayFile) ? (
+                                          <ExternalLink className="h-4 w-4" />
+                                        ) : (
+                                          <Download className="h-4 w-4" />
+                                        )}
+                                      </Button>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>{/* end panel card */}
+
                   {(() => {
                     const reviewStatusLabel =
                       finalDeliverableReviewStatus === 'pending'
@@ -10087,209 +10254,323 @@ function TaskDetailScreen() {
                 )
               )}
 
-              {/* Upload (Designer only) */}
+              {/* Final Delivery Panel (Designer only) */}
               {canFinalizeTaskActions && (
                 <>
+                  {/* Hidden file inputs */}
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFinalUpload}
+                    ref={finalUploadInputRef}
+                    className="hidden"
+                    id="final-file-upload"
+                    disabled={isUploadingFinal}
+                  />
+                  <input
+                    type="file"
+                    onChange={handleReplaceFinalFileUpload}
+                    ref={replaceFinalFileInputRef}
+                    className="hidden"
+                    id="replace-final-file-upload"
+                    disabled={isUploadingFinal}
+                  />
+
                   <div
                     className={cn(
-                      'mt-6 relative overflow-hidden rounded-2xl gradient-border bg-white p-6 text-center shadow-none transition-colors dark:bg-card',
-                      isFinalUploadDragging &&
-                        'border-primary/40 bg-[#F4F8FF] ring-2 ring-primary/25 dark:bg-card/95'
+                      'mt-6 overflow-hidden rounded-xl border border-[#D9E6FF] bg-white dark:border-border dark:bg-card',
+                      isFinalUploadDragging && 'border-primary/40 ring-2 ring-primary/10'
                     )}
                     onDragOver={handleFinalUploadDragOver}
                     onDragLeave={handleFinalUploadDragLeave}
                     onDrop={handleFinalUploadDrop}
                   >
-                    <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] dark:bg-muted/60 blur-2xl" />
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={openFinalFilePicker}
-                        disabled={isUploadingFinal}
-                        className="mx-auto flex flex-col items-center rounded-xl px-3 py-2 transition hover:bg-[#F4F8FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-70 dark:hover:bg-muted/50"
-                      >
-                        <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                        <p className="text-sm font-semibold text-foreground">Upload Final Files</p>
-                        <p className="text-xs text-muted-foreground">
-                          {isFinalUploadDragging ? 'Drop files to upload' : 'Drag and drop or click to upload'}
+                    {/* Panel header */}
+                    <div className="border-b border-[#E8EEFB] px-4 py-3.5 dark:border-border">
+                      <p className="text-[13px] font-semibold text-[#1B3260] dark:text-slate-100">
+                        Final Delivery
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {finalDeliverableReviewStatus === 'rejected'
+                          ? 'Revision requested — upload updated files and resubmit.'
+                          : 'Attach files or a Drive link, add a version note, then submit for review.'}
+                      </p>
+                    </div>
+
+                    {/* Section: Files */}
+                    <div className="px-4 pt-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Files
                         </p>
-                      </button>
-                      <div className="mt-3 text-left">
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                          Version note (optional)
-                        </p>
-                        <Textarea
-                          value={finalVersionNote}
-                          onChange={(event) => setFinalVersionNote(event.target.value)}
-                          rows={2}
-                          className="mt-2 bg-white/90 dark:bg-card/90 dark:border-border dark:text-slate-100 dark:placeholder:text-slate-400"
-                          placeholder="Summarize changes in this version..."
-                        />
-                        <div className="mt-2 flex justify-end">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleUpdateFinalVersionNote}
-                            disabled={
-                              isUploadingFinal ||
-                              isUpdatingFinalVersionNote ||
-                              !hasFinalDeliverables ||
-                              !activeFinalVersion?.id ||
-                              !isFinalVersionNoteDirty
-                            }
-                            className="h-8 rounded-full px-4 text-xs"
-                          >
-                            {isUpdatingFinalVersionNote ? 'Updating...' : 'Update note'}
-                          </Button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={openFinalFilePicker}
+                          disabled={isUploadingFinal}
+                          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[#D0DCFF] bg-[#F5F8FF] px-3 text-[11.5px] font-medium text-[#3D5A9E] transition hover:bg-[#EBF1FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-muted dark:text-slate-300 dark:hover:bg-muted/80"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          {isFinalUploadDragging ? 'Drop here' : 'Add files'}
+                        </button>
                       </div>
-                      <input
-                        type="file"
-                        multiple
-                        onChange={handleFinalUpload}
-                        ref={finalUploadInputRef}
-                        className="hidden"
-                        id="final-file-upload"
-                        disabled={isUploadingFinal}
-                      />
-                      <input
-                        type="file"
-                        onChange={handleReplaceFinalFileUpload}
-                        ref={replaceFinalFileInputRef}
-                        className="hidden"
-                        id="replace-final-file-upload"
-                        disabled={isUploadingFinal}
-                      />
-                      <label
-                        htmlFor="final-file-upload"
-                        className="mt-3 inline-flex cursor-pointer items-center justify-center rounded-full border border-[#D9E6FF] bg-white px-4 py-2 text-xs font-semibold text-foreground hover:bg-[#F4F7FF] dark:border-border dark:bg-card/90 dark:text-slate-100 dark:shadow-none dark:hover:bg-muted/80"
-                      >
-                        {isUploadingFinal ? 'Uploading...' : 'Select files'}
-                      </label>
-                      {finalUploadItems.length > 0 && (
-                        <div className="mt-4 w-full rounded-2xl border border-[#D9E6FF] bg-white/80 p-3 text-left dark:border-border dark:bg-card/90 dark:shadow-none">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm font-semibold text-foreground">
-                              {finalUploadLabel}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              {isUploadingFinal && (
-                                <button
-                                  type="button"
-                                  onClick={handleCancelFinalUpload}
-                                  className="rounded-full px-2 py-1 text-[11px] font-semibold text-primary/80 hover:text-primary dark:text-slate-300 dark:hover:text-slate-100"
-                                >
-                                  Cancel
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => setShowFinalUploadList((prev) => !prev)}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted/80"
-                              >
-                                <ChevronDown
+
+                      {finalUploadItems.length > 0 ? (
+                        <div className="relative mt-3 overflow-hidden rounded-[22px] border border-[#CBD9FF]/60 bg-gradient-to-br from-white/92 via-[#F8FBFF]/84 to-[#E8F1FF]/86 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-[#F8FBFF]/62 supports-[backdrop-filter]:to-[#E8F1FF]/64 backdrop-blur-2xl shadow-none ring-1 ring-white/60 dark:border-border dark:bg-card/78 dark:bg-none dark:ring-0">
+                          <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-white/70 dark:bg-white/5" />
+                          <div className="pointer-events-none absolute -left-8 top-1 h-24 w-24 rounded-full bg-white/55 blur-3xl dark:hidden" />
+                          <div className="pointer-events-none absolute -right-6 bottom-[-24px] h-28 w-28 rounded-full bg-[#DDE9FF]/80 blur-3xl dark:hidden" />
+
+                          <div className="relative px-4 py-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-foreground">{finalUploadLabel}</p>
+                                <p
                                   className={cn(
-                                    'h-4 w-4 transition-transform',
-                                    showFinalUploadList ? 'rotate-180' : ''
+                                    'mt-1 text-xs',
+                                    hasFinalUploadQueueIssues
+                                      ? 'text-amber-700 dark:text-amber-300'
+                                      : 'text-muted-foreground'
                                   )}
-                                />
-                              </button>
-                              {!isUploadingFinal && (
+                                >
+                                  {finalUploadStatusText}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                {hasPendingFinalUploads ? (
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelFinalUpload}
+                                    className="rounded-full px-2 py-1 text-[11px] font-semibold text-primary/80 hover:text-primary dark:text-slate-300 dark:hover:text-slate-100"
+                                  >
+                                    Cancel
+                                  </button>
+                                ) : null}
+
                                 <button
                                   type="button"
-                                  onClick={clearFinalUploadItems}
-                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted/80"
+                                  onClick={() => setShowFinalUploadList((prev) => !prev)}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted"
+                                  aria-label={showFinalUploadList ? 'Hide final uploads' : 'Show final uploads'}
                                 >
-                                  <X className="h-4 w-4" />
+                                  <ChevronDown
+                                    className={cn(
+                                      'h-4 w-4 transition-transform',
+                                      showFinalUploadList ? 'rotate-180' : ''
+                                    )}
+                                  />
                                 </button>
-                              )}
+
+                                {!hasPendingFinalUploads ? (
+                                  <button
+                                    type="button"
+                                    onClick={clearFinalUploadItems}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:border-[#D9E6FF] hover:bg-white dark:hover:border-border dark:hover:bg-muted"
+                                    aria-label="Clear final uploads"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
-                          </div>
-                          {showFinalUploadList && (
-                            <div className="mt-3 border-t border-[#E1E9FF] pt-3 dark:border-border">
-                              <div className={cn(finalUploadItems.length > 8 && fileListShellClass)}>
-                                <div className={cn('space-y-2', finalUploadItems.length > 8 && fileListScrollClass)}>
+
+                            {hasPendingFinalUploads ? (
+                              <div className="mt-3 rounded-2xl border border-white/50 bg-white/45 px-3.5 py-3 supports-[backdrop-filter]:bg-white/28 backdrop-blur-xl dark:border-border dark:bg-card/80">
+                                <div className="text-[11px] font-medium text-[#6D7FA8] dark:text-slate-400">
+                                  <span>Overall progress</span>
+                                </div>
+                                <div className="mt-2 grid grid-cols-[1fr_auto] items-center gap-2">
+                                  <Progress
+                                    value={finalUploadProgress}
+                                    className="h-1.5 rounded-full bg-[#E7EEFF] dark:bg-muted"
+                                  />
+                                  <span className="min-w-[3rem] text-right text-[11px] font-semibold tabular-nums text-foreground/90 dark:text-slate-100">
+                                    {finalUploadProgress}%
+                                  </span>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {showFinalUploadList ? (
+                              <div className="mt-3 space-y-2 border-t border-[#E1E9FF] pt-3 dark:border-border">
+                                <div
+                                  className={cn(
+                                    'space-y-2',
+                                    shouldCompactFinalUploadQueue && 'max-h-[30rem] overflow-y-auto pr-1 scrollbar-thin'
+                                  )}
+                                >
                                   {finalUploadItems.map((item) => {
                                     const extension = getFileExtension(item.name);
-                                    const itemProgress =
-                                      item.status === 'done'
+                                    const isUploading = item.status === 'uploading';
+                                    const hasUploadError = item.status === 'error';
+                                    const uploadProgress = isUploading
+                                      ? Math.max(0, Math.min(100, Number(item.progress ?? 0)))
+                                      : item.status === 'done'
                                         ? 100
-                                        : Math.max(0, Math.min(99, Math.round(Number(item.progress) || 0)));
+                                        : Math.max(0, Math.min(99, Number(item.progress ?? 0)));
+
                                     return (
                                       <div
                                         key={item.id}
-                                        className="rounded-xl border border-[#E1E9FF] bg-white/95 px-3 py-2.5 dark:border-border dark:bg-card/95"
+                                        className="rounded-xl border border-[#CFE0FF] bg-white/95 px-3 py-2.5 shadow-none dark:border-border dark:bg-slate-900/70"
                                       >
                                         <div className="flex items-center justify-between gap-3">
                                           <div className="flex min-w-0 items-center gap-3">
-                                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:bg-muted dark:text-slate-200">
-                                              {extension.slice(0, 4)}
+                                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:border dark:border-border dark:bg-muted dark:text-foreground">
+                                              {extension}
                                             </div>
-                                            <span className="min-w-0 truncate text-xs font-medium text-foreground">
-                                              {item.name}
-                                            </span>
+
+                                            <div className="min-w-0">
+                                              <span className="block truncate text-xs font-medium text-foreground">
+                                                {item.name}
+                                              </span>
+                                              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                                                <span className={hasUploadError ? 'text-destructive' : 'text-muted-foreground'}>
+                                                  {isUploading
+                                                    ? 'Uploading'
+                                                    : hasUploadError
+                                                      ? 'Needs attention'
+                                                      : 'Completed'}
+                                                </span>
+                                                {item.size ? (
+                                                  <span className="text-muted-foreground">
+                                                    {formatFileSize(item.size)}
+                                                  </span>
+                                                ) : null}
+                                                {isUploading ? (
+                                                  <span className="font-medium tabular-nums text-muted-foreground">
+                                                    {uploadProgress}%
+                                                  </span>
+                                                ) : null}
+                                              </div>
+                                            </div>
                                           </div>
-                                          <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                                            {item.status === 'uploading' && (
-                                              <>
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/90">
-                                                  Uploading
-                                                </span>
-                                              </>
-                                            )}
-                                            {item.status === 'done' && (
-                                              <>
-                                                <Check className="h-4 w-4 text-emerald-500" />
-                                                <span className="font-semibold tabular-nums text-emerald-500">
-                                                  100%
-                                                </span>
-                                              </>
-                                            )}
-                                            {item.status === 'error' && (
-                                              <>
-                                                <AlertTriangle className="h-4 w-4 text-red-500" />
-                                                <span className="font-semibold text-red-500">Failed</span>
-                                              </>
-                                            )}
+
+                                          <div className="flex shrink-0 items-center gap-2">
+                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                              {hasUploadError ? (
+                                                <>
+                                                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                                                  <span className="font-semibold text-red-500">Failed</span>
+                                                </>
+                                              ) : null}
+                                              {isUploading ? (
+                                                <>
+                                                  <Loader2 className="h-4 w-4 animate-spin text-[#7D8FB8] dark:text-slate-300" />
+                                                  <span className="font-semibold uppercase tracking-[0.08em] text-[#7D8FB8] dark:text-slate-300">
+                                                    Uploading
+                                                  </span>
+                                                </>
+                                              ) : null}
+                                              {!isUploading && !hasUploadError ? (
+                                                <>
+                                                  <Check className="h-4 w-4 text-primary" />
+                                                  <span className="font-semibold tabular-nums text-primary">100%</span>
+                                                </>
+                                              ) : null}
+                                            </div>
+
+                                            {!isUploading ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveFinalUploadItem(item.id)}
+                                                className="inline-flex shrink-0 items-center justify-center h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 active:translate-y-[1px] active:scale-[0.94] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35"
+                                                aria-label={`Remove ${item.name}`}
+                                              >
+                                                <X className="h-4 w-4" />
+                                              </button>
+                                            ) : null}
                                           </div>
                                         </div>
-                                        {item.status === 'uploading' && (
-                                          <div className="mt-2.5 grid grid-cols-[1fr_auto] items-center gap-2">
-                                            <Progress
-                                              value={itemProgress}
-                                              className="h-1.5 rounded-full bg-[#E7EEFF] dark:bg-[#1A2748]"
-                                            />
-                                            <span className="min-w-[2.5rem] text-right text-[11px] font-semibold tabular-nums text-foreground/90 dark:text-slate-100">
-                                              {itemProgress}%
+
+                                        {hasUploadError && item.error ? (
+                                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                                            <p className="text-xs text-destructive">{item.error}</p>
+                                            {shouldPromptDriveReconnect(item.error) ? (
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-6 border-destructive px-2 text-xs text-destructive hover:bg-destructive hover:text-white"
+                                                onClick={async (event) => {
+                                                  event.preventDefault();
+                                                  try {
+                                                    await openDriveReconnectWindow();
+                                                  } catch (error) {
+                                                    const message =
+                                                      error instanceof Error
+                                                        ? error.message
+                                                        : 'Failed to get auth URL';
+                                                    toast.error('Drive reconnect failed', {
+                                                      description: message,
+                                                    });
+                                                  }
+                                                }}
+                                              >
+                                                Connect
+                                              </Button>
+                                            ) : null}
+                                          </div>
+                                        ) : null}
+
+                                        {isUploading ? (
+                                          <div className="mt-2 flex items-center gap-2">
+                                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#D7E3FF]/90 dark:bg-slate-800/90">
+                                              <div
+                                                className="h-full rounded-full bg-primary transition-all duration-300"
+                                                style={{ width: `${uploadProgress}%` }}
+                                              />
+                                            </div>
+                                            <span className="w-9 text-right text-[11px] font-medium tabular-nums text-muted-foreground">
+                                              {uploadProgress}%
                                             </span>
                                           </div>
-                                        )}
+                                        ) : null}
                                       </div>
                                     );
                                   })}
                                 </div>
+
+                                <p className="text-xs text-muted-foreground">{finalUploadFooterText}</p>
                               </div>
-                              {hasPendingFinalUploads && (
-                                <p className="mt-2 text-xs text-muted-foreground">
-                                  Upload in progress: {finalUploadProgress}%
-                                </p>
-                              )}
-                            </div>
-                          )}
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-[#D3E1F8] bg-[#F8FBFF]/60 px-3 py-3 text-xs text-muted-foreground dark:border-border/50 dark:bg-muted/20">
+                          <Upload className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                          <span>No files added yet — click <span className="font-medium text-[#3D5A9E] dark:text-slate-300">Add files</span> or drag &amp; drop here</span>
                         </div>
                       )}
-                      <div className="mt-5 rounded-xl border border-[#D9E6FF] bg-white/90 p-4 text-left shadow-none dark:border-border dark:bg-card/90 dark:shadow-none">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                          Or add a Google Drive link
-                        </p>
-                        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1.6fr_auto]">
-                          <Input
-                            placeholder="Drive item name (optional)"
-                            value={finalLinkName}
-                            onChange={(event) => setFinalLinkName(event.target.value)}
-                            className="h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4 dark:border-border dark:bg-card/95 dark:text-slate-100 dark:placeholder:text-slate-400"
-                          />
+                    </div>
+
+                    {/* Section: Version Note */}
+                    <div className="mt-4 px-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Version Note <span className="font-normal normal-case tracking-normal opacity-55">(optional)</span>
+                      </p>
+                      <Textarea
+                        value={finalVersionNote}
+                        onChange={(event) => setFinalVersionNote(event.target.value)}
+                        rows={2}
+                        className="mt-2 min-h-[68px] rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 py-2.5 text-sm focus-visible:ring-primary/25 dark:bg-muted/30 dark:border-border dark:text-slate-100 dark:placeholder:text-slate-500"
+                        placeholder="Summarize what changed in this version..."
+                      />
+                    </div>
+
+                    {/* Section: Google Drive link */}
+                    <div className="mt-4 px-4 pb-4">
+                      <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        <img
+                          src="/google-drive.ico"
+                          alt=""
+                          aria-hidden="true"
+                          className="h-[12px] w-[12px] shrink-0 object-contain opacity-80"
+                        />
+                        Google Drive Link <span className="font-normal normal-case tracking-normal opacity-55">(optional)</span>
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        <div className="flex gap-2">
                           <Input
                             placeholder="https://drive.google.com/..."
                             value={finalLinkUrl}
@@ -10307,61 +10588,63 @@ function TaskDetailScreen() {
                               }
                             }}
                             className={cn(
-                              'h-10 select-text rounded-full border-[#D9E6FF] bg-[#F9FBFF] px-4 dark:border-border dark:bg-card/95 dark:text-slate-100 dark:placeholder:text-slate-400',
+                              'h-9 select-text rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 text-sm dark:border-border dark:bg-muted/30 dark:text-slate-100 dark:placeholder:text-slate-500',
                               finalLinkValidationError &&
                                 'border-red-300 bg-red-50/40 focus-visible:border-red-400 dark:border-red-400/70 dark:bg-red-950/20'
                             )}
                           />
                           <Button
                             type="button"
+                            variant="outline"
                             onClick={handleAddFinalLink}
                             disabled={!finalLinkUrl.trim() || isAddingFinalLink}
-                            className="h-10 rounded-full px-5"
+                            className="h-9 shrink-0 rounded-lg border-[#D0DCFF] px-4 text-sm text-[#3D5A9E] hover:bg-[#EEF2FF] dark:border-border dark:text-slate-300 dark:hover:bg-muted/60"
                           >
                             {isAddingFinalLink ? 'Adding...' : 'Add link'}
                           </Button>
                         </div>
+                        <Input
+                          placeholder="Item name (optional)"
+                          value={finalLinkName}
+                          onChange={(event) => setFinalLinkName(event.target.value)}
+                          className="h-9 select-text rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 text-sm dark:border-border dark:bg-muted/30 dark:text-slate-100 dark:placeholder:text-slate-500"
+                        />
                         {finalLinkValidationError && (
-                          <p className="mt-2 text-xs font-medium text-red-500 dark:text-red-300">
+                          <p className="text-xs font-medium text-red-500 dark:text-red-300">
                             {finalLinkValidationError}
                           </p>
                         )}
                       </div>
                     </div>
+
+                    {/* Panel footer — submit action */}
+                    {(normalizedTaskStatus !== 'completed' || hasPendingFinalFiles) && (
+                      <div className="flex items-center justify-between gap-3 border-t border-[#E8EEFB] bg-[#F8FBFF]/60 px-4 py-3 dark:border-border dark:bg-muted/20">
+                        <span className="text-xs text-muted-foreground">
+                          {hasPendingFinalFiles
+                            ? submitActionHint
+                            : finalDeliverableReviewStatus === 'pending'
+                            ? 'The latest submission is under review.'
+                            : finalDeliverableReviewStatus === 'rejected'
+                            ? 'Add updated files or a link to submit the next revision.'
+                            : hasFinalDeliverables
+                            ? 'Final approval will move this task to completed.'
+                            : 'Add files or a Drive link to submit.'}
+                        </span>
+                        <Button
+                          onClick={handleHandoverTask}
+                          disabled={!canHandover}
+                          className="h-8 shrink-0 rounded-lg px-4 text-xs font-semibold"
+                        >
+                          {submitActionLabel}
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                  {(normalizedTaskStatus !== 'completed' || hasPendingFinalFiles) && (
-                    <div className="mt-4 flex flex-col items-center gap-2">
-                      {hasPendingFinalFiles ? (
-                        <>
-                          <Button
-                            onClick={handleHandoverTask}
-                            disabled={!canHandover}
-                            className="min-w-[180px] px-6"
-                          >
-                            {submitActionLabel}
-                          </Button>
-                          <span className="text-center text-xs text-muted-foreground">
-                            {submitActionHint}
-                          </span>
-                        </>
-                      ) : finalDeliverableReviewStatus === 'pending' ? (
-                        <span className="text-center text-xs font-medium text-muted-foreground">
-                          The latest final submission is under review.
-                        </span>
-                      ) : finalDeliverableReviewStatus === 'rejected' ? (
-                        <span className="text-center text-xs font-medium text-muted-foreground">
-                          Upload updated files or add a new link to submit the next revision.
-                        </span>
-                      ) : hasFinalDeliverables ? (
-                        <span className="text-center text-xs font-medium text-muted-foreground">
-                          Final approval will move this task to completed.
-                        </span>
-                      ) : null}
-                    </div>
-                  )}
                 </>
               )}
             </div>
+            ) : null}
 
             {user?.role === 'treasurer' && (
               <>
@@ -10977,7 +11260,7 @@ function TaskDetailScreen() {
                           className={cn(
                             'relative z-[1] mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition-colors',
                             isPast
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/35 dark:bg-emerald-950/30 dark:text-emerald-300'
+                              ? 'border-[#C9DBFF] bg-[linear-gradient(135deg,#FBFDFF_0%,#EEF5FF_48%,#E1ECFF_100%)] text-[#4D6BC4] dark:border-[#5A79BF]/45 dark:bg-[#1A2B52]/55 dark:text-[#D9E5FF]'
                             : isCurrent
                                 ? 'border-[#3657C9] bg-[#3657C9] text-white shadow-[0_0_0_4px_rgba(54,87,201,0.12)] motion-safe:animate-[trackingNodePulse_1.9s_ease-in-out_infinite] dark:border-[#6C8DFF] dark:bg-[#4E6FE0] dark:shadow-[0_0_0_4px_rgba(108,141,255,0.18)]'
                                 : 'border-[#D7E3FF] bg-white text-[#7A8EBA] dark:border-slate-600/70 dark:bg-slate-900 dark:text-slate-300'
@@ -10996,7 +11279,7 @@ function TaskDetailScreen() {
                             className={cn(
                               'absolute left-1/2 top-9 h-[calc(100%-1.25rem)] w-px -translate-x-1/2 overflow-visible rounded-full',
                               isPast
-                                ? 'bg-emerald-200/90 dark:bg-emerald-500/30'
+                                ? 'bg-[#D8E6FF] dark:bg-[#4A67A5]/35'
                               : isCurrent
                                   ? 'bg-gradient-to-b from-[#3657C9]/50 to-[#D7E3FF] dark:from-[#6C8DFF]/55 dark:to-slate-700'
                                   : 'bg-[#DDE7FB] dark:bg-slate-700/80'
@@ -11018,7 +11301,7 @@ function TaskDetailScreen() {
                             isCurrent
                               ? 'border-[#C7D7FF] bg-white/88 shadow-[0_10px_30px_-24px_rgba(54,87,201,0.65)] dark:border-[#4E6FE0]/60 dark:bg-slate-900/80'
                               : isPast
-                                ? 'border-emerald-100 bg-emerald-50/55 dark:border-emerald-500/25 dark:bg-emerald-950/20'
+                                ? 'border-[#D9E6FF] bg-[linear-gradient(135deg,rgba(251,253,255,0.94),rgba(242,247,255,0.86),rgba(234,241,255,0.8))] dark:border-[#4E6EA9]/35 dark:bg-[#14223F]/45'
                                 : 'border-[#E2E9F8] bg-white/55 dark:border-slate-700/70 dark:bg-slate-900/40'
                           )}
                         >
@@ -11031,7 +11314,7 @@ function TaskDetailScreen() {
                                     isCurrent
                                       ? 'text-foreground'
                                       : isPast
-                                        ? 'text-slate-700 dark:text-slate-200'
+                                        ? 'text-[#3C4F7A] dark:text-[#D9E4FF]'
                                         : 'text-muted-foreground'
                                   )}
                                 >
@@ -11042,7 +11325,7 @@ function TaskDetailScreen() {
                                     Active
                                   </span>
                                 ) : isPast ? (
-                                  <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-600 dark:border-emerald-500/35 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                  <span className="inline-flex items-center rounded-full border border-[#C9DBFF] bg-[#F2F7FF] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4B69C3] dark:border-[#5A79BF]/45 dark:bg-[#1D2E57]/70 dark:text-[#D9E5FF]">
                                     Done
                                   </span>
                                 ) : null}
@@ -11060,18 +11343,18 @@ function TaskDetailScreen() {
                                 {statusDetails[step]}
                               </p>
                             </div>
-                            <span
-                              className={cn(
-                                'hidden shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] 2xl:inline',
-                                isCurrent
-                                  ? 'text-[#3657C9] dark:text-[#C8D7FF]'
-                                  : isPast
-                                    ? 'text-emerald-600 dark:text-emerald-300'
+                            {!isPast ? (
+                              <span
+                                className={cn(
+                                  'hidden shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] 2xl:inline',
+                                  isCurrent
+                                    ? 'text-[#3657C9] dark:text-[#C8D7FF]'
                                     : 'text-muted-foreground/70'
-                              )}
-                            >
-                              {isCurrent ? 'Current' : isPast ? 'Completed' : `Step ${index + 1}`}
-                            </span>
+                                )}
+                              >
+                                {isCurrent ? 'Current' : `Step ${index + 1}`}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -11122,9 +11405,12 @@ function TaskDetailScreen() {
                         </div>
                         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#E4EBF7] dark:bg-slate-800">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-[#3657C9] via-[#4F6EE0] to-[#7FA3FF] shadow-[0_0_18px_-8px_rgba(79,110,224,0.85)] transition-all duration-300 ease-out"
+                            className="relative h-full rounded-full bg-gradient-to-r from-[#3657C9] via-[#4F6EE0] to-[#7FA3FF] shadow-[0_0_18px_-8px_rgba(79,110,224,0.85)] transition-all duration-300 ease-out"
                             style={{ width: `${collateralCompletionPercent}%` }}
-                          />
+                          >
+                            <span className="pointer-events-none absolute inset-y-[-3px] right-0 w-7 rounded-full bg-[radial-gradient(circle_at_left_center,rgba(255,255,255,0.96)_0%,rgba(214,245,255,0.84)_36%,rgba(144,234,255,0.22)_58%,rgba(144,234,255,0)_78%)] blur-[5px] motion-safe:animate-[progressEndPulse_1.75s_ease-in-out_infinite]" />
+                            <span className="pointer-events-none absolute inset-y-0 right-0 w-7 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.24)_26%,rgba(255,255,255,0.88)_56%,rgba(208,245,255,0.76)_76%,transparent_100%)] opacity-80 blur-[2px] motion-safe:animate-[progressEndShimmer_1.75s_ease-in-out_infinite]" />
+                          </div>
                         </div>
                       </div>
                     </div>

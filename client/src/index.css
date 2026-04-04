@@ -2278,6 +2278,30 @@
   to { --unread-border-angle: 360deg; }
 }
 
+@keyframes progressEndPulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: translateX(22%) scaleX(0.72);
+  }
+  50% {
+    opacity: 0.92;
+    transform: translateX(0) scaleX(1);
+  }
+}
+
+@keyframes progressEndShimmer {
+  0%,
+  100% {
+    opacity: 0.24;
+    transform: translateX(-12%) scaleX(0.8);
+  }
+  50% {
+    opacity: 0.72;
+    transform: translateX(8%) scaleX(1.05);
+  }
+}
+
 .task-unread-border::before {
   content: "";
   position: absolute;

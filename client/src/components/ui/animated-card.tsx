@@ -33,15 +33,14 @@ export function AnimatedCard({
         >
             <div
                 className={cn(
-                    "relative transition-all duration-300",
-                    highlighted && "rounded-2xl task-unread-border p-[1px]"
+                    "relative h-full transition-all duration-300"
                 )}
             >
                 <div
                     className={cn(
                         "relative overflow-hidden rounded-[22px] border border-[#D0DFFF] bg-white transition-all duration-300 dark:border-border dark:bg-card",
                         highlighted &&
-                            "rounded-2xl border-[#CEDBFF]/50 bg-white dark:border-[#5E7AE8]/50 dark:bg-card",
+                            "task-unread-border rounded-2xl border-[#CEDBFF]/50 bg-white dark:border-[#5E7AE8]/50 dark:bg-card",
                         innerClassName
                     )}
                 >

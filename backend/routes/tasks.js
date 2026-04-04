@@ -2,6 +2,7 @@ import express from "express";
 import Task from "../models/Task.js";
 import TaskView from "../models/TaskView.js";
 import mongoose from "mongoose";
+import JSZip from "jszip";
 import { getDriveClient } from "../lib/drive.js";
 import Activity from "../models/Activity.js";
 import User from "../models/User.js";
@@ -3420,6 +3421,130 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
   } catch (error) {
     console.error("Final deliverable upload error:", error?.message || error);
     res.status(400).json({ error: "Failed to upload final deliverables." });
+  }
+});
+
+router.post("/:id/deliverables/:versionId/zip", ensureTaskAccess, async (req, res) => {
+  try {
+    let task = req.task;
+    task = await repairMissingFinalDeliverableFiles(task);
+    const versionId = String(req.params.versionId || "").trim();
+    const requestedIds = Array.isArray(req.body?.fileIds)
+      ? req.body.fileIds.map((value) => String(value || "").trim()).filter(Boolean)
+      : [];
+
+    const versions = Array.isArray(task.finalDeliverableVersions)
+      ? task.finalDeliverableVersions
+      : [];
+    const version = versions.find((v) => String(v?.id || v?._id || "") === versionId);
+    if (!version) {
+      return res.status(404).json({ error: "Version not found." });
+    }
+
+    const allFiles = Array.isArray(version.files) ? version.files : [];
+    const targets = allFiles.filter((f) => {
+      const mime = String(f?.mime || "").toLowerCase();
+      if (mime === "link") return false;
+      if (!f?.driveId && !f?.url) return false;
+      if (requestedIds.length > 0) {
+        const candidateIds = [
+          f?.id,
+          f?._id,
+          f?.driveId,
+          f?.url,
+          f?.webViewLink,
+          f?.webContentLink,
+        ]
+          .map((value) => String(value || "").trim())
+          .filter(Boolean);
+        return candidateIds.some((value) => requestedIds.includes(value));
+      }
+      return true;
+    });
+
+    if (targets.length === 0) {
+      return res.status(400).json({ error: "No downloadable files found in this version." });
+    }
+
+    const drive = getDriveClient();
+    const zip = new JSZip();
+
+    // Helper: stream a drive file into a Buffer
+    const streamToBuffer = (stream) =>
+      new Promise((resolve, reject) => {
+        const chunks = [];
+        stream.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        stream.on("end", () => resolve(Buffer.concat(chunks)));
+        stream.on("error", reject);
+      });
+
+    // Process sequentially to avoid race conditions on usedNames and Drive rate limits
+    const usedNames = new Map();
+    let addedCount = 0;
+    for (const file of targets) {
+      try {
+        const driveId = String(file?.driveId || "").trim();
+        if (!driveId) continue;
+
+        // Get filename from Drive metadata (fallback to stored name)
+        let rawName = String(file?.name || "").trim();
+        try {
+          const metaResponse = await drive.files.get({
+            fileId: driveId,
+            fields: "id,name",
+            supportsAllDrives: true,
+          });
+          rawName = String(metaResponse?.data?.name || rawName || driveId);
+        } catch {
+          rawName = rawName || driveId;
+        }
+
+        // Deduplicate filenames safely (sequential, no race)
+        let zipName = rawName;
+        if (usedNames.has(rawName)) {
+          const count = usedNames.get(rawName) + 1;
+          usedNames.set(rawName, count);
+          const dotIdx = rawName.lastIndexOf(".");
+          zipName = dotIdx > -1
+            ? `${rawName.slice(0, dotIdx)} (${count})${rawName.slice(dotIdx)}`
+            : `${rawName} (${count})`;
+        } else {
+          usedNames.set(rawName, 1);
+        }
+
+        // Download file as stream, collect into Buffer
+        const mediaResponse = await drive.files.get(
+          { fileId: driveId, alt: "media", supportsAllDrives: true },
+          { responseType: "stream" }
+        );
+        const fileBuffer = await streamToBuffer(mediaResponse.data);
+        zip.file(zipName, fileBuffer);
+        addedCount += 1;
+      } catch (fileError) {
+        console.warn(`ZIP: skipped file ${file?.name || file?.driveId} — ${fileError?.message}`);
+      }
+    }
+
+    if (addedCount === 0) {
+      return res.status(502).json({ error: "ZIP archive could not be created for the selected files." });
+    }
+
+    const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    const taskTitle = String(task?.title || task?._id || "deliverables")
+      .replace(/[^a-zA-Z0-9_\-. ]/g, "")
+      .trim()
+      .slice(0, 60);
+    const filename = `${taskTitle}-v${version.version || versionId}.zip`;
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+    );
+    res.send(zipBuffer);
+  } catch (error) {
+    console.error("ZIP download error:", error?.message || error);
+    res.status(500).json({ error: "Failed to generate ZIP archive." });
   }
 });
 

@@ -1,12 +1,12 @@
-import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppSidebar } from './AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import {
+  AlertCircle,
   Bell,
-  ArrowUpRight,
   FileText,
   HelpCircle,
   LayoutGrid,
@@ -18,6 +18,16 @@ import {
   Sparkles,
   Database,
   Clock,
+  Eye,
+  CheckCircle2,
+  MessageSquare,
+  AlertTriangle,
+  UserPlus,
+  BadgeCheck,
+  Send,
+  ArrowRight,
+  CircleCheckBig,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { Link, useLocation } from 'react-router-dom';
@@ -41,6 +51,7 @@ import { cn } from '@/lib/utils';
 import { GridSmallBackground } from '@/components/ui/background';
 import { GlassCard } from 'react-glass-ui';
 import { UnreadTaskNotificationsContext } from '@/contexts/UnreadTaskNotificationsContext';
+import type { RequestType, Task, TaskCategory, TaskStatus } from '@/types';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -64,6 +75,29 @@ type NotificationItem = {
   readAt?: Date | null;
 };
 
+type NotificationEventKind =
+  | 'request_submitted'
+  | 'review_required'
+  | 'task_assigned'
+  | 'task_accepted'
+  | 'clarification_required'
+  | 'completed'
+  | 'message'
+  | 'general';
+
+type NotificationUiItem = NotificationItem & {
+  task?: Task;
+  eventKind: NotificationEventKind;
+  rowPreview: string;
+  previewTitle: string;
+  previewStatusLabel: string;
+  previewTypeLabel: string;
+  previewAssigneeLabel: string;
+  previewDueLabel: string;
+  previewSummary: string;
+  previewUpdatedLabel: string;
+};
+
 type GlobalViewer = {
   userId: string;
   userName: string;
@@ -76,6 +110,186 @@ type GlobalViewer = {
 
 const EMAIL_SEND_PENDING_KEY = 'designhub:gmail-send-pending';
 const EMAIL_SEND_PENDING_MAX_AGE_MS = 1000 * 60 * 60 * 24;
+const NOTIFICATION_PREVIEW_CARD_HEIGHT = 232;
+const NOTIFICATION_PREVIEW_OFFSET = 12;
+
+const taskStatusLabels: Record<TaskStatus, string> = {
+  pending: 'Pending',
+  assigned: 'Assigned',
+  accepted: 'Accepted',
+  in_progress: 'In Progress',
+  clarification_required: 'Clarification Required',
+  under_review: 'Under Review',
+  completed: 'Completed',
+};
+
+const taskCategoryLabels: Record<TaskCategory, string> = {
+  banner: 'Banner',
+  campaign_or_others: 'Campaign or others',
+  social_media_creative: 'Social Media Creative',
+  website_assets: 'Website Assets',
+  ui_ux: 'UI/UX',
+  led_backdrop: 'LED Backdrop',
+  brochure: 'Brochure',
+  flyer: 'Flyer',
+};
+
+const requestTypeLabels: Record<RequestType, string> = {
+  single_task: 'Single request',
+  campaign_request: 'Campaign request',
+};
+
+const collapseNotificationText = (value?: string | null) =>
+  String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const cleanNotificationTitle = (title?: string | null) =>
+  collapseNotificationText(title)
+    .replace(/\s*:\s*now$/i, '')
+    .replace(/\s+now$/i, '');
+
+const formatTaskStatusLabel = (status?: string | null) => {
+  if (!status) return 'Open';
+  const normalized = String(status).trim().toLowerCase().replace(/[\s-]+/g, '_') as TaskStatus;
+  return taskStatusLabels[normalized] || collapseNotificationText(status);
+};
+
+const formatTaskCategoryLabel = (category?: string | null) => {
+  if (!category) return '';
+  const normalized = String(category).trim().toLowerCase().replace(/[\s-]+/g, '_') as TaskCategory;
+  return taskCategoryLabels[normalized] || collapseNotificationText(category);
+};
+
+const formatTaskRequestTypeLabel = (requestType?: string | null) => {
+  if (!requestType) return '';
+  const normalized = String(requestType).trim().toLowerCase().replace(/[\s-]+/g, '_') as RequestType;
+  return requestTypeLabels[normalized] || collapseNotificationText(requestType);
+};
+
+const formatTaskDueLabel = (deadline?: Date | string | null) => {
+  if (!deadline) return 'Deadline not set';
+  const parsed = deadline instanceof Date ? deadline : new Date(deadline);
+  if (!Number.isFinite(parsed.getTime())) return 'Deadline not set';
+  const dueDistance = formatDistanceToNow(parsed, { addSuffix: true });
+  if (isToday(parsed)) return 'Due today';
+  if (isPast(parsed)) return `Overdue by ${formatDistanceToNow(parsed)}`;
+  return `Due ${dueDistance}`;
+};
+
+const getNotificationPreviewSummary = (entry: NotificationItem, task?: Task) => {
+  const explicitMessage = collapseNotificationText(entry.message);
+  if (explicitMessage) return explicitMessage;
+
+  const latestComment = [...(task?.comments || [])].sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  )[0];
+  if (latestComment?.content) {
+    return collapseNotificationText(latestComment.content);
+  }
+
+  const latestChange = [...(task?.changeHistory || [])].sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  )[0];
+  if (latestChange?.note) {
+    return collapseNotificationText(latestChange.note);
+  }
+
+  const description = collapseNotificationText(task?.description);
+  if (description) return description;
+
+  return 'Open this task to review the latest activity.';
+};
+
+const resolveNotificationEventKind = (entry: NotificationItem, task?: Task): NotificationEventKind => {
+  const title = cleanNotificationTitle(entry.title).toLowerCase();
+  const message = collapseNotificationText(entry.message).toLowerCase();
+  const type = collapseNotificationText(entry.type).toLowerCase();
+  const content = `${title} ${message} ${type}`;
+
+  if (content.includes('clarification required')) return 'clarification_required';
+  if (content.includes('review required') || content.includes('under review')) return 'review_required';
+  if (content.includes('task assigned') || content.includes('assigned this task')) return 'task_assigned';
+  if (content.includes('task accepted') || content.includes('accepted this task')) return 'task_accepted';
+  if (
+    content.includes('task completed') ||
+    content.includes('final files approved') ||
+    content.includes('approved the final deliverables') ||
+    content.includes('marked this task as completed')
+  ) {
+    return 'completed';
+  }
+  if (
+    content.includes('new request') ||
+    content.includes('request created') ||
+    content.includes('request submitted') ||
+    content.includes('submitted by')
+  ) {
+    return 'request_submitted';
+  }
+  if (content.includes('message') || content.includes('comment')) return 'message';
+
+  if (task?.status === 'clarification_required') return 'clarification_required';
+  if (task?.status === 'under_review') return 'review_required';
+  if (task?.status === 'completed') return 'completed';
+
+  return 'general';
+};
+
+const getNotificationIconConfig = (
+  eventKind: NotificationEventKind
+): { Icon: React.ElementType; containerClassName: string; iconClassName: string } => {
+  switch (eventKind) {
+    case 'request_submitted':
+      return {
+        Icon: ClipboardCheck,
+        containerClassName: 'bg-[#EEF4FF] dark:bg-[#1A2748]',
+        iconClassName: 'text-[#4562B2] dark:text-[#B8CBFF]',
+      };
+    case 'review_required':
+      return {
+        Icon: AlertCircle,
+        containerClassName: 'bg-[#FFF3EC] dark:bg-[#3C2513]',
+        iconClassName: 'text-[#D9722D] dark:text-[#FDBA74]',
+      };
+    case 'task_assigned':
+      return {
+        Icon: UserPlus,
+        containerClassName: 'bg-[#EEF2FF] dark:bg-[#1E2550]',
+        iconClassName: 'text-[#5A67D8] dark:text-[#C7D2FE]',
+      };
+    case 'task_accepted':
+      return {
+        Icon: CheckCircle2,
+        containerClassName: 'bg-[#ECFDF3] dark:bg-[#142C22]',
+        iconClassName: 'text-[#1F9D61] dark:text-[#86EFAC]',
+      };
+    case 'clarification_required':
+      return {
+        Icon: AlertTriangle,
+        containerClassName: 'bg-[#FFF7E8] dark:bg-[#3A2B0C]',
+        iconClassName: 'text-[#D79523] dark:text-[#FCD34D]',
+      };
+    case 'completed':
+      return {
+        Icon: CircleCheckBig,
+        containerClassName: 'bg-[#ECFDF3] dark:bg-[#142C22]',
+        iconClassName: 'text-[#17905E] dark:text-[#86EFAC]',
+      };
+    case 'message':
+      return {
+        Icon: MessageSquare,
+        containerClassName: 'bg-[#EEF7FF] dark:bg-[#14283C]',
+        iconClassName: 'text-[#3182CE] dark:text-[#93C5FD]',
+      };
+    default:
+      return {
+        Icon: FileText,
+        containerClassName: 'bg-slate-100 dark:bg-slate-800',
+        iconClassName: 'text-slate-500 dark:text-slate-300',
+      };
+  }
+};
 
 const formatViewerLastSeenLabel = (lastSeenAt?: string) => {
   if (!lastSeenAt) return 'Unavailable';
@@ -111,6 +325,7 @@ export function DashboardLayout({
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const autoPreviewShownRef = useRef(false);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notificationHoverPreviewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
   const lastFetchedAtRef = useRef<string | null>(null);
   const notificationsSocketRef = useRef<ReturnType<typeof createSocket> | null>(null);
@@ -122,12 +337,16 @@ export function DashboardLayout({
   const localSelfTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const notificationsPanelRef = useRef<HTMLDivElement | null>(null);
   const userId = user?.id || (user as { _id?: string } | null)?._id || '';
   const userEmail = String(user?.email || '').trim().toLowerCase();
   const isStaffUser = user?.role === 'staff';
   const isMainDesignerUser = isMainDesigner(user);
   const useServerNotifications = Boolean(apiUrl);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
+  const [canUseNotificationHoverPreview, setCanUseNotificationHoverPreview] = useState(false);
+  const [activeNotificationPreviewId, setActiveNotificationPreviewId] = useState<string | null>(null);
+  const [notificationPreviewTop, setNotificationPreviewTop] = useState(NOTIFICATION_PREVIEW_OFFSET);
 
   const isCurrentUserViewer = useCallback(
     (viewer?: GlobalViewer | null) => {
@@ -635,8 +854,8 @@ export function DashboardLayout({
 
 
   const taskIndex = useMemo(() => {
-    const byId = new Map<string, any>();
-    const byTitle = new Map<string, any>();
+    const byId = new Map<string, Task>();
+    const byTitle = new Map<string, Task>();
     hydratedTasks.forEach((task) => {
       const id = String(task?.id || task?._id || '').trim();
       if (id) {
@@ -978,13 +1197,13 @@ export function DashboardLayout({
     return entry.note || `${entry.userName} updated ${entry.field}`;
   };
 
-  const uiNotifications = useMemo(() => {
+  const uiNotifications = useMemo<NotificationUiItem[]>(() => {
     const baseNotifications = useServerNotifications
       ? activeNotifications.map((entry: any) => normalizeNotification(entry))
       : activeNotifications.map((entry: any) => ({
         id: entry.id || `${entry.taskId}-${entry.createdAt}`,
-        title: getNotificationTitle(entry),
-        message: getNotificationNote(entry),
+        title: cleanNotificationTitle(getNotificationTitle(entry)),
+        message: collapseNotificationText(getNotificationNote(entry)),
         type: entry.field || 'task',
         link: entry.taskId ? `/task/${entry.taskId}` : '',
         linkState: entry.taskId ? { task: entry.task, highlightChangeId: entry.id } : undefined,
@@ -994,13 +1213,36 @@ export function DashboardLayout({
 
     return baseNotifications.map((entry) => {
       const resolved = resolveNotificationTarget(entry);
+      const task = resolved.task;
+      const title = cleanNotificationTitle(entry.title);
+      const message = collapseNotificationText(entry.message);
+      const previewSummary = getNotificationPreviewSummary({ ...entry, title, message }, task);
       const linkState =
-        entry.linkState ?? (resolved.task ? { task: resolved.task } : undefined);
+        entry.linkState ?? (task ? { task } : undefined);
       return {
         ...entry,
+        title,
+        message,
         link: resolved.link || entry.link,
         taskId: resolved.taskId || entry.taskId,
         linkState,
+        task,
+        eventKind: resolveNotificationEventKind({ ...entry, title, message }, task),
+        rowPreview: previewSummary,
+        previewTitle: collapseNotificationText(task?.title) || title || 'Task update',
+        previewStatusLabel: formatTaskStatusLabel(task?.status),
+        previewTypeLabel:
+          formatTaskCategoryLabel(task?.category) ||
+          formatTaskRequestTypeLabel(task?.requestType) ||
+          'Task update',
+        previewAssigneeLabel: task?.assignedToName
+          ? `Assigned to ${task.assignedToName}`
+          : 'Assigned user not set',
+        previewDueLabel: formatTaskDueLabel(task?.deadline),
+        previewSummary,
+        previewUpdatedLabel: task?.updatedAt
+          ? `Updated ${formatDistanceToNow(new Date(task.updatedAt), { addSuffix: true })}`
+          : '',
       };
     });
   }, [
@@ -1011,6 +1253,92 @@ export function DashboardLayout({
     resolveNotificationTarget,
     useServerNotifications,
   ]);
+
+  const activeNotificationPreview = useMemo(
+    () => uiNotifications.find((entry) => entry.id === activeNotificationPreviewId) ?? null,
+    [activeNotificationPreviewId, uiNotifications]
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mediaQuery = window.matchMedia('(min-width: 1180px) and (hover: hover) and (pointer: fine)');
+    const syncMatches = () => setCanUseNotificationHoverPreview(mediaQuery.matches);
+    syncMatches();
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', syncMatches);
+      return () => mediaQuery.removeEventListener('change', syncMatches);
+    }
+    mediaQuery.addListener(syncMatches);
+    return () => mediaQuery.removeListener(syncMatches);
+  }, []);
+
+  const clearNotificationHoverPreviewTimer = useCallback(() => {
+    if (!notificationHoverPreviewTimeoutRef.current) return;
+    clearTimeout(notificationHoverPreviewTimeoutRef.current);
+    notificationHoverPreviewTimeoutRef.current = null;
+  }, []);
+
+  const scheduleNotificationHoverPreviewClear = useCallback(() => {
+    clearNotificationHoverPreviewTimer();
+    notificationHoverPreviewTimeoutRef.current = setTimeout(() => {
+      setActiveNotificationPreviewId(null);
+      notificationHoverPreviewTimeoutRef.current = null;
+    }, 120);
+  }, [clearNotificationHoverPreviewTimer]);
+
+  const handleNotificationRowHoverStart = useCallback(
+    (entryId: string, rowElement: HTMLButtonElement) => {
+      if (!canUseNotificationHoverPreview) return;
+      clearNotificationHoverPreviewTimer();
+      setActiveNotificationPreviewId(entryId);
+      if (!notificationsPanelRef.current) return;
+      const panelRect = notificationsPanelRef.current.getBoundingClientRect();
+      const rowRect = rowElement.getBoundingClientRect();
+      const nextTop = rowRect.top - panelRect.top - 8;
+      const maxTop = Math.max(
+        NOTIFICATION_PREVIEW_OFFSET,
+        notificationsPanelRef.current.offsetHeight -
+          NOTIFICATION_PREVIEW_CARD_HEIGHT -
+          NOTIFICATION_PREVIEW_OFFSET
+      );
+      setNotificationPreviewTop(
+        Math.min(Math.max(NOTIFICATION_PREVIEW_OFFSET, nextTop), maxTop)
+      );
+    },
+    [canUseNotificationHoverPreview, clearNotificationHoverPreviewTimer]
+  );
+
+  useEffect(() => {
+    if (notificationsOpen && canUseNotificationHoverPreview) return;
+    clearNotificationHoverPreviewTimer();
+    setActiveNotificationPreviewId(null);
+  }, [canUseNotificationHoverPreview, clearNotificationHoverPreviewTimer, notificationsOpen]);
+
+  useEffect(
+    () => () => {
+      clearNotificationHoverPreviewTimer();
+    },
+    [clearNotificationHoverPreviewTimer]
+  );
+
+  const openNotificationEntry = useCallback(
+    (entry: NotificationUiItem) => {
+      markNotificationRead(entry);
+      clearNotificationHoverPreviewTimer();
+      setActiveNotificationPreviewId(null);
+      setNotificationsOpen(false);
+      const resolvedLink =
+        entry.link ||
+        (entry.taskId ? `/task/${entry.taskId}` : '');
+      if (resolvedLink) {
+        navigate(
+          resolvedLink,
+          entry.linkState ? { state: entry.linkState } : undefined
+        );
+      }
+    },
+    [clearNotificationHoverPreviewTimer, markNotificationRead, navigate]
+  );
 
   const isNotificationNow = (createdAt: Date | string) => {
     const createdTime = new Date(createdAt).getTime();
@@ -1230,6 +1558,183 @@ export function DashboardLayout({
       };
   }, []);
 
+  const notificationPopover = notificationsOpen ? (
+    <div className="absolute right-0 mt-2 z-50 flex items-start gap-3">
+      {canUseNotificationHoverPreview && activeNotificationPreview ? (
+        <div
+          className="hidden min-[1180px]:block"
+          style={{ marginTop: `${notificationPreviewTop}px` }}
+        >
+          <div
+            onMouseEnter={clearNotificationHoverPreviewTimer}
+            onMouseLeave={scheduleNotificationHoverPreviewClear}
+            className="w-[320px] rounded-[20px] border border-[#E4EAF5] bg-white p-4 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-950"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8C9DB8] dark:text-slate-400">
+                Task Preview
+              </span>
+              {activeNotificationPreview.previewUpdatedLabel ? (
+                <span className="text-[10.5px] text-[#9BA8BE] dark:text-slate-500">
+                  {activeNotificationPreview.previewUpdatedLabel}
+                </span>
+              ) : null}
+            </div>
+            <h4 className="mt-2 text-[15px] font-semibold leading-5 text-[#1E2A43] line-clamp-2 dark:text-slate-100">
+              {activeNotificationPreview.previewTitle}
+            </h4>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-[#EEF4FF] px-2.5 py-1 text-[10.5px] font-semibold text-[#36559E] dark:bg-slate-800 dark:text-slate-200">
+                {activeNotificationPreview.previewStatusLabel}
+              </span>
+              <span className="text-[11.5px] font-medium text-[#5E6D88] dark:text-slate-400">
+                {activeNotificationPreview.previewTypeLabel}
+              </span>
+            </div>
+            <div className="mt-4 space-y-2.5">
+              <div className="flex items-center gap-2 text-[12px] text-[#55647C] dark:text-slate-300">
+                <User className="h-3.5 w-3.5 text-[#8FA0BD] dark:text-slate-500" />
+                <span className="line-clamp-1">{activeNotificationPreview.previewAssigneeLabel}</span>
+              </div>
+              <div className="flex items-center gap-2 text-[12px] text-[#55647C] dark:text-slate-300">
+                <Clock className="h-3.5 w-3.5 text-[#8FA0BD] dark:text-slate-500" />
+                <span className="line-clamp-1">{activeNotificationPreview.previewDueLabel}</span>
+              </div>
+            </div>
+            <p className="mt-4 text-[12.5px] leading-5 text-[#65748E] line-clamp-3 dark:text-slate-400">
+              {activeNotificationPreview.previewSummary}
+            </p>
+            <button
+              type="button"
+              onClick={() => openNotificationEntry(activeNotificationPreview)}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[#1B3260] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#15274B] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+            >
+              View Task
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div
+        ref={notificationsPanelRef}
+        className="w-[23rem] overflow-hidden rounded-xl border border-[#D5DFF5] bg-white shadow-[0_8px_32px_-8px_rgba(15,23,42,0.18)] animate-dropdown origin-top-right dark:border-border dark:bg-card"
+      >
+        <div className="flex items-center justify-between border-b border-[#EAF0FA] px-4 py-3 dark:border-border">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#2F3A56] dark:text-slate-200">
+              Notifications
+            </span>
+            {unreadCount > 0 && (
+              <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            {useServerNotifications && unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={markAllNotificationsRead}
+                className="text-[11px] font-medium text-[#5C70A8] transition hover:text-[#274187] dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                Mark all read
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setNotificationsOpen(false)}
+              className="flex h-6 w-6 items-center justify-center rounded-full text-[#8898BB] transition hover:bg-[#F0F4FF] hover:text-[#2F3A56] dark:text-slate-400 dark:hover:bg-muted dark:hover:text-slate-200"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[440px] overflow-y-auto overflow-x-hidden scrollbar-thin">
+          {uiNotifications.length > 0 ? (
+            <div className="divide-y divide-[#EEF2FB] dark:divide-border">
+              {uiNotifications.map((entry, idx) => {
+                const isUnread = !entry.readAt;
+                const isPreviewActive =
+                  canUseNotificationHoverPreview && activeNotificationPreviewId === entry.id;
+                const timeLabel = isNotificationNow(entry.createdAt)
+                  ? 'Just now'
+                  : format(new Date(entry.createdAt), 'MMM d, yyyy · h:mm a');
+                const iconConfig = getNotificationIconConfig(entry.eventKind);
+
+                return (
+                  <button
+                    key={entry.id || `notif-${idx}`}
+                    type="button"
+                    onClick={() => openNotificationEntry(entry)}
+                    onMouseEnter={(event) =>
+                      handleNotificationRowHoverStart(entry.id, event.currentTarget)
+                    }
+                    onMouseLeave={scheduleNotificationHoverPreviewClear}
+                    className={cn(
+                      'group relative flex w-full items-start gap-3 px-4 py-3.5 text-left transition-[background-color,box-shadow] duration-150',
+                      isPreviewActive
+                        ? 'bg-[#EEF4FF] shadow-[inset_0_0_0_1px_rgba(205,221,255,0.9)] dark:bg-primary/10'
+                        : isUnread
+                          ? 'bg-[#F7FAFF] hover:bg-[#F1F6FF] dark:bg-primary/5 dark:hover:bg-primary/10'
+                          : 'bg-white hover:bg-[#F8FAFD] dark:bg-card dark:hover:bg-muted/40'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl',
+                        iconConfig.containerClassName
+                      )}
+                    >
+                      <iconConfig.Icon className={cn('h-4 w-4', iconConfig.iconClassName)} />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p
+                            className={cn(
+                              'text-[12.5px] font-semibold leading-snug line-clamp-1',
+                              isUnread
+                                ? 'text-[#1B2E6E] dark:text-slate-100'
+                                : 'text-[#33415F] dark:text-slate-200'
+                            )}
+                          >
+                            {entry.title}
+                          </p>
+                          <p className="mt-0.5 text-[11.5px] leading-snug text-[#5E6E8D] line-clamp-1 dark:text-slate-400">
+                            {entry.rowPreview}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1.5 pl-2">
+                          <span className="text-[10.5px] tabular-nums text-[#9BACC8] dark:text-slate-500">
+                            {timeLabel}
+                          </span>
+                          <span
+                            className={cn(
+                              'h-2 w-2 rounded-full transition-opacity',
+                              isUnread ? 'bg-[#4C6FFF] opacity-100' : 'bg-transparent opacity-0'
+                            )}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="px-4 py-10 text-center">
+              <p className="text-[12.5px] font-medium text-[#8898BB] dark:text-slate-400">No notifications yet</p>
+              <p className="mt-0.5 text-[11px] text-[#B0BFDA] dark:text-slate-500">You're all caught up.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   const notificationAction = canShowNotifications ? (
     <div className="relative" ref={notificationsRef}>
       <button
@@ -1263,76 +1768,134 @@ export function DashboardLayout({
           </span>
         )}
       </button>
-      {notificationsOpen && (
-        <div className="absolute right-0 mt-2 w-72 rounded-xl border border-[#C9D7FF] bg-[#F2F6FF]/95 dark:bg-card/95 dark:border-border backdrop-blur-xl p-3 shadow-lg z-50 animate-dropdown origin-top-right">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2F3A56] dark:text-slate-100">
-              Notifications
-            </span>
+      {notificationPopover}{false && (
+        <div className="absolute right-0 mt-2 w-80 rounded-xl border border-[#D5DFF5] bg-white dark:bg-card dark:border-border shadow-[0_8px_32px_-8px_rgba(15,23,42,0.18)] z-50 animate-dropdown origin-top-right overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-[#EAF0FA] px-4 py-3 dark:border-border">
             <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#2F3A56] dark:text-slate-200">
+                Notifications
+              </span>
+              {unreadCount > 0 && (
+                <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
               {useServerNotifications && unreadCount > 0 && (
                 <button
                   type="button"
                   onClick={markAllNotificationsRead}
-                  className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#3E5AA8] hover:text-[#274187] dark:text-slate-200 dark:hover:text-white"
+                  className="text-[11px] font-medium text-[#5C70A8] transition hover:text-[#274187] dark:text-slate-400 dark:hover:text-slate-200"
                 >
                   Mark all read
                 </button>
               )}
               <button
-                className="text-[#5C70A8] hover:text-[#274187] dark:text-slate-300 dark:hover:text-white"
-                onClick={() => setNotificationsOpen(false)}
                 type="button"
+                onClick={() => setNotificationsOpen(false)}
+                className="flex h-6 w-6 items-center justify-center rounded-full text-[#8898BB] transition hover:bg-[#F0F4FF] hover:text-[#2F3A56] dark:text-slate-400 dark:hover:bg-muted dark:hover:text-slate-200"
               >
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
-          <div className="mt-3 space-y-2 max-h-[420px] overflow-y-auto overflow-x-hidden pr-2 scrollbar-thin">
+
+          {/* Notification list */}
+          <div className="max-h-[440px] overflow-y-auto overflow-x-hidden scrollbar-thin">
             {uiNotifications.length > 0 ? (
-              uiNotifications.map((entry, idx) => (
-                <button
-                  key={entry.id || `notif-${idx}`}
-                  type="button"
-                  onClick={() => {
-                    markNotificationRead(entry);
-                    setNotificationsOpen(false);
-                    const resolvedLink =
-                      entry.link ||
-                      (entry.taskId ? `/task/${entry.taskId}` : '');
-                    if (resolvedLink) {
-                      navigate(
-                        resolvedLink,
-                        entry.linkState ? { state: entry.linkState } : undefined
-                      );
-                    }
-                  }}
-                  className={cn(
-                    'block w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition',
-                    entry.readAt
-                      ? 'border-primary/10 bg-white/70 hover:bg-white dark:border-border dark:bg-slate-900/60 dark:hover:bg-slate-900/80'
-                      : 'border-primary/20 bg-primary/5 hover:bg-primary/10 dark:border-primary/30 dark:bg-primary/10 dark:hover:bg-primary/20'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="min-w-0 flex-1 break-words text-sm font-semibold text-foreground line-clamp-2">
-                      {`${entry.title
-                        .replace(/\s*:\s*now$/i, '')
-                        .replace(/\s+now$/i, '')}${isNotificationNow(entry.createdAt) ? ': now' : ''}`}
-                    </p>
-                    <ArrowUpRight className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <p className="mt-1 break-all text-xs text-muted-foreground line-clamp-2">
-                    {entry.message}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {format(new Date(entry.createdAt), 'MMM d, yyyy h:mm a')}
-                  </p>
-                </button>
-              ))
+              <div className="divide-y divide-[#EEF2FB] dark:divide-border">
+                {uiNotifications.map((entry, idx) => {
+                  const isUnread = !entry.readAt;
+                  const titleClean = entry.title
+                    .replace(/\s*:\s*now$/i, '')
+                    .replace(/\s+now$/i, '');
+                  const timeLabel = isNotificationNow(entry.createdAt)
+                    ? 'Just now'
+                    : format(new Date(entry.createdAt), 'MMM d, yyyy · h:mm a');
+
+                  // Derive icon + color from type or title keywords
+                  const typeKey = (entry.type || '').toLowerCase();
+                  const titleKey = titleClean.toLowerCase();
+                  type IconConfig = { Icon: React.ElementType; bg: string; color: string };
+                  const iconConfig: IconConfig = (() => {
+                    if (typeKey.includes('review') || titleKey.includes('review'))
+                      return { Icon: Eye, bg: 'bg-violet-50 dark:bg-violet-950/40', color: 'text-violet-500' };
+                    if (typeKey.includes('completed') || titleKey.includes('completed'))
+                      return { Icon: BadgeCheck, bg: 'bg-emerald-50 dark:bg-emerald-950/40', color: 'text-emerald-500' };
+                    if (typeKey.includes('accepted') || titleKey.includes('accepted'))
+                      return { Icon: CheckCircle2, bg: 'bg-emerald-50 dark:bg-emerald-950/40', color: 'text-emerald-500' };
+                    if (typeKey.includes('clarification') || titleKey.includes('clarification'))
+                      return { Icon: AlertTriangle, bg: 'bg-amber-50 dark:bg-amber-950/40', color: 'text-amber-500' };
+                    if (typeKey.includes('comment') || titleKey.includes('comment') || typeKey.includes('message'))
+                      return { Icon: MessageSquare, bg: 'bg-sky-50 dark:bg-sky-950/40', color: 'text-sky-500' };
+                    if (typeKey.includes('assign') || titleKey.includes('assign'))
+                      return { Icon: UserPlus, bg: 'bg-indigo-50 dark:bg-indigo-950/40', color: 'text-indigo-500' };
+                    if (typeKey.includes('submit') || titleKey.includes('submit') || titleKey.includes('request'))
+                      return { Icon: Send, bg: 'bg-blue-50 dark:bg-blue-950/40', color: 'text-blue-500' };
+                    return { Icon: FileText, bg: 'bg-slate-100 dark:bg-slate-800', color: 'text-slate-500' };
+                  })();
+
+                  return (
+                    <button
+                      key={entry.id || `notif-${idx}`}
+                      type="button"
+                      onClick={() => {
+                        markNotificationRead(entry);
+                        setNotificationsOpen(false);
+                        const resolvedLink =
+                          entry.link ||
+                          (entry.taskId ? `/task/${entry.taskId}` : '');
+                        if (resolvedLink) {
+                          navigate(
+                            resolvedLink,
+                            entry.linkState ? { state: entry.linkState } : undefined
+                          );
+                        }
+                      }}
+                      className={cn(
+                        'relative flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors',
+                        isUnread
+                          ? 'bg-[#F5F8FF] hover:bg-[#EDF2FF] dark:bg-primary/5 dark:hover:bg-primary/10'
+                          : 'bg-white hover:bg-[#F8FAFD] dark:bg-card dark:hover:bg-muted/40'
+                      )}
+                    >
+                      {/* Icon */}
+                      <div className={cn('mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full', iconConfig.bg)}>
+                        <iconConfig.Icon className={cn('h-3.5 w-3.5', iconConfig.color)} />
+                      </div>
+
+                      {/* Content */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={cn(
+                            'text-[12px] font-semibold leading-snug line-clamp-1',
+                            isUnread ? 'text-[#1B2E6E] dark:text-slate-100' : 'text-[#374569] dark:text-slate-200'
+                          )}>
+                            {titleClean}
+                          </p>
+                          {isUnread && (
+                            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                          )}
+                        </div>
+                        {entry.message && (
+                          <p className="mt-0.5 text-[11.5px] leading-snug text-[#5C6E90] line-clamp-1 dark:text-slate-400">
+                            {entry.message}
+                          </p>
+                        )}
+                        <p className="mt-1.5 text-[10.5px] tabular-nums text-[#9BACC8] dark:text-slate-500">
+                          {timeLabel}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             ) : (
-              <div className="rounded-lg border border-dashed border-[#D9E6FF] bg-white/70 dark:bg-card/80 dark:border-border px-3 py-4 text-xs text-muted-foreground text-center">
-                No notifications yet.
+              <div className="px-4 py-10 text-center">
+                <p className="text-[12.5px] font-medium text-[#8898BB] dark:text-slate-400">No notifications yet</p>
+                <p className="mt-0.5 text-[11px] text-[#B0BFDA] dark:text-slate-500">You're all caught up.</p>
               </div>
             )}
           </div>

@@ -340,6 +340,10 @@ const REQUEST_TYPE_OPTIONS: Array<{
   },
 ];
 
+const REQUEST_TYPE_HOVER_TRANSITION_STYLE = {
+  transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
+} as const;
+
 const SINGLE_REQUEST_CATEGORY_OPTIONS: Array<{
   value: TaskCategory;
   label: string;
@@ -2643,14 +2647,24 @@ export default function NewRequest() {
               type="button"
               onClick={() => handleRequestTypeSelect(option.value)}
               className={cn(
-                'animate-slide-up group relative h-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white p-5 text-left shadow-[0_12px_28px_-24px_rgba(30,42,90,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-[#F8FBFF] hover:shadow-[0_18px_36px_-22px_rgba(30,42,90,0.22)] dark:border-[#2A427A] dark:bg-[linear-gradient(180deg,rgba(10,18,40,0.98),rgba(11,24,52,0.95),rgba(13,29,63,0.92))] dark:shadow-[0_24px_56px_-32px_rgba(2,8,23,0.92)] dark:hover:border-[#4E6FE0]/55 dark:hover:bg-[linear-gradient(180deg,rgba(11,21,46,0.98),rgba(12,27,58,0.96),rgba(14,33,71,0.94))] dark:hover:shadow-[0_30px_64px_-34px_rgba(2,8,23,0.96)]'
+                'animate-slide-up group relative h-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white p-5 text-left shadow-[0_12px_28px_-24px_rgba(30,42,90,0.18)] transform-gpu will-change-transform transition-[transform,border-color,box-shadow] duration-500 hover:-translate-y-1 hover:border-primary/35 hover:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.2)] focus-visible:-translate-y-1 focus-visible:border-primary/35 focus-visible:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.2)] dark:border-[#2A427A] dark:bg-[linear-gradient(180deg,rgba(10,18,40,0.98),rgba(11,24,52,0.95),rgba(13,29,63,0.92))] dark:shadow-[0_24px_56px_-32px_rgba(2,8,23,0.92)] dark:hover:border-[#4E6FE0]/45 dark:hover:shadow-[0_30px_64px_-34px_rgba(2,8,23,0.96)] dark:focus-visible:border-[#4E6FE0]/45 dark:focus-visible:shadow-[0_30px_64px_-34px_rgba(2,8,23,0.96)]'
               )}
-              style={{ animationDelay: `${index * 90}ms` }}
+              style={{ animationDelay: `${index * 90}ms`, ...REQUEST_TYPE_HOVER_TRANSITION_STYLE }}
             >
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.08),transparent_34%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_30%)]" />
+              <div
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.08),transparent_34%)] opacity-70 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_30%)]"
+                style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
+              />
+              <div
+                className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(242,247,255,0.82)_58%,rgba(238,244,255,0.94))] dark:bg-[linear-gradient(180deg,rgba(11,21,46,0.28),rgba(12,27,58,0.18),rgba(14,33,71,0.34))]"
+                style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
+              />
               <div className="relative flex min-h-[188px] flex-col">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#DDE7FF] bg-[#F7FAFF] text-primary transition-transform duration-300 group-hover:-translate-y-0.5 dark:border-[#314778] dark:bg-[#101B38] dark:text-[#D9E4FF]">
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#DDE7FF] bg-[#F7FAFF] text-primary transform-gpu transition-[transform,border-color,background-color] duration-500 group-hover:-translate-y-0.5 group-hover:border-[#C8D8FF] group-hover:bg-white group-focus-visible:-translate-y-0.5 group-focus-visible:border-[#C8D8FF] group-focus-visible:bg-white dark:border-[#314778] dark:bg-[#101B38] dark:text-[#D9E4FF] dark:group-hover:border-[#3E5DA8] dark:group-hover:bg-[#132246] dark:group-focus-visible:border-[#3E5DA8] dark:group-focus-visible:bg-[#132246]"
+                    style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
+                  >
                     <OptionIcon className="h-5 w-5" />
                   </div>
                   <span className="inline-flex rounded-full border border-[#DCE6FF] bg-[#FAFCFF] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5B73B2] dark:border-[#314778] dark:bg-[#0F1935] dark:text-[#C3D1F5]">
@@ -2668,9 +2682,12 @@ export default function NewRequest() {
                 </div>
 
                 <div className="mt-4 flex items-center justify-end border-t border-[#E8EEFF] pt-4 dark:border-[#23396E]">
-                  <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-primary dark:text-[#C7D5FF]">
+                  <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-primary transition-colors duration-300 ease-out dark:text-[#C7D5FF]">
                     {option.cta}
-                    <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+                    <ArrowRight
+                      className="h-4 w-4 transform-gpu transition-transform duration-500 group-hover:translate-x-1.5 group-focus-visible:translate-x-1.5"
+                      style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
+                    />
                   </div>
                 </div>
               </div>
