@@ -276,7 +276,7 @@ export default function EmailTask() {
                   {preview.category ? <span className={pillClass}>{humanize(preview.category)}</span> : null}
                   {preview.approvalStatus ? <span className={pillClass}>Approval {humanize(preview.approvalStatus)}</span> : null}
                 </div>
-                <h1 className="text-[1.95rem] font-semibold leading-tight tracking-[-0.04em] text-[#12254C]">
+                <h1 className="text-[1.55rem] font-semibold leading-tight tracking-[-0.04em] text-[#12254C] sm:text-[1.65rem]">
                   {preview.campaign?.requestName || preview.title}
                 </h1>
                 <p className="mt-3 max-w-3xl text-[15px] leading-8 text-[#5B6B8A]">

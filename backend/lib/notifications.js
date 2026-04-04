@@ -992,13 +992,13 @@ export const sendFinalFilesEmail = async ({
 
   const assignedHeaderHtml = `
       <div style="background:${brandSoft};border-radius:18px;padding:24px;text-align:left;border:1px solid #e6e9f2;">
-        <div style="font-size:26px;font-weight:700;color:#111827;line-height:1.15;">
+        <div style="font-size:21px;font-weight:700;color:#111827;line-height:1.25;">
           ${emailHeadline}
         </div>
-        <div style="margin-top:8px;font-size:20px;font-weight:600;color:${brandColor};line-height:1.3;">
+        <div style="margin-top:6px;font-size:16px;font-weight:600;color:${brandColor};line-height:1.4;">
           ${safeTitle}
         </div>
-        <div style="margin-top:14px;font-size:14px;color:#475467;line-height:1.6;">
+        <div style="margin-top:12px;font-size:14px;color:#475467;line-height:1.6;">
           ${emailDescription}
         </div>
         ${safeAssignmentMessage

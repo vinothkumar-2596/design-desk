@@ -73,6 +73,16 @@ const isExcludedAssignableDesigner = (designer) => {
   );
 };
 const isObjectIdLike = (value) => mongoose.Types.ObjectId.isValid(String(value || ""));
+const buildAssignmentActorLabel = (user) => {
+  const role = normalizeTaskRole(user?.role);
+  if (role === "designer" && isMainDesignerUser(user)) {
+    const portalId = buildDesignerPortalId(user);
+    return portalId ? `Design Lead (${portalId})` : "Design Lead";
+  }
+  if (role === "admin") return "Admin";
+  if (role === "treasurer") return "Treasurer";
+  return String(user?.name || user?.email || "Manager").trim() || "Manager";
+};
 const resolveAssignedIdentifier = (task) => {
   const assignedToId = normalizeId(task?.assignedToId);
   if (assignedToId) return assignedToId;
@@ -4315,6 +4325,7 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
     const deadlineChanged = previousDeadline !== nextDeadline;
     const assignedAt = new Date();
     const assignedBy = req.user?.name || req.user?.email || "Manager";
+    const assignedByNotificationLabel = buildAssignmentActorLabel(req.user);
     const assignedById = getUserId(req);
     const assignedDesignerName =
       resolvedAssignment.assignedToName ||
@@ -4444,7 +4455,7 @@ router.post("/:id/assign-designer", ensureTaskAccess, async (req, res) => {
       taskTitle: updatedTask.title,
       files: assignmentSupportingFiles,
       designerName: assignedDesignerName,
-      assignedByName: assignedBy,
+      assignedByName: assignedByNotificationLabel,
       taskUrl,
       submittedAt: assignedAt,
       taskDetails: {
