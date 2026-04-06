@@ -8117,8 +8117,8 @@ function TaskDetailScreen() {
           className={cn(
             'status-panel-gradient-border pointer-events-auto relative w-[23rem] select-none overflow-hidden rounded-[32px] border text-white backdrop-blur-xl transition-[max-height,padding,box-shadow,background] duration-300 dark:border-transparent',
             isStaffStatusPanelExpanded
-              ? 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-6 pb-6 pt-5 shadow-[0_28px_60px_-34px_rgba(35,68,170,0.62)] hover:shadow-[0_30px_68px_-32px_rgba(35,68,170,0.72)] max-h-[38rem] dark:shadow-none dark:hover:shadow-none'
-              : 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-5 pb-5 pt-4 shadow-[0_24px_52px_-30px_rgba(35,68,170,0.62)] hover:shadow-[0_26px_56px_-28px_rgba(35,68,170,0.72)] max-h-[12.5rem] dark:shadow-none dark:hover:shadow-none'
+              ? 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-6 pb-8 pt-5 shadow-[0_28px_60px_-34px_rgba(35,68,170,0.62)] hover:shadow-[0_30px_68px_-32px_rgba(35,68,170,0.72)] max-h-[38rem] dark:shadow-none dark:hover:shadow-none'
+              : 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-5 pb-7 pt-4 shadow-[0_24px_52px_-30px_rgba(35,68,170,0.62)] hover:shadow-[0_26px_56px_-28px_rgba(35,68,170,0.72)] max-h-[13.25rem] dark:shadow-none dark:hover:shadow-none'
           )}
         >
           <div
@@ -8212,7 +8212,7 @@ function TaskDetailScreen() {
           <p className="mt-2 text-sm leading-6 text-[#AAB4CF]">
             {trackerViewModel.summary}
           </p>
-          <div className="mt-4">
+          <div className="mt-4 pb-2">
             <div className="relative h-2.5 overflow-hidden rounded-full bg-white/8">
               <div
                 className="relative h-full rounded-full bg-[linear-gradient(90deg,#3B5EFF_0%,#4E84FF_54%,#90EAFF_100%)] shadow-[0_0_24px_rgba(120,169,255,0.42)]"

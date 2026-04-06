@@ -28,6 +28,7 @@ import {
   ArrowRight,
   CircleCheckBig,
   ClipboardCheck,
+  ImageOff,
 } from 'lucide-react';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { Link, useLocation } from 'react-router-dom';
@@ -96,6 +97,19 @@ type NotificationUiItem = NotificationItem & {
   previewDueLabel: string;
   previewSummary: string;
   previewUpdatedLabel: string;
+  previewVisualLabel: string;
+  previewVisualAsset: NotificationPreviewAsset | null;
+};
+
+type NotificationPreviewAsset = {
+  name: string;
+  mime?: string;
+  url?: string;
+  driveId?: string;
+  webViewLink?: string;
+  webContentLink?: string;
+  thumbnailUrl?: string;
+  sourceLabel?: string;
 };
 
 type GlobalViewer = {
@@ -110,7 +124,7 @@ type GlobalViewer = {
 
 const EMAIL_SEND_PENDING_KEY = 'designhub:gmail-send-pending';
 const EMAIL_SEND_PENDING_MAX_AGE_MS = 1000 * 60 * 60 * 24;
-const NOTIFICATION_PREVIEW_CARD_HEIGHT = 232;
+const NOTIFICATION_PREVIEW_CARD_HEIGHT = 336;
 const NOTIFICATION_PREVIEW_OFFSET = 12;
 
 const taskStatusLabels: Record<TaskStatus, string> = {
@@ -137,6 +151,240 @@ const taskCategoryLabels: Record<TaskCategory, string> = {
 const requestTypeLabels: Record<RequestType, string> = {
   single_task: 'Single request',
   campaign_request: 'Campaign request',
+};
+
+const imageMimeByExt: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+};
+
+const getWindowOrigin = () =>
+  typeof window !== 'undefined' ? String(window.location.origin || '').trim() : '';
+
+const getDriveFileId = (rawValue?: string) => {
+  const source = String(rawValue || '').trim();
+  if (!source) return '';
+  try {
+    const parsed = new URL(source, getWindowOrigin() || 'http://localhost');
+    const idFromQuery = parsed.searchParams.get('id');
+    if (idFromQuery) return idFromQuery;
+
+    const decodedPath = decodeURIComponent(parsed.pathname || '');
+    const pathPatterns = [
+      /\/file(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+      /\/document(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+      /\/spreadsheets(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+      /\/presentation(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+      /\/forms(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
+      /\/d\/([^/?#]+)/i,
+      /\/api\/files\/download\/([^/?#]+)/i,
+    ];
+    for (const pattern of pathPatterns) {
+      const match = decodedPath.match(pattern);
+      if (match?.[1]) return match[1];
+    }
+  } catch {
+    // Fall back to regex-only extraction below.
+  }
+
+  const rawPatterns = [
+    /[?&]id=([A-Za-z0-9_-]{10,})/i,
+    /\/file(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/document(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/spreadsheets(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/presentation(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/forms(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/d\/([A-Za-z0-9_-]{10,})/i,
+    /\/api\/files\/download\/([A-Za-z0-9_-]{10,})/i,
+  ];
+  for (const pattern of rawPatterns) {
+    const match = source.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return '';
+};
+
+const buildDrivePreviewUrl = (driveId?: string) => {
+  const normalizedId = String(driveId || '').trim();
+  if (!normalizedId) return '';
+  return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(normalizedId)}`;
+};
+
+const isImageFileName = (fileName?: string | null) => {
+  const ext = String(fileName || '').split('.').pop()?.trim().toLowerCase();
+  return Boolean(ext && imageMimeByExt[ext]);
+};
+
+const inferPreviewMimeType = (fileName?: string | null) => {
+  const ext = String(fileName || '').split('.').pop()?.trim().toLowerCase();
+  if (!ext) return '';
+  return imageMimeByExt[ext] || '';
+};
+
+const normalizePreviewAsset = (
+  value:
+    | {
+        name?: string;
+        mime?: string;
+        url?: string;
+        driveId?: string;
+        webViewLink?: string;
+        webContentLink?: string;
+        thumbnailUrl?: string;
+      }
+    | null
+    | undefined,
+  sourceLabel: string
+): NotificationPreviewAsset | null => {
+  if (!value) return null;
+  const asset: NotificationPreviewAsset = {
+    name: collapseNotificationText(value.name) || `${sourceLabel} preview`,
+    mime: collapseNotificationText(value.mime),
+    url: collapseNotificationText(value.url),
+    driveId: collapseNotificationText(value.driveId),
+    webViewLink: collapseNotificationText(value.webViewLink),
+    webContentLink: collapseNotificationText(value.webContentLink),
+    thumbnailUrl: collapseNotificationText(value.thumbnailUrl),
+    sourceLabel,
+  };
+  const hasDirectImage =
+    String(asset.mime || '').toLowerCase().startsWith('image/') ||
+    isImageFileName(asset.name);
+  const hasDriveAsset = Boolean(
+    asset.driveId ||
+      getDriveFileId(asset.webContentLink) ||
+      getDriveFileId(asset.url) ||
+      getDriveFileId(asset.webViewLink)
+  );
+  const hasRenderableSource = Boolean(
+    asset.thumbnailUrl ||
+      asset.url ||
+      asset.webContentLink ||
+      asset.webViewLink ||
+      hasDriveAsset
+  );
+  if (!hasRenderableSource || (!hasDirectImage && !asset.thumbnailUrl && !hasDriveAsset)) {
+    return null;
+  }
+  return asset;
+};
+
+const getLatestFinalDeliverableAsset = (task?: Task): NotificationPreviewAsset | null => {
+  const versions = Array.isArray(task?.finalDeliverableVersions)
+    ? [...task.finalDeliverableVersions]
+    : [];
+  versions.sort((left, right) => {
+    const rightVersion = Number(right.version || 0);
+    const leftVersion = Number(left.version || 0);
+    if (rightVersion !== leftVersion) return rightVersion - leftVersion;
+    return new Date(right.uploadedAt || 0).getTime() - new Date(left.uploadedAt || 0).getTime();
+  });
+  for (const version of versions) {
+    for (const file of version.files || []) {
+      const asset = normalizePreviewAsset(file, 'Latest deliverable');
+      if (asset) return asset;
+    }
+  }
+  return null;
+};
+
+const getLatestDesignVersionAsset = (task?: Task): NotificationPreviewAsset | null => {
+  const versions = Array.isArray(task?.designVersions) ? [...task.designVersions] : [];
+  versions.sort((left, right) => {
+    const rightVersion = Number(right.version || 0);
+    const leftVersion = Number(left.version || 0);
+    if (rightVersion !== leftVersion) return rightVersion - leftVersion;
+    return new Date(right.uploadedAt || 0).getTime() - new Date(left.uploadedAt || 0).getTime();
+  });
+  for (const version of versions) {
+    const asset = normalizePreviewAsset(
+      {
+        name: version.name,
+        url: version.url,
+      },
+      'Latest design'
+    );
+    if (asset) return asset;
+  }
+  return null;
+};
+
+const getRequestAttachmentAsset = (task?: Task): NotificationPreviewAsset | null => {
+  const files = Array.isArray(task?.files) ? [...task.files] : [];
+  files.sort((left, right) => {
+    const priority = (fileType?: string) => {
+      if (fileType === 'output') return 0;
+      if (fileType === 'working') return 1;
+      return 2;
+    };
+    const priorityDiff = priority(left.type) - priority(right.type);
+    if (priorityDiff !== 0) return priorityDiff;
+    return new Date(right.uploadedAt || 0).getTime() - new Date(left.uploadedAt || 0).getTime();
+  });
+  for (const file of files) {
+    const asset = normalizePreviewAsset(file, 'Request attachment');
+    if (asset) return asset;
+  }
+  return null;
+};
+
+const resolveNotificationPreviewAsset = (task?: Task): NotificationPreviewAsset | null =>
+  getLatestFinalDeliverableAsset(task) ||
+  getLatestDesignVersionAsset(task) ||
+  getRequestAttachmentAsset(task) ||
+  null;
+
+const getNotificationPreviewCandidates = (asset?: NotificationPreviewAsset | null) => {
+  if (!asset) return [] as string[];
+  const driveId =
+    String(asset.driveId || '').trim() ||
+    getDriveFileId(asset.webContentLink) ||
+    getDriveFileId(asset.url) ||
+    getDriveFileId(asset.webViewLink);
+  const drivePreviewUrl =
+    driveId
+      ? buildDrivePreviewUrl(driveId) ||
+        `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveId)}&sz=w1200`
+      : '';
+  const thumbnailUrl = String(asset.thumbnailUrl || '').trim();
+  const url = String(asset.url || '').trim();
+  const webContentLink = String(asset.webContentLink || '').trim();
+  const webViewLink = String(asset.webViewLink || '').trim();
+  const orderedCandidates = [
+    thumbnailUrl,
+    drivePreviewUrl,
+    webContentLink,
+    url,
+    webViewLink,
+  ];
+
+  return Array.from(
+    new Set(orderedCandidates.map((value) => String(value || '').trim()).filter(Boolean))
+  );
+};
+
+const getNotificationPreviewCacheKey = (asset?: NotificationPreviewAsset | null) => {
+  if (!asset) return '';
+  const driveId =
+    String(asset.driveId || '').trim() ||
+    getDriveFileId(asset.webContentLink) ||
+    getDriveFileId(asset.url) ||
+    getDriveFileId(asset.webViewLink);
+  return [
+    collapseNotificationText(asset.sourceLabel),
+    collapseNotificationText(asset.name),
+    collapseNotificationText(asset.thumbnailUrl),
+    collapseNotificationText(asset.url),
+    collapseNotificationText(asset.webContentLink),
+    collapseNotificationText(asset.webViewLink),
+    driveId,
+  ]
+    .filter(Boolean)
+    .join('::');
 };
 
 const collapseNotificationText = (value?: string | null) =>
@@ -347,6 +595,12 @@ export function DashboardLayout({
   const [canUseNotificationHoverPreview, setCanUseNotificationHoverPreview] = useState(false);
   const [activeNotificationPreviewId, setActiveNotificationPreviewId] = useState<string | null>(null);
   const [notificationPreviewTop, setNotificationPreviewTop] = useState(NOTIFICATION_PREVIEW_OFFSET);
+  const notificationPreviewUrlCacheRef = useRef<Map<string, string>>(new Map());
+  const [notificationPreviewCandidateIndex, setNotificationPreviewCandidateIndex] = useState(0);
+  const [notificationPreviewImageUrl, setNotificationPreviewImageUrl] = useState('');
+  const [notificationPreviewImageState, setNotificationPreviewImageState] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle');
 
   const isCurrentUserViewer = useCallback(
     (viewer?: GlobalViewer | null) => {
@@ -1217,6 +1471,7 @@ export function DashboardLayout({
       const title = cleanNotificationTitle(entry.title);
       const message = collapseNotificationText(entry.message);
       const previewSummary = getNotificationPreviewSummary({ ...entry, title, message }, task);
+      const previewVisualAsset = resolveNotificationPreviewAsset(task);
       const linkState =
         entry.linkState ?? (task ? { task } : undefined);
       return {
@@ -1243,6 +1498,8 @@ export function DashboardLayout({
         previewUpdatedLabel: task?.updatedAt
           ? `Updated ${formatDistanceToNow(new Date(task.updatedAt), { addSuffix: true })}`
           : '',
+        previewVisualLabel: previewVisualAsset?.sourceLabel || 'No visual preview yet',
+        previewVisualAsset,
       };
     });
   }, [
@@ -1258,6 +1515,146 @@ export function DashboardLayout({
     () => uiNotifications.find((entry) => entry.id === activeNotificationPreviewId) ?? null,
     [activeNotificationPreviewId, uiNotifications]
   );
+  const activeNotificationPreviewCandidates = useMemo(
+    () => getNotificationPreviewCandidates(activeNotificationPreview?.previewVisualAsset),
+    [activeNotificationPreview]
+  );
+  const activeNotificationPreviewCacheKey = useMemo(
+    () => getNotificationPreviewCacheKey(activeNotificationPreview?.previewVisualAsset),
+    [activeNotificationPreview]
+  );
+
+  useEffect(() => {
+    return () => {
+      notificationPreviewUrlCacheRef.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!notificationsOpen || !canUseNotificationHoverPreview) return;
+    let cancelled = false;
+
+    const loadImageElement = (src: string, timeoutMs = 900) =>
+      new Promise<string>((resolve, reject) => {
+        let settled = false;
+        const image = new window.Image();
+
+        const cleanup = () => {
+          image.onload = null;
+          image.onerror = null;
+          window.clearTimeout(timeoutId);
+        };
+
+        const settle = (callback: () => void) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          callback();
+        };
+
+        const timeoutId = window.setTimeout(() => {
+          settle(() => reject(new Error(`Image load timed out for ${src}`)));
+        }, timeoutMs);
+
+        image.onload = () => settle(() => resolve(src));
+        image.onerror = () => settle(() => reject(new Error(`Image load failed for ${src}`)));
+        image.src = src;
+      });
+
+    const warmNotificationPreviews = async () => {
+      const candidatesToWarm = uiNotifications
+        .slice(0, 8)
+        .map((entry) => ({
+          key: getNotificationPreviewCacheKey(entry.previewVisualAsset),
+          candidates: getNotificationPreviewCandidates(entry.previewVisualAsset).slice(0, 2),
+        }))
+        .filter((entry) => entry.key && entry.candidates.length > 0);
+
+      await Promise.all(
+        candidatesToWarm.map(async (entry) => {
+          if (notificationPreviewUrlCacheRef.current.has(entry.key)) return;
+          for (const candidate of entry.candidates) {
+            try {
+              await loadImageElement(candidate);
+              if (cancelled) return;
+              notificationPreviewUrlCacheRef.current.set(entry.key, candidate);
+              return;
+            } catch {
+              // Try the next direct candidate.
+            }
+          }
+        })
+      );
+    };
+
+    void warmNotificationPreviews();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canUseNotificationHoverPreview, notificationsOpen, uiNotifications]);
+
+  useEffect(() => {
+    const previewAsset = activeNotificationPreview?.previewVisualAsset;
+    if (
+      !notificationsOpen ||
+      !canUseNotificationHoverPreview ||
+      !previewAsset ||
+      activeNotificationPreviewCandidates.length === 0
+    ) {
+      setNotificationPreviewCandidateIndex(0);
+      setNotificationPreviewImageUrl('');
+      setNotificationPreviewImageState(previewAsset ? 'error' : 'idle');
+      return;
+    }
+
+    const cachedPreviewUrl = activeNotificationPreviewCacheKey
+      ? notificationPreviewUrlCacheRef.current.get(activeNotificationPreviewCacheKey)
+      : '';
+    if (cachedPreviewUrl) {
+      const cachedIndex = activeNotificationPreviewCandidates.findIndex(
+        (candidate) => candidate === cachedPreviewUrl
+      );
+      setNotificationPreviewCandidateIndex(cachedIndex >= 0 ? cachedIndex : 0);
+      setNotificationPreviewImageUrl(cachedPreviewUrl);
+      setNotificationPreviewImageState('ready');
+      return;
+    }
+
+    setNotificationPreviewCandidateIndex(0);
+    setNotificationPreviewImageUrl(activeNotificationPreviewCandidates[0] || '');
+    setNotificationPreviewImageState('loading');
+  }, [
+    activeNotificationPreview,
+    activeNotificationPreviewCacheKey,
+    activeNotificationPreviewCandidates,
+    canUseNotificationHoverPreview,
+    notificationsOpen,
+  ]);
+
+  const handleNotificationPreviewImageLoad = useCallback(() => {
+    if (!notificationPreviewImageUrl) return;
+    if (activeNotificationPreviewCacheKey) {
+      notificationPreviewUrlCacheRef.current.set(
+        activeNotificationPreviewCacheKey,
+        notificationPreviewImageUrl
+      );
+    }
+    setNotificationPreviewImageState('ready');
+  }, [activeNotificationPreviewCacheKey, notificationPreviewImageUrl]);
+
+  const handleNotificationPreviewImageError = useCallback(() => {
+    const nextIndex = notificationPreviewCandidateIndex + 1;
+    const nextCandidate = activeNotificationPreviewCandidates[nextIndex];
+    if (nextCandidate) {
+      setNotificationPreviewCandidateIndex(nextIndex);
+      setNotificationPreviewImageUrl(nextCandidate);
+      setNotificationPreviewImageState('loading');
+      return;
+    }
+    setNotificationPreviewImageUrl('');
+    setNotificationPreviewImageState('error');
+  }, [activeNotificationPreviewCandidates, notificationPreviewCandidateIndex]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1568,7 +1965,7 @@ export function DashboardLayout({
           <div
             onMouseEnter={clearNotificationHoverPreviewTimer}
             onMouseLeave={scheduleNotificationHoverPreviewClear}
-            className="w-[320px] rounded-[20px] border border-[#E4EAF5] bg-white p-4 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.28)] dark:border-[#2A3A5A] dark:bg-[linear-gradient(180deg,rgba(15,24,42,0.985),rgba(10,17,31,0.985))] dark:shadow-[0_28px_58px_-32px_rgba(2,8,23,0.96)]"
+            className="w-[336px] rounded-[20px] border border-[#E4EAF5] bg-white p-4 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.28)] dark:border-[#2A3A5A] dark:bg-[linear-gradient(180deg,rgba(15,24,42,0.985),rgba(10,17,31,0.985))] dark:shadow-[0_28px_58px_-32px_rgba(2,8,23,0.96)]"
           >
             <div className="flex items-center justify-between gap-3">
               <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8C9DB8] dark:text-[#8FA0C4]">
@@ -1580,10 +1977,53 @@ export function DashboardLayout({
                 </span>
               ) : null}
             </div>
-            <h4 className="mt-2 text-[15px] font-semibold leading-5 text-[#1E2A43] line-clamp-2 dark:text-[#F5F8FF]">
+            <div className="relative mt-3 overflow-hidden rounded-[16px] border border-[#D8E4FB] bg-[linear-gradient(180deg,rgba(248,251,255,0.94),rgba(239,245,255,0.92))] dark:border-[#243654] dark:bg-[#0D1730]">
+              <div className="absolute left-3 top-3 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-semibold text-[#36559E] shadow-[0_10px_22px_-18px_rgba(15,23,42,0.3)] dark:bg-[#17233E] dark:text-[#D6E2FF] dark:shadow-none">
+                {activeNotificationPreview.previewVisualLabel}
+              </div>
+              <div className="aspect-[16/9]">
+                {notificationPreviewImageUrl ? (
+                  <div className="relative h-full w-full bg-[linear-gradient(135deg,rgba(240,246,255,0.98),rgba(230,238,255,0.94))] dark:bg-[linear-gradient(180deg,rgba(18,32,63,0.95),rgba(11,22,44,0.92))]">
+                    <img
+                      src={notificationPreviewImageUrl}
+                      alt={activeNotificationPreview.previewTitle}
+                      onLoad={handleNotificationPreviewImageLoad}
+                      onError={handleNotificationPreviewImageError}
+                      className={cn(
+                        "h-full w-full object-cover object-top transition-opacity duration-150",
+                        notificationPreviewImageState === 'ready' ? 'opacity-100' : 'opacity-0'
+                      )}
+                    />
+                    {notificationPreviewImageState === 'loading' ? (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="flex items-center gap-2 rounded-full border border-[#D7E3FF] bg-white/85 px-3 py-1.5 text-[11px] font-medium text-[#4B5FA8] dark:border-[#30466F] dark:bg-[#14213D] dark:text-[#C8D7FF]">
+                          <span className="h-2 w-2 animate-pulse rounded-full bg-[#5A74D6] dark:bg-[#8EA9FF]" />
+                          Loading preview
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,rgba(240,246,255,0.98),rgba(231,239,255,0.94))] px-5 text-center dark:bg-[linear-gradient(180deg,rgba(18,32,63,0.95),rgba(11,22,44,0.92))]">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#D7E3FF] bg-white/85 text-[#4863B7] dark:border-[#30466F] dark:bg-[#14213D] dark:text-[#B8CBFF]">
+                      <ImageOff className="h-[18px] w-[18px]" />
+                    </div>
+                    <div>
+                      <p className="text-[12px] font-semibold text-[#1E2A43] dark:text-[#F5F8FF]">
+                        No visual preview available
+                      </p>
+                      <p className="mt-1 text-[11.5px] text-[#6B7A99] dark:text-[#8FA0C4]">
+                        This notification does not have a thumbnail, design image, or deliverable preview yet.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <h4 className="mt-3 text-[15px] font-semibold leading-5 text-[#1E2A43] line-clamp-2 dark:text-[#F5F8FF]">
               {activeNotificationPreview.previewTitle}
             </h4>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-[#EEF4FF] px-2.5 py-1 text-[10.5px] font-semibold text-[#36559E] dark:bg-[#17233E] dark:text-[#D6E2FF]">
                 {activeNotificationPreview.previewStatusLabel}
               </span>
@@ -1601,7 +2041,7 @@ export function DashboardLayout({
                 <span className="line-clamp-1">{activeNotificationPreview.previewDueLabel}</span>
               </div>
             </div>
-            <p className="mt-4 text-[12.5px] leading-5 text-[#65748E] line-clamp-3 dark:text-[#A9B8D8]">
+            <p className="mt-3.5 text-[12.5px] leading-5 text-[#65748E] line-clamp-2 dark:text-[#A9B8D8]">
               {activeNotificationPreview.previewSummary}
             </p>
             <button
