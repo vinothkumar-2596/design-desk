@@ -1815,6 +1815,14 @@ export default function NewRequest() {
     'text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground';
   const builderSurfaceClass =
     'rounded-[24px] border border-border/70 bg-white dark:border-border dark:bg-card/95 dark:[background-image:none]';
+  const sidebarSurfaceClass =
+    'rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:border-border dark:bg-card/95 dark:bg-none dark:text-foreground';
+  const sidebarInsetSurfaceClass =
+    'rounded-[1.26rem] border border-[#D9E6FF] bg-white/72 dark:bg-card/78 dark:border-border shadow-none';
+  const sidebarPillClass =
+    'inline-flex items-center rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-muted dark:border-border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#23396F] dark:text-foreground';
+  const sidebarIconTileClass =
+    'flex h-10 w-10 shrink-0 items-center justify-center rounded-[1rem] border border-[#C9D7FF] bg-gradient-to-br from-white/85 via-[#EAF2FF]/80 to-[#DDE9FF]/70 text-[#23396F] backdrop-blur transition-[transform,border-color,background-color] duration-300 dark:border-slate-700/70 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-700/80 dark:text-slate-100';
   const builderInsetCardClass =
     'rounded-2xl border border-border/70 bg-background/70 dark:border-border dark:bg-card/78 dark:[background-image:none] dark:shadow-none';
   const builderFooterClass =
@@ -2915,14 +2923,14 @@ export default function NewRequest() {
   const requestTypeSelectionPanel = (
     <section
       className={cn(
-        builderSurfaceClass,
-        'animate-fade-in overflow-hidden dark:border-border dark:bg-card/95 dark:bg-none dark:text-foreground dark:shadow-none'
+        sidebarSurfaceClass,
+        'animate-fade-in overflow-hidden shadow-none'
       )}
     >
-      <div className="border-b border-border/70 px-8 py-6 dark:border-border">
+      <div className="border-b border-[#D9E6FF]/70 px-8 py-6 dark:border-border">
         <Badge
           variant="outline"
-          className="rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-border dark:bg-muted/70 dark:text-muted-foreground"
+          className="rounded-full border-[#D9E6FF] bg-[#F5F8FF] px-3 py-1 text-primary dark:border-border dark:bg-muted/70 dark:text-muted-foreground"
         >
           Request Type
         </Badge>
@@ -2943,42 +2951,46 @@ export default function NewRequest() {
               type="button"
               onClick={() => handleRequestTypeSelect(option.value)}
               className={cn(
-                'animate-slide-up group relative h-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white p-5 text-left shadow-[0_12px_28px_-24px_rgba(30,42,90,0.18)] transform-gpu will-change-transform transition-[transform,border-color,box-shadow] duration-500 hover:-translate-y-1 hover:border-primary/35 hover:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.12)] focus-visible:-translate-y-1 focus-visible:border-primary/35 focus-visible:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.12)] dark:border-border dark:bg-card/78 dark:shadow-none dark:hover:border-border dark:hover:bg-card/90 dark:hover:shadow-none dark:focus-visible:border-border dark:focus-visible:bg-card/90 dark:focus-visible:shadow-none'
+                sidebarInsetSurfaceClass,
+                'animate-slide-up group relative h-full overflow-hidden p-5 text-left transform-gpu will-change-transform transition-[transform,border-color,background-color] duration-300 hover:-translate-y-1 hover:border-[#C8D7FF] hover:bg-white/80 focus-visible:-translate-y-1 focus-visible:border-[#C8D7FF] focus-visible:bg-white/80 dark:hover:border-border dark:hover:bg-card/85 dark:focus-visible:border-border dark:focus-visible:bg-card/85'
               )}
               style={{ animationDelay: `${index * 90}ms`, ...REQUEST_TYPE_HOVER_TRANSITION_STYLE }}
             >
               <div
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.08),transparent_34%)] opacity-70 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.03),transparent_36%)]"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.09),transparent_34%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(110,141,255,0.14),transparent_42%)]"
                 style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
               />
               <div
-                className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(242,247,255,0.82)_58%,rgba(238,244,255,0.94))] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.015),rgba(255,255,255,0))]"
+                className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.28),rgba(242,247,255,0.44)_58%,rgba(238,244,255,0.52))] dark:bg-[linear-gradient(180deg,rgba(126,153,255,0.06),rgba(18,28,50,0.015)_54%,rgba(12,19,36,0))]"
                 style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
               />
               <div className="relative flex min-h-[188px] flex-col">
                 <div className="flex items-start justify-between gap-3">
                   <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#DDE7FF] bg-[#F7FAFF] text-primary transform-gpu transition-[transform,border-color,background-color] duration-500 group-hover:-translate-y-0.5 group-hover:border-[#C8D8FF] group-hover:bg-white group-focus-visible:-translate-y-0.5 group-focus-visible:border-[#C8D8FF] group-focus-visible:bg-white dark:border-border dark:bg-muted/70 dark:text-muted-foreground dark:group-hover:border-border dark:group-hover:bg-muted/80 dark:group-focus-visible:border-border dark:group-focus-visible:bg-muted/80"
+                    className={cn(
+                      sidebarIconTileClass,
+                      'group-hover:-translate-y-0.5 group-focus-visible:-translate-y-0.5'
+                    )}
                     style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
                   >
                     <OptionIcon className="h-5 w-5" />
                   </div>
-                  <span className="inline-flex rounded-full border border-[#DCE6FF] bg-[#FAFCFF] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5B73B2] dark:border-border dark:bg-muted/70 dark:text-muted-foreground">
+                  <span className={sidebarPillClass}>
                     {option.tag}
                   </span>
                 </div>
 
                 <div className="mt-4 flex-1 space-y-2">
-                  <h3 className="text-[17px] font-semibold tracking-[-0.02em] text-[#1E2A5A] dark:text-[#F5F8FF]">
+                  <h3 className="text-[17px] font-semibold tracking-[-0.02em] text-[#1E2A5A] dark:text-foreground">
                     {option.label}
                   </h3>
-                  <p className="text-[14px] font-medium text-foreground/90 dark:text-muted-foreground">
+                  <p className="text-[14px] font-medium text-[#637392] dark:text-muted-foreground">
                     {option.description}
                   </p>
                 </div>
 
-                <div className="mt-4 flex items-center justify-end border-t border-[#E8EEFF] pt-4 dark:border-border">
-                  <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-primary transition-colors duration-300 ease-out dark:text-[#F5F8FF]">
+                <div className="mt-4 flex items-center justify-end border-t border-[#D9E6FF]/80 pt-4 dark:border-border">
+                  <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-[#223067] transition-colors duration-300 ease-out dark:text-foreground">
                     {option.cta}
                     <ArrowRight
                       className="h-4 w-4 transform-gpu transition-transform duration-500 group-hover:translate-x-1.5 group-focus-visible:translate-x-1.5"

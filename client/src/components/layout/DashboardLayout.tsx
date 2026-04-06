@@ -1568,46 +1568,46 @@ export function DashboardLayout({
           <div
             onMouseEnter={clearNotificationHoverPreviewTimer}
             onMouseLeave={scheduleNotificationHoverPreviewClear}
-            className="w-[320px] rounded-[20px] border border-[#E4EAF5] bg-white p-4 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-950"
+            className="w-[320px] rounded-[20px] border border-[#E4EAF5] bg-white p-4 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.28)] dark:border-[#2A3A5A] dark:bg-[linear-gradient(180deg,rgba(15,24,42,0.985),rgba(10,17,31,0.985))] dark:shadow-[0_28px_58px_-32px_rgba(2,8,23,0.96)]"
           >
             <div className="flex items-center justify-between gap-3">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8C9DB8] dark:text-slate-400">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8C9DB8] dark:text-[#8FA0C4]">
                 Task Preview
               </span>
               {activeNotificationPreview.previewUpdatedLabel ? (
-                <span className="text-[10.5px] text-[#9BA8BE] dark:text-slate-500">
+                <span className="text-[10.5px] text-[#9BA8BE] dark:text-[#7F91B5]">
                   {activeNotificationPreview.previewUpdatedLabel}
                 </span>
               ) : null}
             </div>
-            <h4 className="mt-2 text-[15px] font-semibold leading-5 text-[#1E2A43] line-clamp-2 dark:text-slate-100">
+            <h4 className="mt-2 text-[15px] font-semibold leading-5 text-[#1E2A43] line-clamp-2 dark:text-[#F5F8FF]">
               {activeNotificationPreview.previewTitle}
             </h4>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-[#EEF4FF] px-2.5 py-1 text-[10.5px] font-semibold text-[#36559E] dark:bg-slate-800 dark:text-slate-200">
+              <span className="rounded-full bg-[#EEF4FF] px-2.5 py-1 text-[10.5px] font-semibold text-[#36559E] dark:bg-[#17233E] dark:text-[#D6E2FF]">
                 {activeNotificationPreview.previewStatusLabel}
               </span>
-              <span className="text-[11.5px] font-medium text-[#5E6D88] dark:text-slate-400">
+              <span className="text-[11.5px] font-medium text-[#5E6D88] dark:text-[#A9B8D8]">
                 {activeNotificationPreview.previewTypeLabel}
               </span>
             </div>
             <div className="mt-4 space-y-2.5">
-              <div className="flex items-center gap-2 text-[12px] text-[#55647C] dark:text-slate-300">
-                <User className="h-3.5 w-3.5 text-[#8FA0BD] dark:text-slate-500" />
+              <div className="flex items-center gap-2 text-[12px] text-[#55647C] dark:text-[#C4D0EA]">
+                <User className="h-3.5 w-3.5 text-[#8FA0BD] dark:text-[#7E92B9]" />
                 <span className="line-clamp-1">{activeNotificationPreview.previewAssigneeLabel}</span>
               </div>
-              <div className="flex items-center gap-2 text-[12px] text-[#55647C] dark:text-slate-300">
-                <Clock className="h-3.5 w-3.5 text-[#8FA0BD] dark:text-slate-500" />
+              <div className="flex items-center gap-2 text-[12px] text-[#55647C] dark:text-[#C4D0EA]">
+                <Clock className="h-3.5 w-3.5 text-[#8FA0BD] dark:text-[#7E92B9]" />
                 <span className="line-clamp-1">{activeNotificationPreview.previewDueLabel}</span>
               </div>
             </div>
-            <p className="mt-4 text-[12.5px] leading-5 text-[#65748E] line-clamp-3 dark:text-slate-400">
+            <p className="mt-4 text-[12.5px] leading-5 text-[#65748E] line-clamp-3 dark:text-[#A9B8D8]">
               {activeNotificationPreview.previewSummary}
             </p>
             <button
               type="button"
               onClick={() => openNotificationEntry(activeNotificationPreview)}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[#1B3260] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#15274B] dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[#1B3260] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#15274B] dark:bg-[#EAF0FF] dark:text-[#10203A] dark:hover:bg-white"
             >
               View Task
               <ArrowRight className="h-3.5 w-3.5" />
@@ -1618,11 +1618,11 @@ export function DashboardLayout({
 
       <div
         ref={notificationsPanelRef}
-        className="w-[23rem] overflow-hidden rounded-xl border border-[#D5DFF5] bg-white shadow-[0_8px_32px_-8px_rgba(15,23,42,0.18)] animate-dropdown origin-top-right dark:border-border dark:bg-card"
+        className="w-[23rem] overflow-hidden rounded-xl border border-[#D5DFF5] bg-white shadow-[0_8px_32px_-8px_rgba(15,23,42,0.18)] animate-dropdown origin-top-right dark:border-[#243654] dark:bg-[linear-gradient(180deg,rgba(15,24,42,0.985),rgba(10,17,31,0.985))] dark:shadow-[0_20px_48px_-28px_rgba(2,8,23,0.96)]"
       >
-        <div className="flex items-center justify-between border-b border-[#EAF0FA] px-4 py-3 dark:border-border">
+        <div className="flex items-center justify-between border-b border-[#EAF0FA] px-4 py-3 dark:border-[#243654]">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#2F3A56] dark:text-slate-200">
+            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#2F3A56] dark:text-[#EAF0FF]">
               Notifications
             </span>
             {unreadCount > 0 && (
@@ -1636,7 +1636,7 @@ export function DashboardLayout({
               <button
                 type="button"
                 onClick={markAllNotificationsRead}
-                className="text-[11px] font-medium text-[#5C70A8] transition hover:text-[#274187] dark:text-slate-400 dark:hover:text-slate-200"
+                className="text-[11px] font-medium text-[#5C70A8] transition hover:text-[#274187] dark:text-[#9FB2DB] dark:hover:text-[#EAF0FF]"
               >
                 Mark all read
               </button>
@@ -1644,7 +1644,7 @@ export function DashboardLayout({
             <button
               type="button"
               onClick={() => setNotificationsOpen(false)}
-              className="flex h-6 w-6 items-center justify-center rounded-full text-[#8898BB] transition hover:bg-[#F0F4FF] hover:text-[#2F3A56] dark:text-slate-400 dark:hover:bg-muted dark:hover:text-slate-200"
+              className="flex h-6 w-6 items-center justify-center rounded-full text-[#8898BB] transition hover:bg-[#F0F4FF] hover:text-[#2F3A56] dark:text-[#94A7CD] dark:hover:bg-[#17233E] dark:hover:text-[#EAF0FF]"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -1675,10 +1675,10 @@ export function DashboardLayout({
                     className={cn(
                       'group relative flex w-full items-start gap-3 px-4 py-3.5 text-left transition-[background-color,box-shadow] duration-150',
                       isPreviewActive
-                        ? 'bg-[#EEF4FF] shadow-[inset_0_0_0_1px_rgba(205,221,255,0.9)] dark:bg-primary/10'
+                        ? 'bg-[#EEF4FF] shadow-[inset_0_0_0_1px_rgba(205,221,255,0.9)] dark:bg-[#16233F] dark:shadow-[inset_0_0_0_1px_rgba(71,104,187,0.42)]'
                         : isUnread
-                          ? 'bg-[#F7FAFF] hover:bg-[#F1F6FF] dark:bg-primary/5 dark:hover:bg-primary/10'
-                          : 'bg-white hover:bg-[#F8FAFD] dark:bg-card dark:hover:bg-muted/40'
+                          ? 'bg-[#F7FAFF] hover:bg-[#F1F6FF] dark:bg-[#101B31] dark:hover:bg-[#16233F]'
+                          : 'bg-white hover:bg-[#F8FAFD] dark:bg-[rgba(12,19,36,0.92)] dark:hover:bg-[#15213B]'
                     )}
                   >
                     <div
@@ -1697,18 +1697,18 @@ export function DashboardLayout({
                             className={cn(
                               'text-[12.5px] font-semibold leading-snug line-clamp-1',
                               isUnread
-                                ? 'text-[#1B2E6E] dark:text-slate-100'
-                                : 'text-[#33415F] dark:text-slate-200'
+                                ? 'text-[#1B2E6E] dark:text-[#F5F8FF]'
+                                : 'text-[#33415F] dark:text-[#D9E3F7]'
                             )}
                           >
                             {entry.title}
                           </p>
-                          <p className="mt-0.5 text-[11.5px] leading-snug text-[#5E6E8D] line-clamp-1 dark:text-slate-400">
+                          <p className="mt-0.5 text-[11.5px] leading-snug text-[#5E6E8D] line-clamp-1 dark:text-[#9EB0D3]">
                             {entry.rowPreview}
                           </p>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1.5 pl-2">
-                          <span className="text-[10.5px] tabular-nums text-[#9BACC8] dark:text-slate-500">
+                          <span className="text-[10.5px] tabular-nums text-[#9BACC8] dark:text-[#7F91B5]">
                             {timeLabel}
                           </span>
                           <span

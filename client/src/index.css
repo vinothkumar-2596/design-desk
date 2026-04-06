@@ -2320,3 +2320,39 @@
   animation: unreadBorderSpin 4s linear infinite;
   pointer-events: none;
 }
+
+@property --status-panel-border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes statusPanelBorderSpin {
+  to { --status-panel-border-angle: 360deg; }
+}
+
+.dark .status-panel-gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--status-panel-border-angle, 0deg),
+    rgba(157, 190, 255, 0.92),
+    rgba(89, 119, 212, 0.72),
+    rgba(47, 67, 127, 0.68),
+    rgba(157, 190, 255, 0.92)
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: statusPanelBorderSpin 8s linear infinite;
+  pointer-events: none;
+  opacity: 0.95;
+}

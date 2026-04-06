@@ -8115,10 +8115,10 @@ function TaskDetailScreen() {
         <div
           ref={staffStatusPanelRef}
           className={cn(
-            'pointer-events-auto relative w-[23rem] select-none overflow-hidden rounded-[32px] border text-white backdrop-blur-xl transition-[max-height,padding,box-shadow,background] duration-300',
+            'status-panel-gradient-border pointer-events-auto relative w-[23rem] select-none overflow-hidden rounded-[32px] border text-white backdrop-blur-xl transition-[max-height,padding,box-shadow,background] duration-300 dark:border-transparent',
             isStaffStatusPanelExpanded
-              ? 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-6 pb-6 pt-5 shadow-[0_28px_60px_-34px_rgba(35,68,170,0.62)] hover:shadow-[0_30px_68px_-32px_rgba(35,68,170,0.72)] max-h-[38rem]'
-              : 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-5 pb-5 pt-4 shadow-[0_24px_52px_-30px_rgba(35,68,170,0.62)] hover:shadow-[0_26px_56px_-28px_rgba(35,68,170,0.72)] max-h-[12.5rem]'
+              ? 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-6 pb-6 pt-5 shadow-[0_28px_60px_-34px_rgba(35,68,170,0.62)] hover:shadow-[0_30px_68px_-32px_rgba(35,68,170,0.72)] max-h-[38rem] dark:shadow-none dark:hover:shadow-none'
+              : 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-5 pb-5 pt-4 shadow-[0_24px_52px_-30px_rgba(35,68,170,0.62)] hover:shadow-[0_26px_56px_-28px_rgba(35,68,170,0.72)] max-h-[12.5rem] dark:shadow-none dark:hover:shadow-none'
           )}
         >
           <div
@@ -8158,7 +8158,7 @@ function TaskDetailScreen() {
                 type="button"
                 onClick={() => setIsStaffStatusPanelExpanded((current) => !current)}
                 onMouseDown={(event) => event.stopPropagation()}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/18 bg-white/10 text-white/82 transition-colors hover:bg-white/16 hover:text-white"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/82 transition-colors hover:bg-white/16 hover:text-white"
                 aria-label={isStaffStatusPanelExpanded ? 'Collapse task status sidebar' : 'Expand task status sidebar'}
                 title={isStaffStatusPanelExpanded ? 'Collapse' : 'Expand'}
               >
@@ -8201,7 +8201,7 @@ function TaskDetailScreen() {
                 type="button"
                 onClick={() => setIsStaffStatusPanelExpanded((current) => !current)}
                 onMouseDown={(event) => event.stopPropagation()}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/14 bg-white/6 text-white/82 transition-colors hover:bg-white/12 hover:text-white"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/6 text-white/82 transition-colors hover:bg-white/12 hover:text-white"
                 aria-label="Expand task status sidebar"
                 title="Expand"
               >
@@ -8236,7 +8236,7 @@ function TaskDetailScreen() {
 
           {isStaffStatusPanelExpanded ? (
           <>
-          <div className="relative mt-5 overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4 shadow-[0_18px_42px_-32px_rgba(3,7,18,0.92)] backdrop-blur-xl">
+          <div className="relative mt-5 overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4 shadow-[0_18px_42px_-32px_rgba(3,7,18,0.92)] backdrop-blur-xl dark:shadow-none">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(156,186,255,0.18),transparent_34%),radial-gradient(circle_at_82%_24%,rgba(255,255,255,0.08),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0))]" />
             <div className="relative">
             <div className="flex items-center justify-between gap-3">
