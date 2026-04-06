@@ -54,7 +54,18 @@ const normalizeIndianPhone = (value?: string) => {
 };
 
 const settingsSurfaceClass =
-  'overflow-hidden rounded-[24px] border border-[#CEDBFF]/35 bg-[linear-gradient(135deg,rgba(255,255,255,0.12),rgba(243,247,255,0.16),rgba(231,239,255,0.12))] shadow-[0_14px_28px_-26px_rgba(59,99,204,0.1)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(243,247,255,0.12),rgba(231,239,255,0.08))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:backdrop-blur-[24px]';
+  'overflow-hidden rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] shadow-none dark:border-border dark:bg-card/95 dark:bg-none dark:text-foreground';
+const settingsSeparatorClass = 'dark:bg-border';
+const settingsInputClass =
+  'focus-visible:ring-0 dark:border-sidebar-border dark:bg-sidebar/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-sidebar-ring/50';
+const settingsSelectTriggerClass =
+  'focus:ring-0 dark:border-sidebar-border dark:bg-sidebar/60 dark:text-slate-100 dark:[&>span[data-placeholder]]:text-slate-500';
+const settingsSelectContentClass =
+  'rounded-xl border-[#D9E6FF] bg-white/95 p-1.5 shadow-lg dark:border-border dark:bg-card/95 dark:text-foreground dark:[background-image:none]';
+const settingsSelectItemClass =
+  'rounded-lg pl-9 pr-3 data-[state=checked]:bg-primary/15 data-[state=checked]:text-[#1E2A5A] data-[state=checked]:font-semibold dark:data-[state=checked]:bg-muted dark:data-[state=checked]:text-foreground dark:hover:bg-muted';
+const settingsSummaryClass =
+  'rounded-xl border border-[#D9E6FF] bg-[#F6F8FF]/70 px-4 py-3 text-sm text-[#2F3A56] dark:border-[#23396E] dark:bg-[#0E162B] dark:text-[#E3EBFF]';
 
 export default function Settings() {
   const { user, updateUser, logout } = useAuth();
@@ -257,7 +268,7 @@ export default function Settings() {
                 </p>
               </div>
             </div>
-            <Separator />
+            <Separator className={settingsSeparatorClass} />
             <div className="space-y-2">
               <Label htmlFor="avatar-options">Profile Avatar</Label>
               <div id="avatar-options" className="avatar-picker flex flex-wrap gap-3">
@@ -295,7 +306,7 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">
               </p>
             </div>
-            <Separator />
+            <Separator className={settingsSeparatorClass} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
@@ -303,6 +314,7 @@ export default function Settings() {
                   id="name"
                   value={fullName}
                   onChange={(event) => setFullName(sanitizeName(event.target.value))}
+                  className={settingsInputClass}
                 />
               </div>
               <div className="space-y-2">
@@ -312,6 +324,7 @@ export default function Settings() {
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
+                  className={settingsInputClass}
                 />
               </div>
               <div className="space-y-2">
@@ -335,6 +348,7 @@ export default function Settings() {
                       setPhone(INDIAN_PREFIX);
                     }
                   }}
+                  className={settingsInputClass}
                 />
                 <p className="text-xs text-muted-foreground">
                   Enter 10-digit Indian mobile number. +91 is fixed automatically.
@@ -363,6 +377,7 @@ export default function Settings() {
                   autoComplete="current-password"
                   value={currentPassword}
                   onChange={(event) => setCurrentPassword(event.target.value)}
+                  className={settingsInputClass}
                 />
               </div>
               <div className="space-y-2">
@@ -373,6 +388,7 @@ export default function Settings() {
                   autoComplete="new-password"
                   value={newPassword}
                   onChange={(event) => setNewPassword(event.target.value)}
+                  className={settingsInputClass}
                 />
               </div>
               <div className="space-y-2">
@@ -383,6 +399,7 @@ export default function Settings() {
                   autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
+                  className={settingsInputClass}
                 />
               </div>
             </div>
@@ -404,32 +421,32 @@ export default function Settings() {
                 <div className="space-y-2">
                   <Label>Default Category</Label>
                   <Select value={defaultCategory} onValueChange={setDefaultCategory}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="No default" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="banner">Banner</SelectItem>
-                      <SelectItem value="campaign_or_others">Campaign or others</SelectItem>
-                      <SelectItem value="social_media_creative">Social Media Creative</SelectItem>
-                      <SelectItem value="website_assets">Website Assets</SelectItem>
-                      <SelectItem value="ui_ux">UI/UX</SelectItem>
-                      <SelectItem value="led_backdrop">LED Backdrop</SelectItem>
-                      <SelectItem value="brochure">Brochure</SelectItem>
-                      <SelectItem value="flyer">Flyer</SelectItem>
+                  <SelectTrigger className={settingsSelectTriggerClass}>
+                    <SelectValue placeholder="No default" />
+                  </SelectTrigger>
+                    <SelectContent className={settingsSelectContentClass}>
+                      <SelectItem className={settingsSelectItemClass} value="banner">Banner</SelectItem>
+                      <SelectItem className={settingsSelectItemClass} value="campaign_or_others">Campaign or others</SelectItem>
+                      <SelectItem className={settingsSelectItemClass} value="social_media_creative">Social Media Creative</SelectItem>
+                      <SelectItem className={settingsSelectItemClass} value="website_assets">Website Assets</SelectItem>
+                      <SelectItem className={settingsSelectItemClass} value="ui_ux">UI/UX</SelectItem>
+                      <SelectItem className={settingsSelectItemClass} value="led_backdrop">LED Backdrop</SelectItem>
+                      <SelectItem className={settingsSelectItemClass} value="brochure">Brochure</SelectItem>
+                      <SelectItem className={settingsSelectItemClass} value="flyer">Flyer</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Default Urgency</Label>
                   <Select value={defaultUrgency} onValueChange={setDefaultUrgency}>
-                    <SelectTrigger>
+                    <SelectTrigger className={settingsSelectTriggerClass}>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="normal">Normal</SelectItem>
-                      <SelectItem value="intermediate">Intermediate</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
+                    <SelectContent className={settingsSelectContentClass}>
+                      <SelectItem className={settingsSelectItemClass} value="low">Low</SelectItem>
+                      <SelectItem className={settingsSelectItemClass} value="normal">Normal</SelectItem>
+                      <SelectItem className={settingsSelectItemClass} value="intermediate">Intermediate</SelectItem>
+                      <SelectItem className={settingsSelectItemClass} value="urgent">Urgent</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -441,6 +458,7 @@ export default function Settings() {
                   min="0"
                   value={deadlineBufferDays}
                   onChange={(event) => setDeadlineBufferDays(event.target.value)}
+                  className={settingsInputClass}
                 />
                 <p className="text-xs text-muted-foreground">
                   Used to auto-set the deadline when creating a new request.
@@ -460,7 +478,7 @@ export default function Settings() {
               You are changing the account email. Please confirm to proceed.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="rounded-xl border border-[#D9E6FF] bg-[#F6F8FF]/70 px-4 py-3 text-sm text-[#2F3A56]">
+          <div className={settingsSummaryClass}>
             <div className="flex justify-between gap-4">
               <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Current</span>
               <span className="font-medium">{user?.email || '—'}</span>

@@ -512,7 +512,7 @@ export function AttachmentUploadField({
           'rounded-[22px] border border-dashed px-4 py-3.5 transition-all duration-200 supports-[backdrop-filter]:backdrop-blur-md',
           isDragging
             ? 'border-primary/55 bg-[linear-gradient(135deg,rgba(239,244,255,0.95),rgba(229,238,255,0.88))] dark:border-sidebar-ring/35 dark:bg-sidebar-primary/16'
-            : 'border-[#D9E6FF]/78 bg-[linear-gradient(135deg,rgba(255,255,255,0.88),rgba(244,248,255,0.82),rgba(236,243,255,0.76))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.68),rgba(244,248,255,0.62),rgba(236,243,255,0.56))] dark:border-sidebar-border/60 dark:bg-sidebar-accent/50 dark:[background-image:none]'
+            : 'border-[#D9E6FF]/78 bg-[linear-gradient(135deg,rgba(255,255,255,0.88),rgba(244,248,255,0.82),rgba(236,243,255,0.76))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.68),rgba(244,248,255,0.62),rgba(236,243,255,0.56))] dark:border-border/60 dark:bg-card/78 dark:[background-image:none]'
         )}
         role="button"
         tabIndex={0}
@@ -537,7 +537,7 @@ export function AttachmentUploadField({
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[20px] border border-[#D7E3FF]/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(235,242,255,0.82))] text-[#4362B6] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(235,242,255,0.56))] dark:border-sidebar-border/60 dark:bg-sidebar/80 dark:[background-image:none] dark:text-sidebar-foreground/70">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[20px] border border-[#D7E3FF]/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(235,242,255,0.82))] text-[#4362B6] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(235,242,255,0.56))] dark:border-border/60 dark:bg-card/95 dark:[background-image:none] dark:text-foreground/70">
               {uploadAnimation ? (
                 <Lottie animationData={uploadAnimation} loop className="h-20 w-20" />
               ) : (
@@ -562,7 +562,7 @@ export function AttachmentUploadField({
               event.stopPropagation();
               inputRef.current?.click();
             }}
-            className="h-10 shrink-0 rounded-[14px] border-[#D7E3FF]/85 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(242,246,255,0.92))] px-4 text-[13px] font-semibold text-[#223067] shadow-[0_12px_24px_-20px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.76),rgba(242,246,255,0.68))] backdrop-blur-md transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF]/92 hover:text-[#1E2A5A] hover:shadow-[0_16px_32px_-22px_rgba(59,99,204,0.28)] dark:border-sidebar-border/70 dark:bg-sidebar-accent dark:[background-image:none] dark:text-sidebar-foreground dark:shadow-none dark:hover:border-sidebar-ring/40 dark:hover:bg-sidebar-primary/30 dark:hover:text-white"
+            className="h-10 shrink-0 rounded-[14px] border-[#D7E3FF]/85 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(242,246,255,0.92))] px-4 text-[13px] font-semibold text-[#223067] shadow-[0_12px_24px_-20px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.76),rgba(242,246,255,0.68))] backdrop-blur-md transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF]/92 hover:text-[#1E2A5A] hover:shadow-[0_16px_32px_-22px_rgba(59,99,204,0.28)] dark:border-border/70 dark:bg-card/95 dark:[background-image:none] dark:text-foreground dark:shadow-none dark:hover:border-border dark:hover:bg-muted dark:hover:text-foreground"
           >
             <Upload className="mr-2 h-4 w-4" />
             {buttonLabel}

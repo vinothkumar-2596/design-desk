@@ -808,21 +808,21 @@ const isEditTaskHistoryChange = (entry?: Partial<TaskChange>) => {
 };
 
 const glassPanelClass =
-  'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF]/35 ring-0 rounded-2xl shadow-none dark:bg-card dark:border-border/55 dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent';
+  'bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl border border-[#C9D7FF]/35 ring-0 rounded-2xl shadow-none dark:border-border dark:bg-card/95 dark:bg-none dark:[background-image:none] dark:shadow-none';
 const fileRowClass =
-  'flex items-center justify-between rounded-lg border border-transparent bg-gradient-to-r from-[#F7FAFF]/90 via-[#EEF4FF]/60 to-[#EAF2FF]/80 px-3 py-1 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-xl dark:bg-none dark:bg-slate-900/70 dark:border-slate-700/60 dark:text-slate-200';
+  'flex items-center justify-between rounded-lg border border-transparent bg-gradient-to-r from-[#F7FAFF]/90 via-[#EEF4FF]/60 to-[#EAF2FF]/80 px-3 py-1 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-xl dark:!border-sidebar-border/70 dark:!bg-sidebar/60 dark:supports-[backdrop-filter]:!bg-sidebar/60 dark:!bg-none dark:text-sidebar-foreground';
 const fileListShellClass =
-  'rounded-2xl border border-[#DCE6FF]/70 bg-white/35 p-1.5 dark:border-slate-700/60 dark:bg-slate-950/15';
+  'rounded-2xl border border-[#DCE6FF]/70 bg-white/35 p-1.5 dark:border-border dark:bg-card/78 dark:[background-image:none]';
 const fileListScrollClass =
   'max-h-[30rem] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin';
 const fileActionButtonClass =
-  'icon-action-press inline-flex shrink-0 items-center justify-center h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-border dark:disabled:bg-muted dark:disabled:text-muted-foreground/65';
+  'icon-action-press inline-flex shrink-0 items-center justify-center h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-sidebar-border/70 dark:bg-sidebar-accent/80 dark:text-sidebar-foreground/85 dark:hover:border-sidebar-border dark:hover:bg-sidebar-accent dark:hover:text-sidebar-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-sidebar-border/70 dark:disabled:bg-sidebar-accent/80 dark:disabled:text-sidebar-foreground/55';
 const fileGlassPillButtonClass =
   'h-8 rounded-lg border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-2.5 text-[#223467] shadow-none transition-all duration-150 ease-out supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#D3E1FF] hover:bg-[#EEF4FF]/62 hover:text-[#223467] hover:shadow-none active:translate-y-[1px] active:scale-[0.98] dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/70 dark:hover:text-slate-100';
 const fileGlassIconButtonClass =
   'inline-flex shrink-0 items-center justify-center h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 active:translate-y-[1px] active:scale-[0.94] disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-border dark:disabled:bg-muted dark:disabled:text-muted-foreground/65';
 const badgeGlassClass =
-  'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-slate-700/80 dark:bg-gradient-to-r dark:from-slate-900/95 dark:via-slate-900/90 dark:to-slate-800/85 dark:text-slate-100 dark:shadow-none';
+  'rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/80 via-[#E6F1FF]/85 to-[#D6E5FF]/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#1E2A5A] backdrop-blur-xl dark:border-border dark:bg-muted/70 dark:bg-none dark:text-foreground dark:shadow-none';
 const changeHistoryCardClass = 'rounded-lg border border-border/60 bg-secondary/40';
 const PSD_FILE_ICON_URL = '/icons/psd-file.svg';
 const MAX_WORKING_FILE_BYTES = Math.floor(2.5 * 1024 * 1024 * 1024);
@@ -8905,8 +8905,8 @@ function TaskDetailScreen() {
                 </div>
 
                 <div className="hidden px-5 pb-5 xl:block">
-                  <div className="mt-5 overflow-hidden rounded-[24px] border border-[#D7E4FF]/90 bg-white/45 supports-[backdrop-filter]:bg-white/28 backdrop-blur-xl dark:border-border dark:bg-card/55 dark:backdrop-blur-none xl:grid xl:grid-cols-[320px_minmax(0,1fr)]">
-                    <aside className="border-b border-[#E5EEFF] bg-[linear-gradient(180deg,rgba(248,251,255,0.9),rgba(240,246,255,0.7))] dark:border-border dark:bg-sidebar/35 xl:border-b-0 xl:border-r">
+                  <div className="mt-5 overflow-hidden rounded-[24px] border border-[#D7E4FF]/90 bg-white/45 supports-[backdrop-filter]:bg-white/28 backdrop-blur-xl dark:border-border dark:bg-card/95 dark:bg-none dark:[background-image:none] xl:grid xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <aside className="border-b border-[#E5EEFF] bg-[linear-gradient(180deg,rgba(248,251,255,0.9),rgba(240,246,255,0.7))] dark:border-border dark:bg-card/78 dark:[background-image:none] xl:border-b-0 xl:border-r">
                     <div className="border-b border-[#E5EEFF] px-5 py-4 dark:border-border">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#6C7EA6] dark:text-slate-400">
                         Collateral Flow
@@ -8938,8 +8938,8 @@ function TaskDetailScreen() {
                               className={cn(
                                 'w-full rounded-[18px] border px-3.5 py-3 text-left transition-all duration-200',
                                 isSelected
-                                  ? 'border-[#8FB0FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(235,243,255,0.94))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7)] dark:border-[#5477C2] dark:bg-[rgba(25,43,81,0.88)]'
-                                  : 'border-transparent bg-white/45 hover:border-[#D4E2FF] hover:bg-white/75 dark:bg-transparent dark:hover:border-border dark:hover:bg-sidebar-accent/35'
+                                  ? 'border-[#8FB0FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(235,243,255,0.94))] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7)] dark:border-border dark:bg-card/90 dark:[background-image:none] dark:shadow-none'
+                                  : 'border-transparent bg-white/45 hover:border-[#D4E2FF] hover:bg-white/75 dark:bg-transparent dark:hover:border-border dark:hover:bg-card/78 dark:hover:[background-image:none] dark:hover:shadow-none'
                               )}
                             >
                               <div className="flex items-start gap-3">
@@ -8947,13 +8947,13 @@ function TaskDetailScreen() {
                                   className={cn(
                                     'mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[12px] font-semibold',
                                     isSelected &&
-                                      'border-[#5F86E8] bg-[#2F67E8] text-white shadow-[0_8px_20px_-12px_rgba(47,103,232,0.9)] dark:border-[#7FA2FF] dark:bg-[#3A63C8]',
+                                      'border-[#5F86E8] bg-[#2F67E8] text-white shadow-[0_8px_20px_-12px_rgba(47,103,232,0.9)] dark:border-sidebar-ring/40 dark:bg-sidebar-primary',
                                     !isSelected &&
                                       isComplete &&
                                       'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-950/35 dark:text-emerald-300',
                                     !isSelected &&
                                       !isComplete &&
-                                      'border-[#C7D8FF] bg-white text-[#36559F] dark:border-slate-600/70 dark:bg-slate-900/65 dark:text-slate-200'
+                                      'border-[#C7D8FF] bg-white text-[#36559F] dark:border-border dark:bg-card/85 dark:text-foreground'
                                   )}
                                 >
                                   {isComplete ? <Check className="h-4 w-4" /> : index + 1}
@@ -9012,7 +9012,7 @@ function TaskDetailScreen() {
                     )}
                     </aside>
 
-                    <div className="overflow-y-auto p-5 sm:p-6">
+                    <div className="overflow-y-auto p-5 dark:bg-card/78 sm:p-6">
                       {selectedCampaignCollateral ? (
                         <>
                         {/* Header — condensed, no boxed tiles */}
@@ -11492,7 +11492,7 @@ function TaskDetailScreen() {
                     <h2 className="text-xl font-semibold text-foreground">
                       {statusConfig[normalizedTaskStatus].label}
                     </h2>
-                    <span className="inline-flex items-center rounded-full border border-[#D7E3FF] bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-[#35508A] dark:border-border dark:bg-muted/70 dark:text-slate-200">
+                    <span className="inline-flex items-center rounded-full border border-[#D7E3FF] bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-[#35508A] dark:border-border dark:bg-muted/70 dark:text-foreground/85">
                       Step {deliveryStepIndex + 1} of {TASK_STATUS_STEPS.length}
                     </span>
                   </div>
@@ -11512,11 +11512,11 @@ function TaskDetailScreen() {
                     />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#DCE5FB] bg-white/70 px-2.5 py-1 text-[11px] font-medium text-[#52627F] dark:border-border dark:bg-muted/70 dark:text-slate-300">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#DCE5FB] bg-white/70 px-2.5 py-1 text-[11px] font-medium text-[#52627F] dark:border-border dark:bg-muted/70 dark:text-foreground/85">
                       <User className="h-3.5 w-3.5" />
                       {workflowAssigneeLabel}
                     </span>
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#DCE5FB] bg-white/70 px-2.5 py-1 text-[11px] font-medium text-[#52627F] dark:border-border dark:bg-muted/70 dark:text-slate-300">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#DCE5FB] bg-white/70 px-2.5 py-1 text-[11px] font-medium text-[#52627F] dark:border-border dark:bg-muted/70 dark:text-foreground/85">
                       <Clock className="h-3.5 w-3.5" />
                       {workflowUpdatedLabel}
                     </span>
@@ -11576,10 +11576,10 @@ function TaskDetailScreen() {
                           className={cn(
                             'rounded-2xl border px-4 py-3 transition-colors',
                             isCurrent
-                              ? 'border-[#C7D7FF] bg-white/88 shadow-[0_10px_30px_-24px_rgba(54,87,201,0.65)] dark:border-[#4E6FE0]/60 dark:bg-slate-900/80'
+                              ? 'border-[#C7D7FF] bg-white/88 shadow-[0_10px_30px_-24px_rgba(54,87,201,0.65)] dark:border-border dark:bg-card/90 dark:[background-image:none] dark:shadow-none'
                               : isPast
-                                ? 'border-[#D9E6FF] bg-[linear-gradient(135deg,rgba(251,253,255,0.94),rgba(242,247,255,0.86),rgba(234,241,255,0.8))] dark:border-[#4E6EA9]/35 dark:bg-[#14223F]/45'
-                                : 'border-[#E2E9F8] bg-white/55 dark:border-slate-700/70 dark:bg-slate-900/40'
+                                ? 'border-[#D9E6FF] bg-[linear-gradient(135deg,rgba(251,253,255,0.94),rgba(242,247,255,0.86),rgba(234,241,255,0.8))] dark:border-border dark:bg-card/78 dark:[background-image:none]'
+                                : 'border-[#E2E9F8] bg-white/55 dark:border-border dark:bg-card/60 dark:[background-image:none]'
                           )}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -11598,11 +11598,11 @@ function TaskDetailScreen() {
                                   {statusConfig[step].label}
                                 </p>
                                 {isCurrent ? (
-                                  <span className="inline-flex items-center rounded-full border border-[#C7D7FF] bg-[#EEF4FF] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#3657C9] dark:border-[#4E6FE0]/50 dark:bg-[#24345F] dark:text-[#C8D7FF]">
+                                  <span className="inline-flex items-center rounded-full border border-[#C7D7FF] bg-[#EEF4FF] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#3657C9] dark:border-border dark:bg-muted/70 dark:text-foreground">
                                     Active
                                   </span>
                                 ) : isPast ? (
-                                  <span className="inline-flex items-center rounded-full border border-[#C9DBFF] bg-[#F2F7FF] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4B69C3] dark:border-[#5A79BF]/45 dark:bg-[#1D2E57]/70 dark:text-[#D9E5FF]">
+                                  <span className="inline-flex items-center rounded-full border border-[#C9DBFF] bg-[#F2F7FF] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4B69C3] dark:border-border dark:bg-card/85 dark:text-foreground/88">
                                     Done
                                   </span>
                                 ) : null}
@@ -11641,7 +11641,7 @@ function TaskDetailScreen() {
               </div>
 
               {showWorkflowInsights ? (
-                <div className="mt-5 border-t border-[#DCE5FB] pt-4 dark:border-border/70">
+                <div className="mt-5 border-t border-[#DCE5FB] pt-4 dark:border-border">
                   {secondaryWorkflowSignals.length > 0 ? (
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -11666,7 +11666,7 @@ function TaskDetailScreen() {
 
                   {usesCampaignOverviewLayout ? (
                     <div className={cn('grid gap-3', secondaryWorkflowSignals.length > 0 ? 'mt-4' : '')}>
-                      <div className="rounded-2xl border border-[#DCE5FB] bg-white/72 px-4 py-3 dark:border-border dark:bg-card/70">
+                      <div className="rounded-2xl border border-[#DCE5FB] bg-white/72 px-4 py-3 dark:border-border dark:bg-card/78 dark:[background-image:none]">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">

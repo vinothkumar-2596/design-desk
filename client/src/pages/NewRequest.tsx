@@ -1800,31 +1800,31 @@ export default function NewRequest() {
   const glassInputClass =
     'border-input bg-background shadow-none focus-visible:ring-ring/30 focus-visible:ring-offset-0';
   const glassCardClass =
-    'rounded-[24px] border border-[#CEDBFF]/35 bg-[linear-gradient(135deg,rgba(255,255,255,0.12),rgba(243,247,255,0.16),rgba(231,239,255,0.12))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(243,247,255,0.12),rgba(231,239,255,0.08))] backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:backdrop-blur-[24px]';
+    'rounded-[24px] border border-[#CEDBFF]/35 bg-[linear-gradient(135deg,rgba(255,255,255,0.12),rgba(243,247,255,0.16),rgba(231,239,255,0.12))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(243,247,255,0.12),rgba(231,239,255,0.08))] backdrop-blur-xl dark:border-border dark:bg-card/95 dark:[background-image:none] dark:shadow-none';
   const reviewSurfaceClass =
-    'rounded-[24px] border border-[#CEDBFF]/35 bg-white/80 supports-[backdrop-filter]:bg-white/62 backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:backdrop-blur-[24px]';
+    'rounded-[24px] border border-[#CEDBFF]/35 bg-white/80 supports-[backdrop-filter]:bg-white/62 backdrop-blur-xl dark:border-border dark:bg-card/95 dark:[background-image:none] dark:shadow-none';
   const reviewDenseCardClass =
-    'overflow-hidden rounded-[18px] border border-[#D8E4FF]/80 bg-white/84 supports-[backdrop-filter]:bg-white/66 shadow-none backdrop-blur-xl dark:border-sidebar-border dark:bg-sidebar/95 dark:supports-[backdrop-filter]:bg-sidebar/86 dark:shadow-none dark:backdrop-blur-[24px]';
+    'overflow-hidden rounded-[18px] border border-[#D8E4FF]/80 bg-white/84 supports-[backdrop-filter]:bg-white/66 shadow-none backdrop-blur-xl dark:border-border dark:bg-card/78 dark:[background-image:none] dark:shadow-none';
   const reviewDenseLabelClass =
     'text-[12px] font-medium leading-[1.35] text-muted-foreground';
   const reviewDenseValueClass =
     'text-[14px] font-medium leading-[1.4] text-foreground';
   const reviewDenseChipClass =
-    'inline-flex items-center rounded-full border border-[#D8E4FF]/90 bg-[#F8FBFF]/90 px-3 py-1 text-[12px] font-medium leading-none text-[#33446F] dark:border-sidebar-border dark:bg-sidebar-accent/72 dark:text-sidebar-foreground';
+    'inline-flex items-center rounded-full border border-[#D8E4FF]/90 bg-[#F8FBFF]/90 px-3 py-1 text-[12px] font-medium leading-none text-[#33446F] dark:border-border dark:bg-card/85 dark:text-foreground';
   const reviewDenseTableHeaderClass =
     'text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground';
   const builderSurfaceClass =
-    'rounded-[24px] border border-border/70 bg-white dark:border-sidebar-border dark:bg-sidebar-accent dark:[background-image:none]';
+    'rounded-[24px] border border-border/70 bg-white dark:border-border dark:bg-card/95 dark:[background-image:none]';
   const builderInsetCardClass =
-    'rounded-2xl border border-border/70 bg-background/70 dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:supports-[backdrop-filter]:bg-sidebar-accent/62 dark:backdrop-blur-[24px]';
+    'rounded-2xl border border-border/70 bg-background/70 dark:border-border dark:bg-card/78 dark:[background-image:none] dark:shadow-none';
   const builderFooterClass =
-    'relative border-t border-[#E7EEFF]/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.56),rgba(243,247,255,0.74))] px-5 py-3 supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.34),rgba(243,247,255,0.5))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar dark:[background-image:none]';
+    'relative border-t border-[#E7EEFF]/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.56),rgba(243,247,255,0.74))] px-5 py-3 supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.34),rgba(243,247,255,0.5))] backdrop-blur-md dark:border-border dark:bg-card/95 dark:[background-image:none]';
   const builderSecondaryActionClass =
-    'h-10 rounded-[14px] border border-[#D7E2FF]/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(242,246,255,0.92))] px-4 text-[13px] font-semibold text-[#223067] shadow-[0_12px_24px_-22px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.74),rgba(242,246,255,0.66))] backdrop-blur-md transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF]/92 hover:text-[#1E2A5A] hover:shadow-[0_16px_30px_-22px_rgba(59,99,204,0.28)] dark:border-sidebar-border dark:bg-sidebar/60 dark:[background-image:none] dark:text-sidebar-foreground dark:shadow-none dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-accent dark:hover:text-white';
+    'h-10 rounded-[14px] border border-[#D7E2FF]/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(242,246,255,0.92))] px-4 text-[13px] font-semibold text-[#223067] shadow-[0_12px_24px_-22px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.74),rgba(242,246,255,0.66))] backdrop-blur-md transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF]/92 hover:text-[#1E2A5A] hover:shadow-[0_16px_30px_-22px_rgba(59,99,204,0.28)] dark:border-border dark:bg-card/95 dark:[background-image:none] dark:text-foreground dark:shadow-none dark:hover:border-border dark:hover:bg-muted dark:hover:text-foreground';
   const builderValidationClass =
-    'mb-3 flex items-center gap-3 rounded-[18px] border border-[#D9E6FF]/75 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.16),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,249,255,0.92),rgba(236,243,255,0.84))] px-3.5 py-3 text-sm text-foreground shadow-[0_18px_45px_-30px_rgba(37,99,235,0.2)] supports-[backdrop-filter]:bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.78),rgba(245,249,255,0.72),rgba(236,243,255,0.62))] backdrop-blur-md ring-1 ring-white/70 dark:border-[#253D78]/90 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.16),transparent_30%),linear-gradient(135deg,rgba(8,16,39,0.96),rgba(10,22,49,0.92),rgba(12,27,59,0.88))] dark:text-slate-100 dark:ring-white/5 dark:shadow-[0_22px_56px_-32px_rgba(2,8,23,0.95)]';
+    'mb-3 flex items-center gap-3 rounded-[18px] border border-[#D9E6FF]/75 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.16),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,249,255,0.92),rgba(236,243,255,0.84))] px-3.5 py-3 text-sm text-foreground shadow-[0_18px_45px_-30px_rgba(37,99,235,0.2)] supports-[backdrop-filter]:bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.78),rgba(245,249,255,0.72),rgba(236,243,255,0.62))] backdrop-blur-md ring-1 ring-white/70 dark:border-border dark:bg-card/78 dark:[background-image:none] dark:text-foreground dark:ring-0 dark:shadow-none';
   const suggestionPopoverClass =
-    'absolute left-0 top-[calc(100%+0.5rem)] z-40 w-full overflow-hidden rounded-2xl border border-[#D9E6FF]/78 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(244,248,255,0.94))] p-2.5 shadow-[0_24px_54px_-30px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(244,248,255,0.88))] backdrop-blur-[22px] ring-1 ring-white/72 animate-dropdown sm:min-w-[23rem] dark:border-[#253D78]/90 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.98),rgba(10,22,49,0.96),rgba(12,27,59,0.94))] dark:ring-white/5 dark:shadow-[0_24px_60px_-34px_rgba(2,8,23,0.95)] dark:supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(8,16,39,0.94),rgba(10,22,49,0.9),rgba(12,27,59,0.86))]';
+    'absolute left-0 top-[calc(100%+0.5rem)] z-40 w-full overflow-hidden rounded-2xl border border-[#D9E6FF]/78 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(244,248,255,0.94))] p-2.5 shadow-[0_24px_54px_-30px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(244,248,255,0.88))] backdrop-blur-[22px] ring-1 ring-white/72 animate-dropdown sm:min-w-[23rem] dark:border-border dark:bg-card/95 dark:[background-image:none] dark:ring-0 dark:shadow-[0_24px_60px_-34px_rgba(2,8,23,0.95)]';
   const suggestionItemClass =
     'group flex w-full items-center gap-2 rounded-[18px] border px-3.5 py-3 text-left transition-all duration-200';
   const requestFieldClass =
@@ -1838,9 +1838,9 @@ export default function NewRequest() {
   const requestSelectTriggerClass =
     'h-11 rounded-xl border-[#D9E6FF] bg-white/90 px-3 text-left text-sm text-[#1E2A44] shadow-none transition-colors focus:ring-0 dark:border-sidebar-border dark:bg-sidebar/60 dark:text-slate-100';
   const requestSelectContentClass =
-    'rounded-xl border-[#D9E6FF] bg-white/95 p-1.5 shadow-lg dark:border-border dark:bg-card/95';
+    'rounded-xl border-[#D9E6FF] bg-white/95 p-1.5 shadow-lg dark:border-border dark:bg-card/95 dark:text-foreground dark:[background-image:none]';
   const requestSelectItemClass =
-    'rounded-lg pl-9 pr-3 data-[state=checked]:bg-primary/15 data-[state=checked]:text-[#1E2A5A] data-[state=checked]:font-semibold';
+    'rounded-lg pl-9 pr-3 data-[state=checked]:bg-primary/15 data-[state=checked]:text-[#1E2A5A] data-[state=checked]:font-semibold dark:data-[state=checked]:bg-muted dark:data-[state=checked]:text-foreground dark:hover:bg-muted';
   const requestDatePickerFieldSx = {
     '& .MuiPickersOutlinedInput-root': {
       borderRadius: '0.75rem',
@@ -1849,6 +1849,7 @@ export default function NewRequest() {
       fontWeight: 500,
       color: 'hsl(var(--foreground) / 0.9)',
       fontSize: '0.875rem',
+      transition: 'background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease',
     },
     '& .MuiPickersOutlinedInput-notchedOutline': {
       borderColor: '#D9E6FF',
@@ -1885,6 +1886,7 @@ export default function NewRequest() {
       borderRadius: '10px',
       color: '#4863B7',
       backgroundColor: '#EEF4FF',
+      border: '1px solid rgba(217, 230, 255, 0.92)',
       transition: 'background-color 180ms ease, color 180ms ease, border-color 180ms ease',
     },
     '& .MuiIconButton-root:hover': {
@@ -1893,34 +1895,78 @@ export default function NewRequest() {
     },
     '& .MuiSvgIcon-root': {
       color: '#4863B7',
+      fontSize: '1.1rem',
+    },
+    'html.dark & .MuiPickersOutlinedInput-root': {
+      backgroundColor: 'hsl(var(--sidebar-background) / 0.78)',
+      color: 'hsl(var(--foreground))',
+    },
+    'html.dark & .MuiPickersOutlinedInput-notchedOutline': {
+      borderColor: 'hsl(var(--sidebar-border))',
+    },
+    'html.dark & .MuiPickersOutlinedInput-root:hover .MuiPickersOutlinedInput-notchedOutline': {
+      borderColor: 'hsl(var(--sidebar-ring) / 0.45)',
+    },
+    'html.dark & .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline': {
+      borderColor: 'hsl(var(--sidebar-ring) / 0.5)',
+    },
+    'html.dark & .MuiPickersOutlinedInput-root.Mui-focused': {
+      boxShadow: '0 0 0 3px hsl(var(--sidebar-ring) / 0.18)',
+    },
+    'html.dark & .MuiPickersInputBase-sectionContent': {
+      color: 'hsl(var(--foreground))',
+    },
+    'html.dark & .MuiInputAdornment-root': {
+      marginRight: '6px',
+    },
+    'html.dark & .MuiIconButton-root': {
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      border: '1px solid hsl(var(--border) / 0.9)',
+      color: 'hsl(var(--primary))',
+    },
+    'html.dark & .MuiIconButton-root:hover': {
+      backgroundColor: 'rgba(255, 255, 255, 0.92)',
+      borderColor: 'hsl(var(--ring) / 0.4)',
+      color: 'hsl(var(--primary))',
+    },
+    'html.dark & .MuiSvgIcon-root': {
+      color: 'hsl(var(--primary))',
     },
   };
   const requestDatePickerPaperSx = {
     borderRadius: '16px',
     boxShadow: '0 20px 48px -24px rgba(15, 23, 42, 0.28)',
-    border: '1px solid rgba(217, 230, 255, 0.9)',
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    border: '1px solid hsl(var(--border) / 0.9)',
+    backgroundColor: 'hsl(var(--popover) / 0.98)',
+    color: 'hsl(var(--popover-foreground))',
     overflow: 'hidden',
     '& .MuiPickersLayout-root': {
-      backgroundColor: 'rgba(255, 255, 255, 0.98)',
+      backgroundColor: 'hsl(var(--popover) / 0.98)',
+      color: 'hsl(var(--popover-foreground))',
+    },
+    '& .MuiPickersLayout-contentWrapper': {
+      backgroundColor: 'hsl(var(--popover) / 0.98)',
     },
     '& .MuiPickersCalendarHeader-root': {
       padding: '12px 14px 2px',
     },
     '& .MuiPickersCalendarHeader-label': {
-      color: '#253977',
+      color: 'hsl(var(--foreground) / 0.92)',
       fontWeight: 600,
       fontSize: '1rem',
     },
     '& .MuiPickersArrowSwitcher-button': {
-      color: '#7A8FBF',
+      color: 'hsl(var(--muted-foreground) / 0.92)',
+    },
+    '& .MuiPickersArrowSwitcher-button:hover': {
+      backgroundColor: 'hsl(var(--secondary) / 0.85)',
     },
     '& .MuiDayCalendar-header': {
       justifyContent: 'space-between',
       paddingInline: '8px',
     },
     '& .MuiDayCalendar-weekDayLabel': {
-      color: '#7A8FBF',
+      color: 'hsl(var(--muted-foreground) / 0.95)',
       fontSize: '0.78rem',
       fontWeight: 500,
     },
@@ -1928,12 +1974,12 @@ export default function NewRequest() {
       padding: '0 8px 10px',
     },
     '& .MuiPickersDay-root': {
-      color: '#2C3553',
+      color: 'hsl(var(--foreground) / 0.92)',
       fontWeight: 500,
       borderRadius: '9999px',
     },
     '& .MuiPickersDay-root:hover': {
-      backgroundColor: '#EEF4FF',
+      backgroundColor: 'hsl(var(--secondary) / 0.9)',
     },
     '& .MuiPickersDay-root.Mui-selected': {
       backgroundColor: 'hsl(var(--primary))',
@@ -1946,7 +1992,7 @@ export default function NewRequest() {
       borderColor: 'hsl(var(--primary) / 0.4)',
     },
     '& .MuiPickersDay-root.Mui-disabled': {
-      color: '#B8C1D6',
+      color: 'hsl(var(--muted-foreground) / 0.45)',
     },
   };
   const requestTextareaClass =
@@ -2075,8 +2121,8 @@ export default function NewRequest() {
                       className={cn(
                         suggestionItemClass,
                         isSelected
-                          ? 'border-[#D4E2FF] bg-[linear-gradient(135deg,rgba(243,247,255,0.98),rgba(234,241,255,0.92))] shadow-[0_16px_30px_-24px_rgba(59,99,204,0.28)] dark:border-sidebar-ring/30 dark:bg-sidebar-accent/82 dark:shadow-none'
-                          : 'border-transparent bg-transparent hover:border-[#C9DBFF] hover:bg-[linear-gradient(135deg,rgba(243,247,255,0.9),rgba(232,240,255,0.82))] hover:shadow-[0_14px_28px_-24px_rgba(59,99,204,0.22)] dark:hover:border-sidebar-border dark:hover:bg-sidebar-accent/74 dark:hover:shadow-none'
+                          ? 'border-[#D4E2FF] bg-[linear-gradient(135deg,rgba(243,247,255,0.98),rgba(234,241,255,0.92))] shadow-[0_16px_30px_-24px_rgba(59,99,204,0.28)] dark:border-sidebar-ring/30 dark:bg-sidebar-accent/88 dark:[background-image:none] dark:shadow-none'
+                          : 'border-transparent bg-transparent hover:border-[#C9DBFF] hover:bg-[linear-gradient(135deg,rgba(243,247,255,0.9),rgba(232,240,255,0.82))] hover:shadow-[0_14px_28px_-24px_rgba(59,99,204,0.22)] dark:hover:border-sidebar-border dark:hover:bg-sidebar-accent/74 dark:hover:[background-image:none] dark:hover:shadow-none'
                       )}
                     >
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.86),rgba(240,245,255,0.74),rgba(233,240,255,0.68))] text-[#5A74B7] shadow-[0_12px_24px_-20px_rgba(59,99,204,0.22)] ring-1 ring-white/55 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.58),rgba(240,245,255,0.42),rgba(233,240,255,0.36))] backdrop-blur-md dark:border-white/10 dark:bg-sidebar/78 dark:text-slate-300 dark:ring-white/10 dark:shadow-none">
@@ -2089,7 +2135,7 @@ export default function NewRequest() {
                         >
                           {entry.headName}
                         </span>
-                        <span className="inline-flex rounded-full bg-[#EEF4FF]/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7087BC] dark:bg-sidebar-accent dark:text-slate-400">
+                        <span className="inline-flex rounded-full bg-[#EEF4FF]/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7087BC] dark:bg-sidebar/95 dark:text-slate-300">
                           {entry.department}
                         </span>
                       </div>
@@ -2319,7 +2365,7 @@ export default function NewRequest() {
       return (
         <section className="space-y-3">
           {collaterals.length === 0 ? (
-            <div className="rounded-[24px] border border-dashed border-[#D2DFFF]/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.6),rgba(243,247,255,0.72))] px-5 py-5 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.42),rgba(243,247,255,0.54))] backdrop-blur-md dark:border-sidebar-border dark:bg-sidebar-accent/80">
+            <div className="rounded-[24px] border border-dashed border-[#D2DFFF]/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.6),rgba(243,247,255,0.72))] px-5 py-5 supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.42),rgba(243,247,255,0.54))] backdrop-blur-md dark:border-border dark:bg-card/78 dark:[background-image:none]">
               <h3 className="text-base font-semibold text-foreground">No collaterals added yet</h3>
               <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
                 Choose a preset to add the first collateral item for this request.
@@ -2398,7 +2444,7 @@ export default function NewRequest() {
               Edit
             </Button>
           </div>
-          <div className="border-t border-[#E8EEFF]/70 px-5 py-4 dark:border-sidebar-border/60">
+          <div className="border-t border-[#E8EEFF]/70 px-5 py-4 dark:border-border/60">
             <div className="grid gap-x-8 gap-y-3 md:grid-cols-2">
               {[
                 { label: 'Title', value: requestTitle || '-' },
@@ -2440,7 +2486,7 @@ export default function NewRequest() {
               Edit
             </Button>
           </div>
-          <div className="border-t border-[#E8EEFF]/70 px-5 py-4 dark:border-sidebar-border/60">
+          <div className="border-t border-[#E8EEFF]/70 px-5 py-4 dark:border-border/60">
             <div className="flex flex-wrap items-center gap-2">
               <span className={reviewDenseChipClass}>
                 Master: {summary.masterReferenceCount} {summary.masterReferenceCount === 1 ? 'file' : 'files'}
@@ -2467,7 +2513,7 @@ export default function NewRequest() {
               Edit
             </Button>
           </div>
-          <div className="hidden border-t border-[#E8EEFF]/70 px-5 py-2.5 md:grid md:grid-cols-[minmax(0,1.8fr)_auto_auto_auto_auto_auto] md:items-center md:gap-3 dark:border-sidebar-border/60">
+          <div className="hidden border-t border-[#E8EEFF]/70 px-5 py-2.5 md:grid md:grid-cols-[minmax(0,1.8fr)_auto_auto_auto_auto_auto] md:items-center md:gap-3 dark:border-border/60">
             <span className={reviewDenseTableHeaderClass}>Name</span>
             <span className={reviewDenseTableHeaderClass}>Status</span>
             <span className={reviewDenseTableHeaderClass}>Size</span>
@@ -2536,7 +2582,7 @@ export default function NewRequest() {
           </div>
         </section>
 
-        <div className="flex items-start gap-3 rounded-[16px] border border-[#DDEAFF]/80 bg-[#F5F9FF]/88 px-4 py-3.5 shadow-none dark:border-sidebar-border dark:bg-sidebar-accent/60 dark:shadow-none">
+        <div className="flex items-start gap-3 rounded-[16px] border border-[#DDEAFF]/80 bg-[#F5F9FF]/88 px-4 py-3.5 shadow-none dark:border-border dark:bg-card/78 dark:shadow-none">
           <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-sidebar/60 dark:text-sidebar-foreground/70">
             <Paperclip className="h-3.5 w-3.5" />
           </div>
@@ -2870,20 +2916,20 @@ export default function NewRequest() {
     <section
       className={cn(
         builderSurfaceClass,
-        'animate-fade-in overflow-hidden dark:border-[#253D78]/90 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.96),rgba(10,22,49,0.94),rgba(12,27,59,0.9))] dark:shadow-[0_28px_70px_-36px_rgba(2,8,23,0.92)] dark:[background-image:none]'
+        'animate-fade-in overflow-hidden dark:border-border dark:bg-card/95 dark:bg-none dark:text-foreground dark:shadow-none'
       )}
     >
-      <div className="border-b border-border/70 px-8 py-6 dark:border-[#253D78]/90">
+      <div className="border-b border-border/70 px-8 py-6 dark:border-border">
         <Badge
           variant="outline"
-          className="rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-[#314778] dark:bg-[#101B38] dark:text-[#C7D6FF]"
+          className="rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-border dark:bg-muted/70 dark:text-muted-foreground"
         >
           Request Type
         </Badge>
         <h2 className="mt-3 text-[24px] font-semibold text-foreground dark:text-[#F5F8FF]">
           Select a Request Type
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground dark:text-[#9FB0D4]">
+        <p className="mt-1 text-sm text-muted-foreground dark:text-[#8FA0C4]">
           Choose the option that best matches your requirement.
         </p>
       </div>
@@ -2897,27 +2943,27 @@ export default function NewRequest() {
               type="button"
               onClick={() => handleRequestTypeSelect(option.value)}
               className={cn(
-                'animate-slide-up group relative h-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white p-5 text-left shadow-[0_12px_28px_-24px_rgba(30,42,90,0.18)] transform-gpu will-change-transform transition-[transform,border-color,box-shadow] duration-500 hover:-translate-y-1 hover:border-primary/35 hover:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.12)] focus-visible:-translate-y-1 focus-visible:border-primary/35 focus-visible:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.12)] dark:border-[#2A427A] dark:bg-[linear-gradient(180deg,rgba(10,18,40,0.98),rgba(11,24,52,0.95),rgba(13,29,63,0.92))] dark:shadow-[0_24px_56px_-32px_rgba(2,8,23,0.92)] dark:hover:border-[#4E6FE0]/45 dark:hover:shadow-[0_30px_64px_-34px_rgba(2,8,23,0.82)] dark:focus-visible:border-[#4E6FE0]/45 dark:focus-visible:shadow-[0_30px_64px_-34px_rgba(2,8,23,0.82)]'
+                'animate-slide-up group relative h-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white p-5 text-left shadow-[0_12px_28px_-24px_rgba(30,42,90,0.18)] transform-gpu will-change-transform transition-[transform,border-color,box-shadow] duration-500 hover:-translate-y-1 hover:border-primary/35 hover:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.12)] focus-visible:-translate-y-1 focus-visible:border-primary/35 focus-visible:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.12)] dark:border-border dark:bg-card/78 dark:shadow-none dark:hover:border-border dark:hover:bg-card/90 dark:hover:shadow-none dark:focus-visible:border-border dark:focus-visible:bg-card/90 dark:focus-visible:shadow-none'
               )}
               style={{ animationDelay: `${index * 90}ms`, ...REQUEST_TYPE_HOVER_TRANSITION_STYLE }}
             >
               <div
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.08),transparent_34%)] opacity-70 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_30%)]"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.08),transparent_34%)] opacity-70 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.03),transparent_36%)]"
                 style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
               />
               <div
-                className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(242,247,255,0.82)_58%,rgba(238,244,255,0.94))] dark:bg-[linear-gradient(180deg,rgba(11,21,46,0.28),rgba(12,27,58,0.18),rgba(14,33,71,0.34))]"
+                className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(242,247,255,0.82)_58%,rgba(238,244,255,0.94))] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.015),rgba(255,255,255,0))]"
                 style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
               />
               <div className="relative flex min-h-[188px] flex-col">
                 <div className="flex items-start justify-between gap-3">
                   <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#DDE7FF] bg-[#F7FAFF] text-primary transform-gpu transition-[transform,border-color,background-color] duration-500 group-hover:-translate-y-0.5 group-hover:border-[#C8D8FF] group-hover:bg-white group-focus-visible:-translate-y-0.5 group-focus-visible:border-[#C8D8FF] group-focus-visible:bg-white dark:border-[#314778] dark:bg-[#101B38] dark:text-[#D9E4FF] dark:group-hover:border-[#3E5DA8] dark:group-hover:bg-[#132246] dark:group-focus-visible:border-[#3E5DA8] dark:group-focus-visible:bg-[#132246]"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#DDE7FF] bg-[#F7FAFF] text-primary transform-gpu transition-[transform,border-color,background-color] duration-500 group-hover:-translate-y-0.5 group-hover:border-[#C8D8FF] group-hover:bg-white group-focus-visible:-translate-y-0.5 group-focus-visible:border-[#C8D8FF] group-focus-visible:bg-white dark:border-border dark:bg-muted/70 dark:text-muted-foreground dark:group-hover:border-border dark:group-hover:bg-muted/80 dark:group-focus-visible:border-border dark:group-focus-visible:bg-muted/80"
                     style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
                   >
                     <OptionIcon className="h-5 w-5" />
                   </div>
-                  <span className="inline-flex rounded-full border border-[#DCE6FF] bg-[#FAFCFF] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5B73B2] dark:border-[#314778] dark:bg-[#0F1935] dark:text-[#C3D1F5]">
+                  <span className="inline-flex rounded-full border border-[#DCE6FF] bg-[#FAFCFF] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5B73B2] dark:border-border dark:bg-muted/70 dark:text-muted-foreground">
                     {option.tag}
                   </span>
                 </div>
@@ -2926,13 +2972,13 @@ export default function NewRequest() {
                   <h3 className="text-[17px] font-semibold tracking-[-0.02em] text-[#1E2A5A] dark:text-[#F5F8FF]">
                     {option.label}
                   </h3>
-                  <p className="text-[14px] font-medium text-foreground/90 dark:text-[#C9D4EE]">
+                  <p className="text-[14px] font-medium text-foreground/90 dark:text-muted-foreground">
                     {option.description}
                   </p>
                 </div>
 
-                <div className="mt-4 flex items-center justify-end border-t border-[#E8EEFF] pt-4 dark:border-[#23396E]">
-                  <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-primary transition-colors duration-300 ease-out dark:text-[#C7D5FF]">
+                <div className="mt-4 flex items-center justify-end border-t border-[#E8EEFF] pt-4 dark:border-border">
+                  <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-primary transition-colors duration-300 ease-out dark:text-[#F5F8FF]">
                     {option.cta}
                     <ArrowRight
                       className="h-4 w-4 transform-gpu transition-transform duration-500 group-hover:translate-x-1.5 group-focus-visible:translate-x-1.5"
@@ -2956,7 +3002,7 @@ export default function NewRequest() {
           'overflow-hidden shadow-[0_24px_52px_-40px_rgba(59,99,204,0.084)]'
         )}
       >
-        <div className="border-b border-border/70 px-5 py-4 dark:border-[#253D78]/90">
+        <div className="border-b border-border/70 px-5 py-4 dark:border-border/60">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h2 className="text-[24px] font-semibold text-foreground">Quick Design</h2>
@@ -3158,10 +3204,10 @@ export default function NewRequest() {
         <div className={builderFooterClass}>
           {shouldRevealSingleValidation && singleValidationMessage ? (
             <div className={builderValidationClass}>
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-[#D9E6FF]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(236,243,255,0.86))] text-[#4863B7] shadow-[0_12px_24px_-18px_rgba(59,99,204,0.26)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(236,243,255,0.6))] backdrop-blur-sm dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:text-slate-300 dark:shadow-none">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-[#D9E6FF]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(236,243,255,0.86))] text-[#4863B7] shadow-[0_12px_24px_-18px_rgba(59,99,204,0.26)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(236,243,255,0.6))] backdrop-blur-sm dark:border-border dark:bg-card/95 dark:text-foreground/70 dark:shadow-none">
                 <AlertTriangle className="h-4 w-4" />
               </span>
-              <span className="flex min-h-8 items-center leading-6 text-foreground/90 dark:text-slate-100">
+              <span className="flex min-h-8 items-center leading-6 text-foreground/90 dark:text-foreground">
                 {singleValidationMessage}
               </span>
             </div>
@@ -3181,7 +3227,7 @@ export default function NewRequest() {
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-              <Button type="button" variant="outline" onClick={saveDraft}>
+              <Button type="button" variant="outline" onClick={saveDraft} className={builderSecondaryActionClass}>
                 Save Draft
               </Button>
               <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
@@ -3204,7 +3250,7 @@ export default function NewRequest() {
           : cn(glassCardClass, 'overflow-hidden shadow-[0_24px_52px_-40px_rgba(59,99,204,0.084)] xl:flex xl:h-full xl:flex-col')
       )}
     >
-      <div className="border-b border-border/70 px-5 py-3.5 dark:border-[#253D78]/90">
+      <div className="border-b border-border/70 px-5 py-3.5 dark:border-border/60">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-[24px] font-semibold text-foreground">
@@ -3229,10 +3275,10 @@ export default function NewRequest() {
       <div ref={footerActionsTourRef} className={builderFooterClass}>
         {currentStepValidationMessage ? (
           <div className={builderValidationClass}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-[#D9E6FF]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(236,243,255,0.86))] text-[#4863B7] shadow-[0_12px_24px_-18px_rgba(59,99,204,0.26)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(236,243,255,0.6))] backdrop-blur-sm dark:border-sidebar-border dark:bg-sidebar-accent/76 dark:text-slate-300 dark:shadow-none">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-[#D9E6FF]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(236,243,255,0.86))] text-[#4863B7] shadow-[0_12px_24px_-18px_rgba(59,99,204,0.26)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(236,243,255,0.6))] backdrop-blur-sm dark:border-border dark:bg-card/95 dark:text-foreground/70 dark:shadow-none">
               <AlertTriangle className="h-4 w-4" />
             </span>
-            <span className="flex min-h-8 items-center leading-6 text-foreground/90 dark:text-slate-100">
+            <span className="flex min-h-8 items-center leading-6 text-foreground/90 dark:text-foreground">
               {currentStepValidationMessage}
             </span>
           </div>
@@ -3254,7 +3300,7 @@ export default function NewRequest() {
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <Button type="button" variant="outline" onClick={saveDraft}>
+            <Button type="button" variant="outline" onClick={saveDraft} className={builderSecondaryActionClass}>
               Save Draft
             </Button>
 
