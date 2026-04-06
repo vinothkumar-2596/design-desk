@@ -1928,14 +1928,17 @@ export default function NewRequest() {
       marginRight: '6px',
     },
     'html.dark & .MuiIconButton-root': {
-      backgroundColor: 'rgba(255, 255, 255, 0.96)',
-      border: '1px solid hsl(var(--border) / 0.9)',
-      color: 'hsl(var(--primary))',
+      height: 30,
+      width: 30,
+      borderRadius: '9999px',
+      backgroundColor: 'hsl(var(--sidebar-accent))',
+      border: '1px solid hsl(var(--sidebar-border) / 0.7)',
+      color: 'rgb(226 232 240)',
     },
     'html.dark & .MuiIconButton-root:hover': {
-      backgroundColor: 'rgba(255, 255, 255, 0.92)',
-      borderColor: 'hsl(var(--ring) / 0.4)',
-      color: 'hsl(var(--primary))',
+      backgroundColor: 'hsl(var(--sidebar-accent) / 0.92)',
+      borderColor: 'hsl(var(--sidebar-ring) / 0.35)',
+      color: 'rgb(241 245 249)',
     },
     'html.dark & .MuiSvgIcon-root': {
       color: 'hsl(var(--primary))',
@@ -3366,15 +3369,18 @@ export default function NewRequest() {
         >
           <div className="max-w-[46rem]">
             {headerBadgeText ? (
-              <Badge variant="outline" className="mb-3 rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-sidebar-border dark:bg-sidebar-accent/80">
+              <Badge
+                variant="outline"
+                className="mb-3 rounded-full border-border/70 bg-white/80 px-3 py-1 text-primary dark:border-sidebar-border/70 dark:bg-sidebar-accent/80 dark:text-[#B9CBFF]"
+              >
                 {headerBadgeText}
               </Badge>
             ) : null}
-            <h1 className="max-w-[22ch] text-[30px] font-bold leading-[1.16] tracking-[-0.04em] text-[#1E2A5A] dark:text-primary break-words [overflow-wrap:anywhere] [text-wrap:balance]">
+            <h1 className="max-w-[22ch] text-[30px] font-bold leading-[1.16] tracking-[-0.04em] text-[#1E2A5A] dark:text-[#F5F8FF] break-words [overflow-wrap:anywhere] [text-wrap:balance]">
               {headerTitle}
             </h1>
             {headerDescription ? (
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="mt-2 text-sm text-muted-foreground dark:text-[#9FB0D4]">
                 {headerDescription}
               </p>
             ) : null}

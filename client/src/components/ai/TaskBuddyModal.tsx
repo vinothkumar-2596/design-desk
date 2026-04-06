@@ -1797,7 +1797,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                                                                 </PopoverTrigger>
                                                                 <PopoverContent
                                                                     align="start"
-                                                                    className="w-auto border-[#C9D7FF] bg-[#F2F6FF]/95 p-2 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:supports-[backdrop-filter]:bg-slate-900/70"
+                                                                    className="w-auto border-0 bg-transparent p-0 shadow-none"
                                                                 >
                                                                     <DateCalendar
                                                                         mode="single"

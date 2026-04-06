@@ -11832,7 +11832,7 @@ function TaskDetailScreen() {
                     </PopoverTrigger>
                     <PopoverContent
                       align="start"
-                      className="w-auto border-[#C9D7FF] bg-[#F2F6FF]/95 p-2 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:supports-[backdrop-filter]:bg-slate-900/70"
+                      className="w-auto border-0 bg-transparent p-0 shadow-none"
                     >
                       <DateCalendar
                         mode="single"
@@ -11847,23 +11847,6 @@ function TaskDetailScreen() {
                           setDeadlineCalendarOpen(false);
                         }}
                         disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                        className="rounded-lg border border-[#D9E6FF] bg-white/75 p-2 dark:border-slate-700/60 dark:bg-slate-900/60"
-                        classNames={{
-                          caption_label:
-                            'text-sm font-semibold text-[#253977] dark:text-[#C8D7FF]',
-                          head_cell:
-                            'w-9 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[#5D75B9] dark:text-[#9CB3EE]',
-                          cell:
-                            'h-9 w-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20',
-                          day:
-                            'h-9 w-9 rounded-md border border-transparent p-0 font-medium text-[#223067] hover:bg-[#EAF1FF] hover:text-[#223067] aria-selected:opacity-100 dark:text-[#D6E2FF] dark:hover:bg-[#1A315E] dark:hover:text-[#D6E2FF]',
-                          nav_button:
-                            'h-7 w-7 border border-[#C7D9FF] bg-white text-[#3B54A6] hover:bg-[#EEF4FF] dark:border-[#33508A] dark:bg-[#15274F] dark:text-[#B4C7FF] dark:hover:bg-[#1B315F]',
-                          day_selected:
-                            'bg-[#3550A8] text-white hover:bg-[#2C4391] focus:bg-[#2C4391] focus:text-white',
-                          day_today:
-                            'bg-[#E1EBFF] text-[#1E2E66] dark:bg-[#29447D] dark:text-[#D9E4FF]',
-                        }}
                       />
                     </PopoverContent>
                   </Popover>

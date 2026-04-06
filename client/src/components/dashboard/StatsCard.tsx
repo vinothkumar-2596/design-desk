@@ -34,9 +34,9 @@ const iconBase =
 const iconStyles = {
   default: `${iconBase} text-[#3b82f6]`,
   primary: `${iconBase} text-[#3b82f6]`,
-  warning: `${iconBase} text-[#3b82f6]`,
+  warning: `${iconBase} text-amber-500 dark:text-amber-300`,
   success: `${iconBase} text-[#3b82f6]`,
-  urgent: `${iconBase} text-[#3b82f6]`,
+  urgent: `${iconBase} text-rose-500 dark:text-rose-300`,
 };
 
 export function StatsCard({ title, value, icon, trend, variant = 'default' }: StatsCardProps) {

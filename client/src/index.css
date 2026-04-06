@@ -125,6 +125,20 @@
   [data-theme='dark'] input[type='time'] {
     color-scheme: dark;
   }
+
+  html.dark input[type='date']::-webkit-calendar-picker-indicator,
+  html.dark input[type='datetime-local']::-webkit-calendar-picker-indicator,
+  html.dark input[type='time']::-webkit-calendar-picker-indicator,
+  [data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator,
+  [data-theme='dark'] input[type='datetime-local']::-webkit-calendar-picker-indicator,
+  [data-theme='dark'] input[type='time']::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    border-radius: 0.5rem;
+    padding: 0.125rem;
+    background: transparent;
+    opacity: 0.92;
+    filter: invert(86%) sepia(14%) saturate(501%) hue-rotate(190deg) brightness(104%) contrast(101%);
+  }
 }
 
 @layer base {
