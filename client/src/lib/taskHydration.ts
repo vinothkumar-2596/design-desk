@@ -2,6 +2,18 @@ import type { CollateralItem, Task } from '@/types';
 
 const toDate = (value?: string | Date | null) => (value ? new Date(value) : undefined);
 
+export const mergeViewerReadAt = <
+  T extends { viewerReadAt?: string | Date | null } | null | undefined,
+>(
+  raw: T,
+  fallback?: string | Date | null
+) => {
+  if (!raw || !Object.prototype.hasOwnProperty.call(raw, 'viewerReadAt')) {
+    return fallback ?? undefined;
+  }
+  return raw.viewerReadAt ?? undefined;
+};
+
 const hydrateCollateral = (collateral: CollateralItem): CollateralItem => ({
   ...collateral,
   deadline: toDate(collateral.deadline),

@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { API_URL, authFetch } from '@/lib/api';
 import { mockTasks } from '@/data/mockTasks';
 import { mergeLocalTasks } from '@/lib/taskStorage';
-import { hydrateTask } from '@/lib/taskHydration';
+import { hydrateTask, mergeViewerReadAt } from '@/lib/taskHydration';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Task } from '@/types';
 
@@ -93,7 +93,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         const hydrated = hydrateTask({
           ...payload,
           id,
-          viewerReadAt: payload.viewerReadAt ?? previousTask.viewerReadAt,
+          viewerReadAt: mergeViewerReadAt(payload, previousTask.viewerReadAt),
         });
         const next = [...prev];
         next[index] = hydrated;

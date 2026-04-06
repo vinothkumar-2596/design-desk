@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select';
 import { TaskCategory, TaskStatus, TaskUrgency } from '@/types';
 import { mergeLocalTasks } from '@/lib/taskStorage';
-import { hydrateTask } from '@/lib/taskHydration';
+import { hydrateTask, mergeViewerReadAt } from '@/lib/taskHydration';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { filterTasksForUser } from '@/lib/taskVisibility';
@@ -156,7 +156,7 @@ export default function Tasks() {
         const hydrated = hydrateTask({
           ...payload,
           id,
-          viewerReadAt: payload.viewerReadAt ?? previousTask.viewerReadAt,
+          viewerReadAt: mergeViewerReadAt(payload, previousTask.viewerReadAt),
         });
         const next = [...prev];
         next[index] = hydrated;

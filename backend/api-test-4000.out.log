@@ -1,0 +1,11 @@
+MongoDB connected successfully
+Antigravity API listening on port 4000
+Environment: production
+Socket connected: g1Tzq-lMdbgLAq7ZAAAB
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+[2026-04-06T05:33:31.784Z] OPTIONS /api/notifications?after=2026-04-05T05%3A23%3A38.860Z&limit=20
+[2026-04-06T05:33:31.785Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T05:33:31.786Z] GET /api/notifications?after=2026-04-05T05%3A23%3A38.860Z&limit=20
+[2026-04-06T05:33:31.791Z] GET /api/notifications/unread-count

@@ -131,6 +131,7 @@ import {
   getCollateralPreset,
   getCollateralSizeSummary,
 } from '@/lib/campaignRequest';
+import { mergeViewerReadAt } from '@/lib/taskHydration';
 
 type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
 const statusConfig: Record<DisplayTaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
@@ -827,7 +828,7 @@ const PSD_FILE_ICON_URL = '/icons/psd-file.svg';
 const MAX_WORKING_FILE_BYTES = Math.floor(2.5 * 1024 * 1024 * 1024);
 const WORKING_UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024;
 
-import { API_URL, authFetch, getAuthToken, openDriveReconnectWindow } from '@/lib/api';
+import { API_URL, authFetch, getAuthToken, getFreshAuthToken, openDriveReconnectWindow } from '@/lib/api';
 
 const shouldPromptDriveReconnect = (errorMessage?: string) => {
   const normalized = String(errorMessage || '').toLowerCase();
@@ -1436,8 +1437,8 @@ function TaskDetailScreen() {
       deadlineApprovedAt: raw.deadlineApprovedAt ? toDate(raw.deadlineApprovedAt as unknown as string) : undefined,
       emergencyApprovedAt: raw.emergencyApprovedAt ? toDate(raw.emergencyApprovedAt as unknown as string) : undefined,
       emergencyRequestedAt: raw.emergencyRequestedAt ? toDate(raw.emergencyRequestedAt as unknown as string) : undefined,
-      viewerReadAt: raw.viewerReadAt
-        ? toDate(raw.viewerReadAt as unknown as string)
+      viewerReadAt: Object.prototype.hasOwnProperty.call(raw, 'viewerReadAt')
+        ? (raw.viewerReadAt ? toDate(raw.viewerReadAt as unknown as string) : undefined)
         : taskState?.viewerReadAt,
       finalDeliverableReviewedAt: raw.finalDeliverableReviewedAt
         ? toDate(raw.finalDeliverableReviewedAt as unknown as string)
@@ -1798,7 +1799,7 @@ function TaskDetailScreen() {
       hydrateTask({
         ...rawTask,
         id: resolvedId,
-        viewerReadAt: rawTask?.viewerReadAt ?? currentTask?.viewerReadAt,
+        viewerReadAt: mergeViewerReadAt(rawTask, currentTask?.viewerReadAt),
       }),
       currentTask
     );
@@ -2158,7 +2159,7 @@ function TaskDetailScreen() {
         hydrateTask({
           ...updatedTaskRaw,
           id: updatedTaskId,
-          viewerReadAt: updatedTaskRaw?.viewerReadAt ?? taskState?.viewerReadAt,
+          viewerReadAt: mergeViewerReadAt(updatedTaskRaw, taskState?.viewerReadAt),
           ccEmails: nextCc,
           cc_emails: nextCc,
         } as typeof mockTasks[number]),
@@ -4181,6 +4182,21 @@ function TaskDetailScreen() {
     }
     return fallbackName;
   };
+  const sanitizeDownloadErrorMessage = (value: string, fallback: string) => {
+    const detail = String(value || '').trim();
+    if (!detail) return fallback;
+    const normalized = detail.toLowerCase();
+    if (
+      normalized.startsWith('<!doctype html') ||
+      normalized.startsWith('<html') ||
+      normalized.includes('<head') ||
+      normalized.includes('<body') ||
+      normalized.includes('<pre>cannot get ')
+    ) {
+      return fallback;
+    }
+    return detail;
+  };
   const openFileUrl = (url: string) => {
     if (!url || typeof document === 'undefined') return;
     const link = document.createElement('a');
@@ -4264,12 +4280,12 @@ function TaskDetailScreen() {
       try {
         const payload = await response.clone().json();
         if (payload && typeof payload.error === 'string' && payload.error.trim()) {
-          message = payload.error.trim();
+          message = sanitizeDownloadErrorMessage(payload.error, message);
         }
       } catch {
         const detail = await response.text().catch(() => '');
         if (detail.trim()) {
-          message = detail.trim();
+          message = sanitizeDownloadErrorMessage(detail, message);
         }
       }
       throw new Error(message);
@@ -4437,13 +4453,12 @@ function TaskDetailScreen() {
     }
     try {
       beginZipDownloadStatus(downloadMode, requestedIds.length);
-      const authToken = getAuthToken();
+      const authToken = await getFreshAuthToken();
       if (!authToken) {
         throw new Error('Your session expired. Please sign in again.');
       }
 
       const downloadUrl = new URL(`${apiUrl}/api/tasks/${taskId}/deliverables/${versionId}/zip`);
-      downloadUrl.searchParams.set('access_token', authToken);
       requestedIds.forEach((requestedId) => {
         downloadUrl.searchParams.append('fileIds', requestedId);
       });
@@ -4452,6 +4467,7 @@ function TaskDetailScreen() {
         const xhr = new XMLHttpRequest();
         xhr.open('GET', downloadUrl.toString(), true);
         xhr.responseType = 'blob';
+        xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
 
         xhr.onreadystatechange = () => {
           if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
@@ -4480,12 +4496,12 @@ function TaskDetailScreen() {
                   try {
                     const payload = JSON.parse(detail);
                     if (payload && typeof payload.error === 'string' && payload.error.trim()) {
-                      message = payload.error.trim();
+                      message = sanitizeDownloadErrorMessage(payload.error, message);
                     } else {
-                      message = detail.trim();
+                      message = sanitizeDownloadErrorMessage(detail, message);
                     }
                   } catch {
-                    message = detail.trim();
+                    message = sanitizeDownloadErrorMessage(detail, message);
                   }
                 }
               }

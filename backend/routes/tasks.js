@@ -1980,7 +1980,7 @@ const ensureTaskAccess = async (req, res, next) => {
     const isCommentsSeenWrite =
       req.method === "POST" && requestPath.endsWith("/comments/seen");
     const isTaskViewedWrite =
-      req.method === "POST" && requestPath.endsWith("/viewed");
+      (req.method === "POST" || req.method === "DELETE") && requestPath.endsWith("/viewed");
     const usesAssignedAccessRules = hasAssignedDesignerAccessMetadata(task);
 
     if (usesAssignedAccessRules) {
@@ -3068,6 +3068,7 @@ router.post("/:id/viewed", ensureTaskAccess, async (req, res) => {
     const payload = buildTaskPayloadForViewer(task, req.user, {
       viewerReadAt: view?.readAt || undefined,
     });
+    payload.viewerReadAt = view?.readAt || null;
     const io = getSocket();
     if (io) {
       io.to(viewerId).emit("task:updated", {
@@ -3102,6 +3103,7 @@ router.delete("/:id/viewed", ensureTaskAccess, async (req, res) => {
     const payload = buildTaskPayloadForViewer(task, req.user, {
       viewerReadAt: undefined,
     });
+    payload.viewerReadAt = null;
     const io = getSocket();
     if (io) {
       io.to(viewerId).emit("task:updated", {

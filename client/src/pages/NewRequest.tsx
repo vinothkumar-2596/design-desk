@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { format } from 'date-fns';
+import { addDays, format } from 'date-fns';
 import { useLocation, useNavigate } from 'react-router-dom';
 import BoringAvatar from 'boring-avatars';
 import { toast } from '@/components/ui/sonner';
@@ -11,8 +11,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Calendar as DateCalendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { PickersDay, type PickersDayProps } from '@mui/x-date-pickers/PickersDay';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { AttachmentUploadField } from '@/components/request-builder/AttachmentUploadField';
 import { CollateralEditorCard } from '@/components/request-builder/CollateralEditorCard';
@@ -41,7 +43,12 @@ import {
 } from '@/lib/requestDrafts';
 import { loadLocalTaskList, upsertLocalTask } from '@/lib/taskStorage';
 import { cn } from '@/lib/utils';
-import { addOfficeOpenDays } from '@/lib/officeCalendar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  OFFICE_REGION_LABEL,
+  getOfficeGovernmentHolidayName,
+  isOfficeClosedDate,
+} from '@/lib/officeCalendar';
 import type { RequestType, Task, TaskCategory, TaskUrgency } from '@/types';
 import {
   AlertTriangle,
@@ -107,6 +114,33 @@ type SubmitSuccessState = {
   storedLocally: boolean;
   taskTitle: string;
 };
+
+type NewRequestNavigationState = {
+  restoreDraft?: boolean;
+};
+
+type DeadlineCalendarDayProps = PickersDayProps & {
+  tooltipLabel?: string;
+};
+
+function DeadlineCalendarDay({ tooltipLabel, ...props }: DeadlineCalendarDayProps) {
+  const dayButton = <PickersDay {...props} />;
+
+  if (!tooltipLabel || props.outsideCurrentMonth) {
+    return dayButton;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">{dayButton}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" sideOffset={8} className="z-[100100]">
+        {tooltipLabel}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 type SingleRequestStepId = 'details' | 'files' | 'review';
 
@@ -414,8 +448,52 @@ const truncateHeaderTitle = (value: string, maxLength = HEADER_TITLE_MAX_LENGTH)
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}â€¦`;
 };
 
-const minDeadlineDate = startOfDay(addOfficeOpenDays(new Date(), 3));
-const minDeadlineInputValue = format(minDeadlineDate, 'yyyy-MM-dd');
+const todayDate = startOfDay(new Date());
+const minDeadlineInputValue = format(todayDate, 'yyyy-MM-dd');
+
+const isPastDeadlineDate = (value: Date) =>
+  startOfDay(value).getTime() < todayDate.getTime();
+
+const isBlockedDeadlineDate = (value: Date) =>
+  isPastDeadlineDate(value) || isOfficeClosedDate(value);
+
+const getNextAvailableDeadline = (value: Date) => {
+  let candidate = startOfDay(value);
+
+  if (candidate.getTime() < todayDate.getTime()) {
+    candidate = todayDate;
+  }
+
+  let attempts = 0;
+  while (isOfficeClosedDate(candidate) && attempts < 366) {
+    candidate = addDays(candidate, 1);
+    attempts += 1;
+  }
+
+  return candidate;
+};
+
+const defaultDeadlineDate = getNextAvailableDeadline(todayDate);
+
+const getDeadlineRestrictionMessage = (subject: string, value?: Date) => {
+  if (!value) return '';
+
+  const normalized = startOfDay(value);
+  if (isPastDeadlineDate(normalized)) {
+    return `${subject} cannot be in the past.`;
+  }
+
+  const holidayName = getOfficeGovernmentHolidayName(normalized);
+  if (holidayName) {
+    return `${subject} cannot fall on ${holidayName}. ${OFFICE_REGION_LABEL} government holidays are unavailable.`;
+  }
+
+  if (isOfficeClosedDate(normalized)) {
+    return `${subject} cannot fall on Saturdays or Sundays.`;
+  }
+
+  return '';
+};
 
 const toBuilderAttachmentRecord = (attachments: BuilderAttachment[], uploadedBy?: string) =>
   attachments
@@ -480,7 +558,7 @@ const createCollateralDraftFromPreset = (
   platform: preset.platform || '',
   usageType: preset.usageType || '',
   brief: '',
-  deadline: deadlineMode === 'common' ? commonDeadline : minDeadlineDate,
+  deadline: deadlineMode === 'common' ? commonDeadline : defaultDeadlineDate,
   priority: 'normal',
   status: 'pending',
   referenceFiles: [],
@@ -525,8 +603,9 @@ const validateTimelineStep = ({
   if (deadlineMode === 'common' && !commonDeadline) {
     return 'Set a common deadline for the campaign.';
   }
-  if (commonDeadline && startOfDay(commonDeadline) < minDeadlineDate) {
-    return 'Campaign deadline must be at least 3 working days from today.';
+  if (deadlineMode === 'common' && commonDeadline) {
+    const deadlineMessage = getDeadlineRestrictionMessage('Campaign deadline', commonDeadline);
+    if (deadlineMessage) return deadlineMessage;
   }
   if (hasUploadingFiles(masterAttachments)) {
     return 'Wait for master reference uploads to finish before continuing.';
@@ -567,8 +646,12 @@ const validateCollateralsStep = ({
     if (!effectiveDeadline) {
       return `Set a deadline for ${getCollateralDisplayName(collateral)}.`;
     }
-    if (startOfDay(effectiveDeadline) < minDeadlineDate) {
-      return `Deadline for ${getCollateralDisplayName(collateral)} must be at least 3 working days from today.`;
+    const deadlineMessage = getDeadlineRestrictionMessage(
+      `Deadline for ${getCollateralDisplayName(collateral)}`,
+      effectiveDeadline
+    );
+    if (deadlineMessage) {
+      return deadlineMessage;
     }
     if (hasUploadingFiles(collateral.referenceFiles)) {
       return `Wait for the uploads to finish for ${getCollateralDisplayName(collateral)}.`;
@@ -648,8 +731,9 @@ const validateSingleRequest = ({
   if (!category) return 'Select a creative category.';
   if (!normalizeIndianPhone(requesterPhone)) return 'Enter a valid 10-digit contact number.';
   if (!deadline) return 'Set a deadline for this request.';
-  if (startOfDay(deadline) < minDeadlineDate) {
-    return 'Deadline must be at least 3 working days from today.';
+  const deadlineMessage = getDeadlineRestrictionMessage('Deadline', deadline);
+  if (deadlineMessage) {
+    return deadlineMessage;
   }
   if (hasUploadingFiles(attachments)) {
     return 'Wait for file uploads to finish before submitting.';
@@ -692,6 +776,9 @@ export default function NewRequest() {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const restoreDraftRequested = Boolean(
+    (location.state as NewRequestNavigationState | null)?.restoreDraft
+  );
   const routeRequestType = useMemo<RequestType | null>(() => {
     if (location.pathname === '/new-request/quick-design') return 'single_task';
     if (location.pathname === '/new-request/campaign-suite') return 'campaign_request';
@@ -704,11 +791,9 @@ export default function NewRequest() {
   const [overallBrief, setOverallBrief] = useState('');
   const [singleCategory, setSingleCategory] = useState<TaskCategory | ''>('');
   const [singleUrgency, setSingleUrgency] = useState<TaskUrgency>('normal');
-  const [singleDeadline, setSingleDeadline] = useState<Date | undefined>(minDeadlineDate);
-  const [singleDeadlineCalendarOpen, setSingleDeadlineCalendarOpen] = useState(false);
+  const [singleDeadline, setSingleDeadline] = useState<Date | undefined>(defaultDeadlineDate);
   const [deadlineMode, setDeadlineMode] = useState<'common' | 'itemized'>('common');
-  const [commonDeadline, setCommonDeadline] = useState<Date | undefined>(minDeadlineDate);
-  const [commonDeadlineCalendarOpen, setCommonDeadlineCalendarOpen] = useState(false);
+  const [commonDeadline, setCommonDeadline] = useState<Date | undefined>(defaultDeadlineDate);
   const [masterAttachments, setMasterAttachments] = useState<BuilderAttachment[]>([]);
   const [collaterals, setCollaterals] = useState<CollateralDraft[]>([]);
   const [expandedCollateralId, setExpandedCollateralId] = useState<string | null>(null);
@@ -914,6 +999,7 @@ export default function NewRequest() {
   }, [routeRequestType]);
 
   useEffect(() => {
+    if (!restoreDraftRequested) return;
     const draft = loadRequestDraft(user);
     if (!draft) return;
     setDidRestoreDraft(true);
@@ -938,8 +1024,8 @@ export default function NewRequest() {
     if (resolvedRequestType === 'single_task') {
       const draftDeadline =
         draft.requestType === 'single_task' && draft.deadline
-          ? new Date(draft.deadline)
-          : minDeadlineDate;
+          ? getNextAvailableDeadline(new Date(draft.deadline))
+          : defaultDeadlineDate;
       const restoredSingleCategory =
         draft.requestType === 'single_task' && draft.category !== 'campaign_or_others'
           ? draft.category || ''
@@ -949,7 +1035,7 @@ export default function NewRequest() {
       setSingleUrgency(draft.requestType === 'single_task' ? draft.urgency || 'normal' : 'normal');
       setSingleDeadline(draftDeadline);
       setDeadlineMode('common');
-      setCommonDeadline(minDeadlineDate);
+      setCommonDeadline(defaultDeadlineDate);
       setCollaterals([]);
       setCurrentStep('campaign');
     } else {
@@ -957,11 +1043,16 @@ export default function NewRequest() {
         draft.requestType === 'campaign_request' ? draft.deadlineMode || 'common' : 'common';
       const draftCommonDeadline =
         draft.requestType === 'campaign_request' && draft.commonDeadline
-          ? new Date(draft.commonDeadline)
-          : minDeadlineDate;
+          ? getNextAvailableDeadline(new Date(draft.commonDeadline))
+          : defaultDeadlineDate;
       const draftCollaterals =
         draft.requestType === 'campaign_request'
-          ? (draft.collaterals || []).map(hydrateDraftCollateral)
+          ? (draft.collaterals || []).map((collateral) => {
+              const hydrated = hydrateDraftCollateral(collateral);
+              return hydrated.deadline
+                ? { ...hydrated, deadline: getNextAvailableDeadline(hydrated.deadline) }
+                : hydrated;
+            })
           : [];
 
       setSelectedRequestType('campaign_request');
@@ -970,7 +1061,7 @@ export default function NewRequest() {
       setCollaterals(draftCollaterals);
       setSingleCategory('');
       setSingleUrgency('normal');
-      setSingleDeadline(minDeadlineDate);
+      setSingleDeadline(defaultDeadlineDate);
       setCurrentStep(
         resolveWizardStep({
           title: draftTitle,
@@ -986,7 +1077,7 @@ export default function NewRequest() {
     }
 
     toast.message('Draft restored.');
-  }, [routeRequestType, user?.department, user?.email, user?.id, user?.phone]);
+  }, [restoreDraftRequested, routeRequestType, user?.department, user?.email, user?.id, user?.phone]);
 
   const completeTour = useCallback(() => {
     setIsTourOpen(false);
@@ -1287,8 +1378,9 @@ export default function NewRequest() {
     if (!singleCategory) return 'Select a creative category.';
     if (!normalizeIndianPhone(requesterPhone)) return 'Enter a valid 10-digit contact number.';
     if (!singleDeadline) return 'Set a deadline for this request.';
-    if (startOfDay(singleDeadline) < minDeadlineDate) {
-      return 'Deadline must be at least 3 working days from today.';
+    const deadlineMessage = getDeadlineRestrictionMessage('Deadline', singleDeadline);
+    if (deadlineMessage) {
+      return deadlineMessage;
     }
     return '';
   }, [
@@ -1523,7 +1615,7 @@ export default function NewRequest() {
           requesterEmail: user?.email,
           requesterPhone: normalizedPhone,
           requesterDepartment: department.trim(),
-          deadline: singleDeadline || minDeadlineDate,
+          deadline: singleDeadline || defaultDeadlineDate,
           isModification: false,
           changeCount: 0,
           changeHistory: [
@@ -1732,7 +1824,7 @@ export default function NewRequest() {
   const builderValidationClass =
     'mb-3 flex items-center gap-3 rounded-[18px] border border-[#D9E6FF]/75 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.16),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,249,255,0.92),rgba(236,243,255,0.84))] px-3.5 py-3 text-sm text-foreground shadow-[0_18px_45px_-30px_rgba(37,99,235,0.2)] supports-[backdrop-filter]:bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.78),rgba(245,249,255,0.72),rgba(236,243,255,0.62))] backdrop-blur-md ring-1 ring-white/70 dark:border-[#253D78]/90 dark:bg-[radial-gradient(circle_at_top_left,rgba(96,124,255,0.16),transparent_30%),linear-gradient(135deg,rgba(8,16,39,0.96),rgba(10,22,49,0.92),rgba(12,27,59,0.88))] dark:text-slate-100 dark:ring-white/5 dark:shadow-[0_22px_56px_-32px_rgba(2,8,23,0.95)]';
   const suggestionPopoverClass =
-    'absolute left-0 top-[calc(100%+0.5rem)] z-40 w-full overflow-hidden rounded-2xl border border-[#D9E6FF]/72 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(244,248,255,0.74))] p-2.5 shadow-[0_24px_54px_-30px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(244,248,255,0.3))] backdrop-blur-[22px] ring-1 ring-white/55 animate-dropdown sm:min-w-[23rem] dark:border-[#253D78]/90 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.96),rgba(10,22,49,0.92),rgba(12,27,59,0.88))] dark:ring-white/5 dark:shadow-[0_24px_60px_-34px_rgba(2,8,23,0.95)] dark:supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(8,16,39,0.82),rgba(10,22,49,0.72),rgba(12,27,59,0.66))]';
+    'absolute left-0 top-[calc(100%+0.5rem)] z-40 w-full overflow-hidden rounded-2xl border border-[#D9E6FF]/78 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(244,248,255,0.94))] p-2.5 shadow-[0_24px_54px_-30px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(244,248,255,0.88))] backdrop-blur-[22px] ring-1 ring-white/72 animate-dropdown sm:min-w-[23rem] dark:border-[#253D78]/90 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.98),rgba(10,22,49,0.96),rgba(12,27,59,0.94))] dark:ring-white/5 dark:shadow-[0_24px_60px_-34px_rgba(2,8,23,0.95)] dark:supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(8,16,39,0.94),rgba(10,22,49,0.9),rgba(12,27,59,0.86))]';
   const suggestionItemClass =
     'group flex w-full items-center gap-2 rounded-[18px] border px-3.5 py-3 text-left transition-all duration-200';
   const requestFieldClass =
@@ -1749,6 +1841,114 @@ export default function NewRequest() {
     'rounded-xl border-[#D9E6FF] bg-white/95 p-1.5 shadow-lg dark:border-border dark:bg-card/95';
   const requestSelectItemClass =
     'rounded-lg pl-9 pr-3 data-[state=checked]:bg-primary/15 data-[state=checked]:text-[#1E2A5A] data-[state=checked]:font-semibold';
+  const requestDatePickerFieldSx = {
+    '& .MuiPickersOutlinedInput-root': {
+      borderRadius: '0.75rem',
+      height: 44,
+      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+      fontWeight: 500,
+      color: 'hsl(var(--foreground) / 0.9)',
+      fontSize: '0.875rem',
+    },
+    '& .MuiPickersOutlinedInput-notchedOutline': {
+      borderColor: '#D9E6FF',
+    },
+    '& .MuiPickersOutlinedInput-root:hover .MuiPickersOutlinedInput-notchedOutline': {
+      borderColor: '#9FBCFF',
+    },
+    '& .MuiPickersOutlinedInput-root.Mui-focused .MuiPickersOutlinedInput-notchedOutline': {
+      borderColor: '#9FBCFF',
+    },
+    '& .MuiPickersOutlinedInput-root.Mui-focused': {
+      boxShadow: '0 0 0 3px rgba(159, 188, 255, 0.35)',
+    },
+    '& .MuiPickersInputBase-input': {
+      padding: '0 14px',
+      fontWeight: 500,
+      fontSize: '0.875rem',
+    },
+    '& .MuiPickersInputBase-sectionContent': {
+      fontWeight: 500,
+      color: 'hsl(var(--foreground) / 0.9)',
+      fontSize: '0.875rem',
+    },
+    '& .MuiPickersInputBase-input::placeholder': {
+      color: '#9CA3AF',
+      opacity: 1,
+    },
+    '& .MuiInputAdornment-root': {
+      marginRight: '6px',
+    },
+    '& .MuiIconButton-root': {
+      height: 32,
+      width: 32,
+      borderRadius: '10px',
+      color: '#4863B7',
+      backgroundColor: '#EEF4FF',
+      transition: 'background-color 180ms ease, color 180ms ease, border-color 180ms ease',
+    },
+    '& .MuiIconButton-root:hover': {
+      backgroundColor: '#E4EEFF',
+      color: '#3550A8',
+    },
+    '& .MuiSvgIcon-root': {
+      color: '#4863B7',
+    },
+  };
+  const requestDatePickerPaperSx = {
+    borderRadius: '16px',
+    boxShadow: '0 20px 48px -24px rgba(15, 23, 42, 0.28)',
+    border: '1px solid rgba(217, 230, 255, 0.9)',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    overflow: 'hidden',
+    '& .MuiPickersLayout-root': {
+      backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    },
+    '& .MuiPickersCalendarHeader-root': {
+      padding: '12px 14px 2px',
+    },
+    '& .MuiPickersCalendarHeader-label': {
+      color: '#253977',
+      fontWeight: 600,
+      fontSize: '1rem',
+    },
+    '& .MuiPickersArrowSwitcher-button': {
+      color: '#7A8FBF',
+    },
+    '& .MuiDayCalendar-header': {
+      justifyContent: 'space-between',
+      paddingInline: '8px',
+    },
+    '& .MuiDayCalendar-weekDayLabel': {
+      color: '#7A8FBF',
+      fontSize: '0.78rem',
+      fontWeight: 500,
+    },
+    '& .MuiDayCalendar-monthContainer': {
+      padding: '0 8px 10px',
+    },
+    '& .MuiPickersDay-root': {
+      color: '#2C3553',
+      fontWeight: 500,
+      borderRadius: '9999px',
+    },
+    '& .MuiPickersDay-root:hover': {
+      backgroundColor: '#EEF4FF',
+    },
+    '& .MuiPickersDay-root.Mui-selected': {
+      backgroundColor: 'hsl(var(--primary))',
+      color: '#FFFFFF',
+    },
+    '& .MuiPickersDay-root.Mui-selected:hover': {
+      backgroundColor: 'hsl(var(--primary))',
+    },
+    '& .MuiPickersDay-root.MuiPickersDay-today': {
+      borderColor: 'hsl(var(--primary) / 0.4)',
+    },
+    '& .MuiPickersDay-root.Mui-disabled': {
+      color: '#B8C1D6',
+    },
+  };
   const requestTextareaClass =
     'min-h-[132px] rounded-xl border-[#D9E6FF] bg-white/90 px-4 py-3 text-sm text-[#1E2A44] shadow-none transition-colors placeholder:text-[13px] placeholder:text-[#8090B2] focus-visible:border-[#BDD0FF] focus-visible:ring-0 dark:border-sidebar-border dark:bg-sidebar/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-sidebar-ring/50';
   const phoneFieldShellClass =
@@ -1763,6 +1963,35 @@ export default function NewRequest() {
   );
   const selectedDeadlineModeLabel =
     deadlineMode === 'itemized' ? 'Individual item deadlines' : 'Common deadline';
+  const getDeadlineCalendarDayMeta = useCallback((value: Date) => {
+    const normalizedValue = startOfDay(value);
+    const holidayName = getOfficeGovernmentHolidayName(normalizedValue);
+    const isSunday = normalizedValue.getDay() === 0;
+    const isSaturday = normalizedValue.getDay() === 6;
+
+    let title = '';
+    let dotColor = '';
+    let textColor = '';
+    const mutedMarkerColor = '#94A3B8';
+
+    if (holidayName) {
+      title = `${holidayName} holiday in ${OFFICE_REGION_LABEL}`;
+      dotColor = mutedMarkerColor;
+    } else if (isSunday) {
+      title = 'Sunday';
+      dotColor = mutedMarkerColor;
+    } else if (isSaturday) {
+      title = 'Saturday';
+      dotColor = mutedMarkerColor;
+    }
+
+    return {
+      title,
+      dotColor,
+      textColor,
+      shouldShowDot: Boolean(dotColor),
+    };
+  }, []);
 
   const handleRequestTypeSelect = (nextType: RequestType) => {
     setSelectedRequestType(nextType);
@@ -1991,63 +2220,84 @@ export default function NewRequest() {
 
             <div className="space-y-2">
               <Label>Common Deadline</Label>
-              <Popover
-                open={deadlineMode === 'common' ? commonDeadlineCalendarOpen : false}
-                onOpenChange={(open) => {
-                  if (deadlineMode !== 'common') return;
-                  setCommonDeadlineCalendarOpen(open);
-                }}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={deadlineMode !== 'common'}
-                    className={cn(
-                      requestSelectTriggerClass,
-                      'w-full justify-between font-medium disabled:opacity-60',
-                      !commonDeadline && 'text-muted-foreground'
-                    )}
-                    >
-                      <span className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200">
-                          <Calendar className="h-4 w-4" />
-                        </span>
-                        <span className="truncate">
-                          {commonDeadline ? format(commonDeadline, 'PPP') : 'Pick deadline date'}
-                        </span>
-                      </span>
-                    </Button>
-                  </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  className="w-auto border-[#C9D7FF] bg-[#F2F6FF]/95 p-2 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:supports-[backdrop-filter]:bg-slate-900/70"
-                >
-                  <DateCalendar
-                    mode="single"
-                    selected={commonDeadline}
-                    onSelect={(date) => {
-                      if (!date) return;
-                      setCommonDeadline(date);
-                      setCommonDeadlineCalendarOpen(false);
-                    }}
-                    disabled={(date) => startOfDay(date) < minDeadlineDate}
-                    initialFocus
-                    className="rounded-lg border border-[#D9E6FF] bg-white/75 p-2 dark:border-slate-700/60 dark:bg-slate-900/60"
-                  />
-                </PopoverContent>
-              </Popover>
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DatePicker
+                  value={commonDeadline ?? null}
+                  format="MM/dd/yyyy"
+                  onChange={(newValue) => {
+                    if (!newValue) {
+                      setCommonDeadline(undefined);
+                      return;
+                    }
+                    setCommonDeadline(getNextAvailableDeadline(newValue));
+                  }}
+                  minDate={todayDate}
+                  shouldDisableDate={isBlockedDeadlineDate}
+                  disabled={deadlineMode !== 'common'}
+                  slots={{
+                    day: DeadlineCalendarDay,
+                  }}
+                  slotProps={{
+                    textField: {
+                      size: 'small',
+                      fullWidth: true,
+                      placeholder: 'Pick deadline date',
+                      sx: requestDatePickerFieldSx,
+                    },
+                    desktopPaper: {
+                      sx: requestDatePickerPaperSx,
+                    },
+                    popper: {
+                      placement: 'bottom-start',
+                    },
+                    day: ({ day, isDayOutsideMonth, isDaySelected }) => {
+                      const meta = getDeadlineCalendarDayMeta(day as Date);
+
+                      if (isDayOutsideMonth || (!meta.shouldShowDot && !meta.textColor && !meta.title)) {
+                        return {
+                          tooltipLabel: isDayOutsideMonth ? '' : meta.title,
+                        };
+                      }
+
+                      return {
+                        tooltipLabel: meta.title,
+                        sx: {
+                          position: 'relative',
+                          ...(meta.textColor && !isDaySelected
+                            ? {
+                                color: meta.textColor,
+                              }
+                            : {}),
+                          ...(meta.shouldShowDot && !isDaySelected
+                            ? {
+                                '&::after': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  left: '50%',
+                                  bottom: 3,
+                                  width: 5,
+                                  height: 5,
+                                  borderRadius: '999px',
+                                  backgroundColor: meta.dotColor,
+                                  transform: 'translateX(-50%)',
+                                },
+                              }
+                            : {}),
+                        },
+                      };
+                    },
+                  }}
+                />
+              </LocalizationProvider>
             </div>
 
             {deadlineMode === 'itemized' ? (
-              <p className="mt-0.5 text-[11px] leading-[14px] text-primary md:col-start-2">
-                Set deadlines per item in the next step.
-              </p>
-            ) : (
-              <p className="mt-0.5 text-[11px] leading-[14px] text-muted-foreground md:col-start-2">
-                Delivery dates must be at least 3 working days from today.
-              </p>
-            )}
+              <div className="mt-0.5 md:col-start-2">
+                <p className="text-[11px] leading-[14px] text-primary">
+                  Set deadlines per item in the next step.
+                </p>
+              </div>
+            ) : null}
           </div>
 
           <AttachmentUploadField
@@ -2647,7 +2897,7 @@ export default function NewRequest() {
               type="button"
               onClick={() => handleRequestTypeSelect(option.value)}
               className={cn(
-                'animate-slide-up group relative h-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white p-5 text-left shadow-[0_12px_28px_-24px_rgba(30,42,90,0.18)] transform-gpu will-change-transform transition-[transform,border-color,box-shadow] duration-500 hover:-translate-y-1 hover:border-primary/35 hover:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.2)] focus-visible:-translate-y-1 focus-visible:border-primary/35 focus-visible:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.2)] dark:border-[#2A427A] dark:bg-[linear-gradient(180deg,rgba(10,18,40,0.98),rgba(11,24,52,0.95),rgba(13,29,63,0.92))] dark:shadow-[0_24px_56px_-32px_rgba(2,8,23,0.92)] dark:hover:border-[#4E6FE0]/45 dark:hover:shadow-[0_30px_64px_-34px_rgba(2,8,23,0.96)] dark:focus-visible:border-[#4E6FE0]/45 dark:focus-visible:shadow-[0_30px_64px_-34px_rgba(2,8,23,0.96)]'
+                'animate-slide-up group relative h-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white p-5 text-left shadow-[0_12px_28px_-24px_rgba(30,42,90,0.18)] transform-gpu will-change-transform transition-[transform,border-color,box-shadow] duration-500 hover:-translate-y-1 hover:border-primary/35 hover:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.12)] focus-visible:-translate-y-1 focus-visible:border-primary/35 focus-visible:shadow-[0_22px_44px_-24px_rgba(30,42,90,0.12)] dark:border-[#2A427A] dark:bg-[linear-gradient(180deg,rgba(10,18,40,0.98),rgba(11,24,52,0.95),rgba(13,29,63,0.92))] dark:shadow-[0_24px_56px_-32px_rgba(2,8,23,0.92)] dark:hover:border-[#4E6FE0]/45 dark:hover:shadow-[0_30px_64px_-34px_rgba(2,8,23,0.82)] dark:focus-visible:border-[#4E6FE0]/45 dark:focus-visible:shadow-[0_30px_64px_-34px_rgba(2,8,23,0.82)]'
               )}
               style={{ animationDelay: `${index * 90}ms`, ...REQUEST_TYPE_HOVER_TRANSITION_STYLE }}
             >
@@ -2804,52 +3054,75 @@ export default function NewRequest() {
               </div>
 
               <div className="space-y-2">
-                <Label>Deadline</Label>
-                <Popover
-                  open={singleDeadlineCalendarOpen}
-                  onOpenChange={setSingleDeadlineCalendarOpen}
-                >
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={cn(
-                        requestSelectTriggerClass,
-                        'w-full justify-between font-medium',
-                        !singleDeadline && 'text-muted-foreground'
-                      )}
-                    >
-                      <span className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200">
-                          <Calendar className="h-4 w-4" />
-                        </span>
-                        <span className="truncate">
-                          {singleDeadline ? format(singleDeadline, 'PPP') : 'Pick deadline date'}
-                        </span>
-                      </span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="start"
-                    className="w-auto border-[#C9D7FF] bg-[#F2F6FF]/95 p-2 supports-[backdrop-filter]:bg-[#F2F6FF]/70 backdrop-blur-xl shadow-lg dark:border-slate-700/60 dark:bg-slate-900/90 dark:supports-[backdrop-filter]:bg-slate-900/70"
-                  >
-                    <DateCalendar
-                      mode="single"
-                      selected={singleDeadline}
-                      onSelect={(date) => {
-                        if (!date) return;
-                        setSingleDeadline(date);
-                        setSingleDeadlineCalendarOpen(false);
-                      }}
-                      disabled={(date) => startOfDay(date) < minDeadlineDate}
-                      initialFocus
-                      className="rounded-lg border border-[#D9E6FF] bg-white/75 p-2 dark:border-slate-700/60 dark:bg-slate-900/60"
-                    />
-                  </PopoverContent>
-                </Popover>
-                <p className="mt-1 text-[10px] leading-4 text-muted-foreground/75">
-                  Minimum 3 working days.
-                </p>
+              <Label>Deadline</Label>
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DatePicker
+                    value={singleDeadline ?? null}
+                    format="MM/dd/yyyy"
+                    onChange={(newValue) => {
+                      if (!newValue) {
+                        setSingleDeadline(undefined);
+                        return;
+                      }
+                      setSingleDeadline(getNextAvailableDeadline(newValue));
+                    }}
+                    minDate={todayDate}
+                    shouldDisableDate={isBlockedDeadlineDate}
+                    slots={{
+                      day: DeadlineCalendarDay,
+                    }}
+                    slotProps={{
+                      textField: {
+                        size: 'small',
+                        fullWidth: true,
+                        placeholder: 'Pick deadline date',
+                        sx: requestDatePickerFieldSx,
+                      },
+                      desktopPaper: {
+                        sx: requestDatePickerPaperSx,
+                      },
+                      popper: {
+                        placement: 'bottom-start',
+                      },
+                      day: ({ day, isDayOutsideMonth, isDaySelected }) => {
+                        const meta = getDeadlineCalendarDayMeta(day as Date);
+
+                        if (isDayOutsideMonth || (!meta.shouldShowDot && !meta.textColor && !meta.title)) {
+                          return {
+                            tooltipLabel: isDayOutsideMonth ? '' : meta.title,
+                          };
+                        }
+
+                        return {
+                          tooltipLabel: meta.title,
+                          sx: {
+                            position: 'relative',
+                            ...(meta.textColor && !isDaySelected
+                              ? {
+                                  color: meta.textColor,
+                                }
+                              : {}),
+                            ...(meta.shouldShowDot && !isDaySelected
+                              ? {
+                                  '&::after': {
+                                    content: '""',
+                                    position: 'absolute',
+                                    left: '50%',
+                                    bottom: 3,
+                                    width: 5,
+                                    height: 5,
+                                    borderRadius: '999px',
+                                    backgroundColor: meta.dotColor,
+                                    transform: 'translateX(-50%)',
+                                  },
+                                }
+                              : {}),
+                          },
+                        };
+                      },
+                    }}
+                  />
+                </LocalizationProvider>
               </div>
             </div>
 

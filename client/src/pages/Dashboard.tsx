@@ -51,7 +51,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { useTasksContext } from '@/contexts/TasksContext';
-import { hydrateTask } from '@/lib/taskHydration';
+import { hydrateTask, mergeViewerReadAt } from '@/lib/taskHydration';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { filterTasksForUser } from '@/lib/taskVisibility';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
@@ -478,7 +478,7 @@ export default function Dashboard() {
             return hydrateTask({
               ...updatedTaskRaw,
               id: updatedTaskId,
-              viewerReadAt: updatedTaskRaw?.viewerReadAt ?? task.viewerReadAt,
+              viewerReadAt: mergeViewerReadAt(updatedTaskRaw, task.viewerReadAt),
             } as typeof mockTasks[number]);
           })
         );
@@ -833,7 +833,7 @@ export default function Dashboard() {
             ? hydrateTask({
                 ...updated,
                 id: updated.id || updated._id,
-                viewerReadAt: updated.viewerReadAt ?? task.viewerReadAt,
+                viewerReadAt: mergeViewerReadAt(updated, task.viewerReadAt),
               })
             : task
         )
