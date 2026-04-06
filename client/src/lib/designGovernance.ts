@@ -10,6 +10,14 @@ export const DESIGN_GOVERNANCE_NOTICE_COMPACT =
 export const DESIGN_GOVERNANCE_NOTICE_MINIMAL =
   'All designs must comply with the official design guidelines and standardized language framework. Individual perspective-based modifications are restricted. Further revisions require Treasurer authorization.';
 
+export const DESIGN_GOVERNANCE_EDIT_TASK_MINIMAL =
+  'Approved deliverables must follow brand guidelines. Exception-based revisions require Treasurer approval.';
+
+export const DESIGN_GOVERNANCE_EDIT_TASK_PREMIUM_LINES = [
+  'Approved deliverables must follow brand guidelines.',
+  'Exception-based revisions require Treasurer approval.',
+] as const;
+
 export const DESIGN_GOVERNANCE_EMAIL_LINES = [
   'Approved designs must remain aligned with officially approved design guidelines.',
   'Standardized language protocols must be maintained.',

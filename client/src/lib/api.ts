@@ -4,6 +4,89 @@
  */
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+const UNSAFE_BROWSER_PORTS = new Set([
+    '1',
+    '7',
+    '9',
+    '11',
+    '13',
+    '15',
+    '17',
+    '19',
+    '20',
+    '21',
+    '22',
+    '23',
+    '25',
+    '37',
+    '42',
+    '43',
+    '53',
+    '69',
+    '77',
+    '79',
+    '87',
+    '95',
+    '101',
+    '102',
+    '103',
+    '104',
+    '109',
+    '110',
+    '111',
+    '113',
+    '115',
+    '117',
+    '119',
+    '123',
+    '135',
+    '137',
+    '139',
+    '143',
+    '161',
+    '179',
+    '389',
+    '427',
+    '465',
+    '512',
+    '513',
+    '514',
+    '515',
+    '526',
+    '530',
+    '531',
+    '532',
+    '540',
+    '548',
+    '554',
+    '556',
+    '563',
+    '587',
+    '601',
+    '636',
+    '989',
+    '990',
+    '993',
+    '995',
+    '1719',
+    '1720',
+    '1723',
+    '2049',
+    '3659',
+    '4045',
+    '4190',
+    '5060',
+    '5061',
+    '6000',
+    '6566',
+    '6665',
+    '6666',
+    '6667',
+    '6668',
+    '6669',
+    '6697',
+    '10080',
+]);
 
 const isLoopbackHost = (value: string): boolean => LOOPBACK_HOSTS.has(value.toLowerCase());
 
@@ -18,23 +101,55 @@ const isUnsafeLoopbackUrlForCurrentOrigin = (value: string): boolean => {
     }
 };
 
+const isUnsafeBrowserPortUrl = (value: string): boolean => {
+    try {
+        const parsed = new URL(value);
+        const port = String(parsed.port || '').trim();
+        return Boolean(port && UNSAFE_BROWSER_PORTS.has(port));
+    } catch {
+        return false;
+    }
+};
+
+const getRejectedApiUrlReason = (value: string): 'loopback' | 'unsafe-port' | '' => {
+    if (isUnsafeLoopbackUrlForCurrentOrigin(value)) {
+        return 'loopback';
+    }
+    if (isUnsafeBrowserPortUrl(value)) {
+        return 'unsafe-port';
+    }
+    return '';
+};
+
 export const getApiUrl = (): string | undefined => {
     // Priority 1: Environment variable (standard for Vite)
     const envUrl = import.meta.env.VITE_API_URL;
     if (envUrl) {
-        if (!isUnsafeLoopbackUrlForCurrentOrigin(envUrl)) {
+        const reason = getRejectedApiUrlReason(envUrl);
+        if (!reason) {
             return envUrl;
         }
-        console.error('Ignoring loopback VITE_API_URL on a non-localhost site:', envUrl);
+        console.error(
+            reason === 'unsafe-port'
+                ? 'Ignoring VITE_API_URL on a browser-unsafe port:'
+                : 'Ignoring loopback VITE_API_URL on a non-localhost site:',
+            envUrl
+        );
     }
 
     // Priority 2: Alternative name sometimes used in production migrations
     const altEnvUrl = import.meta.env.NEXT_PUBLIC_API_BASE_URL;
     if (altEnvUrl) {
-        if (!isUnsafeLoopbackUrlForCurrentOrigin(altEnvUrl)) {
+        const reason = getRejectedApiUrlReason(altEnvUrl);
+        if (!reason) {
             return altEnvUrl;
         }
-        console.error('Ignoring loopback NEXT_PUBLIC_API_BASE_URL on a non-localhost site:', altEnvUrl);
+        console.error(
+            reason === 'unsafe-port'
+                ? 'Ignoring NEXT_PUBLIC_API_BASE_URL on a browser-unsafe port:'
+                : 'Ignoring loopback NEXT_PUBLIC_API_BASE_URL on a non-localhost site:',
+            altEnvUrl
+        );
     }
 
     // Priority 3: Localhost fallback for development only
@@ -66,6 +181,27 @@ let refreshTokenPromise: Promise<string | null> | null = null;
 export const getAuthToken = (): string | null => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(AUTH_TOKEN_KEY);
+};
+
+const decodeJwtPayload = (token: string): { exp?: number } | null => {
+    try {
+        const [, payload = ''] = token.split('.');
+        if (!payload) return null;
+        const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+        const decoded = JSON.parse(atob(padded)) as { exp?: number };
+        return decoded && typeof decoded === 'object' ? decoded : null;
+    } catch {
+        return null;
+    }
+};
+
+const isTokenExpiringSoon = (token: string, thresholdSeconds = 90): boolean => {
+    const payload = decodeJwtPayload(token);
+    const exp = Number(payload?.exp || 0);
+    if (!exp) return true;
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    return exp - nowInSeconds <= thresholdSeconds;
 };
 
 const isAuthRoute = (url: string) =>
@@ -121,6 +257,15 @@ const refreshAccessToken = async (): Promise<string | null> => {
     })();
 
     return refreshTokenPromise;
+};
+
+export const getFreshAuthToken = async (): Promise<string | null> => {
+    const currentToken = getAuthToken();
+    if (currentToken && !isTokenExpiringSoon(currentToken)) {
+        return currentToken;
+    }
+    const refreshedToken = await refreshAccessToken();
+    return refreshedToken || currentToken;
 };
 
 const requestWithToken = async (

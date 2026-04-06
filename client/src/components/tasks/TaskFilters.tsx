@@ -31,6 +31,8 @@ interface TaskFiltersProps {
   onCategoryChange: (value: TaskCategory | 'all') => void;
   urgencyFilter: TaskUrgency | 'all';
   onUrgencyChange: (value: TaskUrgency | 'all') => void;
+  dateSort?: 'newest' | 'oldest';
+  onDateSortChange?: (value: 'newest' | 'oldest') => void;
   onClearFilters: () => void;
 }
 
@@ -43,10 +45,16 @@ export function TaskFilters({
   onCategoryChange,
   urgencyFilter,
   onUrgencyChange,
+  dateSort,
+  onDateSortChange,
   onClearFilters,
 }: TaskFiltersProps) {
   const hasActiveFilters =
-    search || statusFilter !== 'all' || categoryFilter !== 'all' || urgencyFilter !== 'all';
+    search ||
+    statusFilter !== 'all' ||
+    categoryFilter !== 'all' ||
+    urgencyFilter !== 'all' ||
+    dateSort === 'oldest';
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -110,6 +118,18 @@ export function TaskFilters({
             </SelectContent>
           </Select>
 
+          {dateSort && onDateSortChange && (
+            <Select value={dateSort} onValueChange={(v) => onDateSortChange(v as 'newest' | 'oldest')}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Sort by date" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest first</SelectItem>
+                <SelectItem value="oldest">Oldest first</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={onClearFilters} className="gap-1">
               <X className="h-4 w-4" />
@@ -150,6 +170,14 @@ export function TaskFilters({
             <Badge variant="secondary" className="gap-1">
               Urgency: {urgencyFilter}
               <button onClick={() => onUrgencyChange('all')} className="ml-1 hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {dateSort === 'oldest' && onDateSortChange && (
+            <Badge variant="secondary" className="gap-1">
+              Date: Oldest first
+              <button onClick={() => onDateSortChange('newest')} className="ml-1 hover:text-destructive">
                 <X className="h-3 w-3" />
               </button>
             </Badge>

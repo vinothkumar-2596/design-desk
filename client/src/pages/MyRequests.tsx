@@ -50,6 +50,7 @@ export default function MyRequests() {
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | 'all'>('all');
   const [urgencyFilter, setUrgencyFilter] = useState<TaskUrgency | 'all'>('all');
+  const [dateSort, setDateSort] = useState<'newest' | 'oldest'>('newest');
   const [tasks, setTasks] = useState<typeof mockTasks>(apiUrl ? [] : mockTasks);
   const [isLoading, setIsLoading] = useState(false);
   const [storageTick, setStorageTick] = useState(0);
@@ -163,11 +164,20 @@ export default function MyRequests() {
     });
   }, [userTasks, query, statusFilter, categoryFilter, urgencyFilter]);
 
+  const sortedTasks = useMemo(() => {
+    return [...filteredTasks].sort((left, right) => {
+      const leftTime = new Date(left.createdAt).getTime();
+      const rightTime = new Date(right.createdAt).getTime();
+      return dateSort === 'oldest' ? leftTime - rightTime : rightTime - leftTime;
+    });
+  }, [dateSort, filteredTasks]);
+
   const clearFilters = () => {
     setQuery('');
     setStatusFilter('all');
     setCategoryFilter('all');
     setUrgencyFilter('all');
+    setDateSort('newest');
   };
 
   return (
@@ -203,12 +213,14 @@ export default function MyRequests() {
           onCategoryChange={setCategoryFilter}
           urgencyFilter={urgencyFilter}
           onUrgencyChange={setUrgencyFilter}
+          dateSort={dateSort}
+          onDateSortChange={setDateSort}
           onClearFilters={clearFilters}
         />
 
         {/* Results Count */}
         <p className="text-sm text-muted-foreground">
-          Showing {filteredTasks.length} of {userTasks.length} requests
+          Showing {sortedTasks.length} of {userTasks.length} requests
         </p>
 
         {/* Task Grid */}
@@ -216,9 +228,9 @@ export default function MyRequests() {
           <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
             <p className="text-sm text-muted-foreground">Loading requests...</p>
           </div>
-        ) : filteredTasks.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {filteredTasks.map((task, index) => (
+        ) : sortedTasks.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {sortedTasks.map((task, index) => (
               <div key={task.id} className="h-full" style={{ animationDelay: `${index * 50}ms` }}>
                 <TaskCard task={task} showRequester={false} />
               </div>

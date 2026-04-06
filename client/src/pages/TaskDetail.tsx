@@ -118,7 +118,11 @@ import {
 } from '@/components/tasks/AttachmentPreviewDialog';
 import { ImageAnnotationDialog } from '@/components/tasks/ImageAnnotationDialog';
 import { getDesignerScopeLabel, isMainDesigner } from '@/lib/designerAccess';
-import { DESIGN_GOVERNANCE_NOTICE_COMPACT } from '@/lib/designGovernance';
+import {
+  DESIGN_GOVERNANCE_EDIT_TASK_MINIMAL,
+  DESIGN_GOVERNANCE_EDIT_TASK_PREMIUM_LINES,
+  DESIGN_GOVERNANCE_NOTICE_POLICY,
+} from '@/lib/designGovernance';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import {
   deriveTaskStatusFromCollaterals,
@@ -989,6 +993,8 @@ function TaskDetailScreen() {
     initialTask ? format(initialTask.deadline, 'yyyy-MM-dd') : ''
   );
   const [isEditingTask, setIsEditingTask] = useState(false);
+  const [isGovernanceExpanded, setIsGovernanceExpanded] = useState(false);
+  const editTaskGovernanceVariant: 'minimal' | 'premium' = 'premium';
   const [deadlineRequest, setDeadlineRequest] = useState(
     initialTask?.proposedDeadline ? format(initialTask.proposedDeadline, 'yyyy-MM-dd') : ''
   );
@@ -1026,6 +1032,12 @@ function TaskDetailScreen() {
   const [showFinalDeliverableList, setShowFinalDeliverableList] = useState(true);
   const [selectedDeliverableIds, setSelectedDeliverableIds] = useState<Set<string>>(new Set());
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+  const [zipDownloadState, setZipDownloadState] = useState<{
+    mode: 'all' | 'selected';
+    phase: 'preparing' | 'building' | 'downloading' | 'starting';
+    fileCount: number;
+    percent: number | null;
+  } | null>(null);
   const [isEditAttachmentDragging, setIsEditAttachmentDragging] = useState(false);
   const [isWorkingUploadDragging, setIsWorkingUploadDragging] = useState(false);
   const [isCommentComposerDragging, setIsCommentComposerDragging] = useState(false);
@@ -1060,9 +1072,16 @@ function TaskDetailScreen() {
   const typingTimeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const copiedFileResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mentionBlurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zipStatusTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const isChatComposerFocusedRef = useRef(false);
   const clientIdRef = useRef<string>('');
   const finalUploadAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      zipStatusTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    };
+  }, []);
   const workingUploadDismissTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const changeHistoryListRef = useRef<HTMLDivElement | null>(null);
   const changeHistoryPanelRef = useRef<HTMLDivElement | null>(null);
@@ -3284,6 +3303,38 @@ function TaskDetailScreen() {
   }, [taskState?.id, taskState?.finalDeliverableReviewNote, taskState?.finalDeliverableReviewStatus]);
   const activeFinalVersionNote = String(activeFinalVersion?.note || '').trim();
   const finalDeliverableFiles = activeFinalVersion?.files ?? [];
+  const zipSelectionLabel = zipDownloadState
+    ? zipDownloadState.mode === 'selected'
+      ? `${zipDownloadState.fileCount} selected file${zipDownloadState.fileCount === 1 ? '' : 's'}`
+      : `${zipDownloadState.fileCount} file${zipDownloadState.fileCount === 1 ? '' : 's'}`
+    : '';
+  const zipPhaseLabel =
+    zipDownloadState?.phase === 'preparing'
+      ? `Preparing ${zipSelectionLabel} for ZIP...`
+      : zipDownloadState?.phase === 'building'
+        ? `Building ZIP archive for ${zipSelectionLabel}...`
+        : zipDownloadState?.phase === 'downloading'
+          ? zipDownloadState.percent !== null
+            ? `Downloading ZIP archive (${zipDownloadState.percent}%)`
+            : `Downloading ZIP archive for ${zipSelectionLabel}...`
+          : zipDownloadState?.phase === 'starting'
+            ? 'Saving ZIP to your browser...'
+            : '';
+  const zipButtonLabel =
+    zipDownloadState?.phase === 'preparing'
+      ? 'Preparing...'
+      : zipDownloadState?.phase === 'building'
+        ? 'Building...'
+        : zipDownloadState?.phase === 'downloading'
+          ? zipDownloadState.percent !== null
+            ? `${zipDownloadState.percent}%`
+            : 'Downloading...'
+          : zipDownloadState?.phase === 'starting'
+            ? 'Saving...'
+            : 'ZIP';
+  const isZipDownloadInProgress = Boolean(zipDownloadState);
+  const isSelectedZipDownloadInProgress = zipDownloadState?.mode === 'selected';
+  const isAllZipDownloadInProgress = zipDownloadState?.mode === 'all';
   const hasFinalDeliverables = sortedFinalDeliverableVersions.length > 0;
   const finalDeliverableReviewStatus = normalizeFinalDeliverableReviewStatus(
     taskState?.finalDeliverableReviewStatus,
@@ -4314,8 +4365,67 @@ function TaskDetailScreen() {
       .map(({ requestId }) => requestId);
   };
 
+  const clearZipStatusTimers = () => {
+    zipStatusTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    zipStatusTimeoutsRef.current = [];
+  };
+
+  const queueZipStatusClear = (delay = 4200) => {
+    clearZipStatusTimers();
+    zipStatusTimeoutsRef.current.push(
+      setTimeout(() => {
+        setZipDownloadState(null);
+      }, delay)
+    );
+  };
+
+  const beginZipDownloadStatus = (mode: 'all' | 'selected', fileCount: number) => {
+    clearZipStatusTimers();
+    setZipDownloadState({ mode, phase: 'preparing', fileCount, percent: null });
+    zipStatusTimeoutsRef.current.push(
+      setTimeout(() => {
+        setZipDownloadState((current) =>
+          current && current.mode === mode && current.phase === 'preparing'
+            ? { ...current, phase: 'building' }
+            : current
+        );
+      }, 500)
+    );
+  };
+
+  const completeZipDownloadStatus = (mode: 'all' | 'selected') => {
+    setZipDownloadState((current) =>
+      current && current.mode === mode ? { ...current, phase: 'starting', percent: 100 } : current
+    );
+    queueZipStatusClear(3200);
+  };
+
+  const updateZipDownloadStatus = (
+    mode: 'all' | 'selected',
+    phase: 'building' | 'downloading',
+    percent: number | null = null
+  ) => {
+    clearZipStatusTimers();
+    setZipDownloadState((current) =>
+      current && current.mode === mode
+        ? {
+            ...current,
+            phase,
+            percent,
+          }
+        : current
+    );
+  };
+
+  const resetZipDownloadStatus = () => {
+    clearZipStatusTimers();
+    setZipDownloadState(null);
+  };
+
   const handleDownloadZip = async (fileIds?: string[]) => {
+    const downloadMode: 'all' | 'selected' = fileIds && fileIds.length > 0 ? 'selected' : 'all';
     const versionId = activeFinalVersion?.id;
+    const taskId = String(taskState?.id || (taskState as { _id?: string } | undefined)?._id || id || '').trim();
     if (!versionId || !taskId || !apiUrl) {
       toast.error('Cannot download ZIP — missing task or version info.');
       return;
@@ -4326,36 +4436,93 @@ function TaskDetailScreen() {
       return;
     }
     try {
-      const body = requestedIds.length > 0 ? JSON.stringify({ fileIds: requestedIds }) : '{}';
-      const response = await authFetch(
-        `${apiUrl}/api/tasks/${taskId}/deliverables/${versionId}/zip`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }
-      );
-      if (!response.ok) {
-        let message = 'Failed to generate ZIP archive.';
-        try {
-          const payload = await response.clone().json();
-          if (payload && typeof payload.error === 'string' && payload.error.trim()) {
-            message = payload.error.trim();
-          }
-        } catch {
-          const detail = await response.text().catch(() => '');
-          if (detail.trim()) {
-            message = detail.trim();
-          }
-        }
-        throw new Error(message);
+      beginZipDownloadStatus(downloadMode, requestedIds.length);
+      const authToken = getAuthToken();
+      if (!authToken) {
+        throw new Error('Your session expired. Please sign in again.');
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `deliverables-v${versionId}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
+      const downloadUrl = new URL(`${apiUrl}/api/tasks/${taskId}/deliverables/${versionId}/zip`);
+      downloadUrl.searchParams.set('access_token', authToken);
+      requestedIds.forEach((requestedId) => {
+        downloadUrl.searchParams.append('fileIds', requestedId);
+      });
+
+      const { blob, fileName } = await new Promise<{ blob: Blob; fileName: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', downloadUrl.toString(), true);
+        xhr.responseType = 'blob';
+
+        xhr.onreadystatechange = () => {
+          if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
+            updateZipDownloadStatus(downloadMode, 'building');
+          }
+        };
+
+        xhr.onprogress = (event) => {
+          const nextPercent =
+            event.lengthComputable && event.total > 0
+              ? Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100)))
+              : null;
+          updateZipDownloadStatus(downloadMode, 'downloading', nextPercent);
+        };
+
+        xhr.onerror = () => reject(new Error('ZIP download failed.'));
+        xhr.onabort = () => reject(new Error('ZIP download was cancelled.'));
+        xhr.onload = () => {
+          const finalize = async () => {
+            if (xhr.status < 200 || xhr.status >= 300) {
+              let message = 'Failed to generate ZIP archive.';
+              const errorBlob = xhr.response;
+              if (errorBlob instanceof Blob) {
+                const detail = await errorBlob.text().catch(() => '');
+                if (detail.trim()) {
+                  try {
+                    const payload = JSON.parse(detail);
+                    if (payload && typeof payload.error === 'string' && payload.error.trim()) {
+                      message = payload.error.trim();
+                    } else {
+                      message = detail.trim();
+                    }
+                  } catch {
+                    message = detail.trim();
+                  }
+                }
+              }
+              reject(new Error(message));
+              return;
+            }
+
+            const contentDisposition = xhr.getResponseHeader('Content-Disposition') || '';
+            const fileNameMatch =
+              contentDisposition.match(/filename\*=UTF-8''([^;]+)|filename="([^"]+)"/i) || null;
+            resolve({
+              blob: xhr.response,
+              fileName: decodeURIComponent(
+                fileNameMatch?.[1] || fileNameMatch?.[2] || `deliverables-v${versionId}.zip`
+              ),
+            });
+          };
+          void finalize();
+        };
+
+        xhr.send();
+      });
+
+      const objectUrl = URL.createObjectURL(blob);
+
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = fileName;
+      anchor.rel = 'noopener noreferrer';
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      completeZipDownloadStatus(downloadMode);
     } catch (error) {
+      resetZipDownloadStatus();
       const message =
         error instanceof Error && error.message.trim()
           ? error.message.trim()
@@ -9236,8 +9403,8 @@ function TaskDetailScreen() {
             )}
 
             {canEditTask && !isCampaignRequest && (
-              <div className={`${glassPanelClass} p-5 animate-slide-up`}>
-                <div className="flex items-center justify-between mb-4">
+              <div className={`${glassPanelClass} p-4 animate-slide-up`}>
+                <div className="mb-3 flex items-center justify-between">
                   <h2 className="font-semibold text-foreground">Edit Task</h2>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -9262,16 +9429,74 @@ function TaskDetailScreen() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <div className="mb-4 rounded-xl border border-[#D8E4FF] bg-[#F6FAFF]/85 px-4 py-3 dark:border-slate-700/70 dark:bg-slate-900/55">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6D7FA8] dark:text-slate-400">
-                    Design Governance
-                  </p>
-                  <p className="mt-1 text-[12.5px] leading-6 text-muted-foreground">
-                    {DESIGN_GOVERNANCE_NOTICE_COMPACT}
-                  </p>
+                <div className="mb-2.5 border-b border-slate-200/80 pb-2.5 dark:border-slate-800/80">
+                  {editTaskGovernanceVariant === 'minimal' ? (
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 sm:pr-4">
+                        <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:gap-2.5">
+                          <p className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                            Design Governance
+                          </p>
+                          <span className="hidden h-1 w-1 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600 sm:inline-block" />
+                          <p className="truncate text-[12px] leading-5 text-slate-600 dark:text-slate-300">
+                            {DESIGN_GOVERNANCE_EDIT_TASK_MINIMAL}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsGovernanceExpanded((prev) => !prev)}
+                        className="inline-flex items-center gap-1 self-start text-[11px] font-medium text-slate-500 transition-colors hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
+                      >
+                        Policy
+                        <ChevronDown
+                          className={cn(
+                            'h-3.5 w-3.5 transition-transform',
+                            isGovernanceExpanded && 'rotate-180'
+                          )}
+                        />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 sm:pr-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                          Design Governance
+                        </p>
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-[12.5px] font-medium leading-5 text-slate-700 dark:text-slate-200">
+                            {DESIGN_GOVERNANCE_EDIT_TASK_PREMIUM_LINES[0]}
+                          </p>
+                          <p className="text-[12px] leading-5 text-slate-500 dark:text-slate-400">
+                            {DESIGN_GOVERNANCE_EDIT_TASK_PREMIUM_LINES[1]}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsGovernanceExpanded((prev) => !prev)}
+                        className="inline-flex items-center gap-1 self-start text-[11px] font-medium text-slate-500 transition-colors hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
+                      >
+                        Policy
+                        <ChevronDown
+                          className={cn(
+                            'h-3.5 w-3.5 transition-transform',
+                            isGovernanceExpanded && 'rotate-180'
+                          )}
+                        />
+                      </button>
+                    </div>
+                  )}
+                  {isGovernanceExpanded && (
+                    <div className="mt-2 border-t border-slate-200/80 pt-2 dark:border-slate-800/80">
+                      <p className="max-w-3xl text-[11.5px] leading-5 text-slate-500 dark:text-slate-400">
+                        {DESIGN_GOVERNANCE_NOTICE_POLICY}
+                      </p>
+                    </div>
+                  )}
                 </div>
                 {isEditingTask ? (
-                  <div className="space-y-4">
+                  <div className="space-y-2.5">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         Description
@@ -9280,7 +9505,7 @@ function TaskDetailScreen() {
                         value={editedDescription}
                         onChange={(event) => setEditedDescription(event.target.value)}
                         rows={4}
-                      className="mt-2 select-text text-[14px] leading-7"
+                        className="mt-1 select-text text-[14px] leading-7"
                         disabled={approvalLockedForStaff}
                       />
                     </div>
@@ -9293,7 +9518,7 @@ function TaskDetailScreen() {
                           value={staffNote}
                           onChange={(event) => setStaffNote(event.target.value)}
                           rows={3}
-                          className="mt-2 select-text"
+                          className="mt-1.5 select-text"
                           placeholder="Describe the change request for the designer and treasurer review."
                           disabled={approvalLockedForStaff}
                         />
@@ -9825,11 +10050,18 @@ function TaskDetailScreen() {
                           variant="outline"
                           size="sm"
                           onClick={() => void handleDownloadZip()}
-                          disabled={finalDeliverableFiles.filter(f => !isLinkOnlyFile(toOutputFile(f, 0))).length === 0}
+                          disabled={
+                            isZipDownloadInProgress ||
+                            finalDeliverableFiles.filter(f => !isLinkOnlyFile(toOutputFile(f, 0))).length === 0
+                          }
                           className="h-7 gap-1.5 rounded-lg border-[#D0DCFF] px-2.5 text-[11.5px] text-[#3D5A9E] hover:bg-[#EEF2FF] dark:border-border dark:text-slate-300 dark:hover:bg-muted/60"
                         >
-                          <Archive className="h-3.5 w-3.5" />
-                          ZIP
+                          {isAllZipDownloadInProgress ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Archive className="h-3.5 w-3.5" />
+                          )}
+                          {isAllZipDownloadInProgress ? zipButtonLabel : 'ZIP'}
                         </Button>
 
                         <button
@@ -9846,6 +10078,30 @@ function TaskDetailScreen() {
 
                     {showFinalDeliverableList && (
                       <>
+                        {zipDownloadState && (
+                          <div className="border-b border-[#EAF0FA] bg-[#F8FBFF]/70 px-4 py-2.5 dark:border-border dark:bg-muted/20">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#4B6BAE] dark:text-slate-300" />
+                                <span className="truncate text-[11.5px] font-medium text-[#3D5A9E] dark:text-slate-300">
+                                  {zipDownloadState.mode === 'selected' ? 'ZIP Selected' : 'ZIP Download'}: {zipPhaseLabel}
+                                </span>
+                              </div>
+                              {zipDownloadState.percent !== null && (
+                                <span className="shrink-0 text-[11px] font-semibold text-[#4B6BAE] dark:text-slate-300">
+                                  {zipDownloadState.percent}%
+                                </span>
+                              )}
+                            </div>
+                            {zipDownloadState.percent !== null && (
+                              <Progress
+                                value={zipDownloadState.percent}
+                                className="mt-2 h-1.5 rounded-full bg-[#E7EEFF] dark:bg-[#1A2748]"
+                              />
+                            )}
+                          </div>
+                        )}
+
                         {/* Version note */}
                         {activeFinalVersionNote && (
                           <div className="border-b border-[#EAF0FA] bg-[#F8FBFF]/60 px-4 py-2.5 dark:border-border dark:bg-muted/20">
@@ -9886,10 +10142,15 @@ function TaskDetailScreen() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => void handleDownloadZip(Array.from(selectedDeliverableIds))}
+                                disabled={isZipDownloadInProgress}
                                 className="h-7 gap-1.5 rounded-lg border-[#D0DCFF] px-2.5 text-[11.5px] text-[#3D5A9E] hover:bg-white dark:border-border dark:text-slate-300"
                               >
-                                <Archive className="h-3.5 w-3.5" />
-                                ZIP Selected
+                                {isSelectedZipDownloadInProgress ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Archive className="h-3.5 w-3.5" />
+                                )}
+                                {isSelectedZipDownloadInProgress ? zipButtonLabel : 'ZIP Selected'}
                               </Button>
                               <button
                                 type="button"

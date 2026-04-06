@@ -383,6 +383,55 @@ const normalizeTaskFileLinks = (file) => {
 const normalizeTaskFileCollection = (files) =>
   Array.isArray(files) ? files.map((file) => normalizeTaskFileLinks(file)) : [];
 
+const parseRequestedFileIds = (value) => {
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .flatMap((entry) => String(entry || "").split(","))
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      )
+    );
+  }
+
+  if (typeof value === "string") {
+    return Array.from(
+      new Set(
+        value
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      )
+    );
+  }
+
+  return [];
+};
+
+const inferFileNameFromUrl = (value) => {
+  try {
+    const parsed = new URL(String(value || "").trim());
+    return decodeURIComponent(
+      (parsed.pathname || "")
+        .split("/")
+        .filter(Boolean)
+        .pop() || ""
+    ).trim();
+  } catch {
+    return "";
+  }
+};
+
+const fetchRemoteFileBuffer = async (url) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Remote download failed (${response.status})`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+};
+
 const COLLATERAL_STATUS_ORDER = {
   pending: "pending",
   in_progress: "in_progress",
@@ -3033,6 +3082,40 @@ router.post("/:id/viewed", ensureTaskAccess, async (req, res) => {
   }
 });
 
+router.delete("/:id/viewed", ensureTaskAccess, async (req, res) => {
+  try {
+    const task = req.task;
+    const viewerId = String(getUserId(req) || "").trim();
+    const taskId = getTaskDocumentId(task);
+    if (!task) {
+      return res.status(404).json({ error: "Task not found." });
+    }
+    if (!viewerId) {
+      return res.status(401).json({ error: "Missing user identity." });
+    }
+    if (!taskId) {
+      return res.status(400).json({ error: "Invalid task id." });
+    }
+
+    await TaskView.deleteOne({ taskId, userId: viewerId });
+
+    const payload = buildTaskPayloadForViewer(task, req.user, {
+      viewerReadAt: undefined,
+    });
+    const io = getSocket();
+    if (io) {
+      io.to(viewerId).emit("task:updated", {
+        taskId,
+        task: payload,
+      });
+    }
+
+    res.json(payload);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update task unread status." });
+  }
+});
+
 router.get("/:id/changes", ensureTaskAccess, async (req, res) => {
   try {
     const task = req.task;
@@ -3424,14 +3507,14 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
   }
 });
 
-router.post("/:id/deliverables/:versionId/zip", ensureTaskAccess, async (req, res) => {
+const handleDeliverablesZipDownload = async (req, res) => {
   try {
     let task = req.task;
     task = await repairMissingFinalDeliverableFiles(task);
     const versionId = String(req.params.versionId || "").trim();
-    const requestedIds = Array.isArray(req.body?.fileIds)
-      ? req.body.fileIds.map((value) => String(value || "").trim()).filter(Boolean)
-      : [];
+    const requestedIds = parseRequestedFileIds(
+      req.method === "GET" ? req.query?.fileIds : req.body?.fileIds
+    );
 
     const versions = Array.isArray(task.finalDeliverableVersions)
       ? task.finalDeliverableVersions
@@ -3441,7 +3524,7 @@ router.post("/:id/deliverables/:versionId/zip", ensureTaskAccess, async (req, re
       return res.status(404).json({ error: "Version not found." });
     }
 
-    const allFiles = Array.isArray(version.files) ? version.files : [];
+    const allFiles = normalizeTaskFileCollection(Array.isArray(version.files) ? version.files : []);
     const targets = allFiles.filter((f) => {
       const mime = String(f?.mime || "").toLowerCase();
       if (mime === "link") return false;
@@ -3484,19 +3567,24 @@ router.post("/:id/deliverables/:versionId/zip", ensureTaskAccess, async (req, re
     for (const file of targets) {
       try {
         const driveId = String(file?.driveId || "").trim();
-        if (!driveId) continue;
+        let rawName =
+          String(file?.name || "").trim() ||
+          inferFileNameFromUrl(file?.url || file?.webContentLink || file?.webViewLink || "") ||
+          driveId;
+        let fileBuffer = null;
+        let lastFileError = null;
 
-        // Get filename from Drive metadata (fallback to stored name)
-        let rawName = String(file?.name || "").trim();
-        try {
-          const metaResponse = await drive.files.get({
-            fileId: driveId,
-            fields: "id,name",
-            supportsAllDrives: true,
-          });
-          rawName = String(metaResponse?.data?.name || rawName || driveId);
-        } catch {
-          rawName = rawName || driveId;
+        if (driveId) {
+          try {
+            const metaResponse = await drive.files.get({
+              fileId: driveId,
+              fields: "id,name",
+              supportsAllDrives: true,
+            });
+            rawName = String(metaResponse?.data?.name || rawName || driveId);
+          } catch {
+            rawName = rawName || driveId;
+          }
         }
 
         // Deduplicate filenames safely (sequential, no race)
@@ -3512,12 +3600,43 @@ router.post("/:id/deliverables/:versionId/zip", ensureTaskAccess, async (req, re
           usedNames.set(rawName, 1);
         }
 
-        // Download file as stream, collect into Buffer
-        const mediaResponse = await drive.files.get(
-          { fileId: driveId, alt: "media", supportsAllDrives: true },
-          { responseType: "stream" }
-        );
-        const fileBuffer = await streamToBuffer(mediaResponse.data);
+        if (driveId) {
+          try {
+            const mediaResponse = await drive.files.get(
+              { fileId: driveId, alt: "media", supportsAllDrives: true },
+              { responseType: "stream" }
+            );
+            fileBuffer = await streamToBuffer(mediaResponse.data);
+          } catch (driveError) {
+            lastFileError = driveError;
+          }
+        }
+
+        if (!fileBuffer) {
+          const fallbackUrls = Array.from(
+            new Set(
+              [
+                String(file?.webContentLink || "").trim(),
+                String(file?.url || "").trim(),
+                driveId ? buildDriveDownloadUrl(driveId) : "",
+              ].filter(Boolean)
+            )
+          );
+
+          for (const fallbackUrl of fallbackUrls) {
+            try {
+              fileBuffer = await fetchRemoteFileBuffer(fallbackUrl);
+              break;
+            } catch (fallbackError) {
+              lastFileError = fallbackError;
+            }
+          }
+        }
+
+        if (!fileBuffer) {
+          throw lastFileError || new Error("No ZIP download source available.");
+        }
+
         zip.file(zipName, fileBuffer);
         addedCount += 1;
       } catch (fileError) {
@@ -3546,7 +3665,10 @@ router.post("/:id/deliverables/:versionId/zip", ensureTaskAccess, async (req, re
     console.error("ZIP download error:", error?.message || error);
     res.status(500).json({ error: "Failed to generate ZIP archive." });
   }
-});
+};
+
+router.get("/:id/deliverables/:versionId/zip", ensureTaskAccess, handleDeliverablesZipDownload);
+router.post("/:id/deliverables/:versionId/zip", ensureTaskAccess, handleDeliverablesZipDownload);
 
 router.post("/:id/final-deliverables/review", ensureTaskAccess, async (req, res) => {
   try {

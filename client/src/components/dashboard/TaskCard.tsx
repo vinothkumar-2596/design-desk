@@ -1,12 +1,15 @@
 import { Task, TaskStatus } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight, CheckCircle2, AlertTriangle, Tag, Share2, MessageCircle, Mail, Copy, Check, Layers3 } from 'lucide-react';
+import { Calendar, Clock, User, UserCheck, Paperclip, MessageSquare, ArrowRight, CheckCircle2, AlertTriangle, Tag, Share2, MessageCircle, Mail, Copy, Check, Layers3, Circle, Loader2 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { AnimatedCard } from '@/components/ui/animated-card';
 import { useEffect, useRef, useState } from 'react';
+import { API_URL, authFetch } from '@/lib/api';
+import { upsertLocalTask } from '@/lib/taskStorage';
+import { toast } from 'sonner';
 
 interface TaskCardProps {
   task: Task;
@@ -62,6 +65,8 @@ export function TaskCard({
 }: TaskCardProps) {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
+  const [isTogglingReadState, setIsTogglingReadState] = useState(false);
+  const [readStateOverride, setReadStateOverride] = useState<boolean | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taskId = task.id || (task as unknown as { _id?: string })._id || '';
   const taskUrl =
@@ -131,8 +136,11 @@ export function TaskCard({
   const isAssignedToUser =
     Boolean(user) && (assignedToId === user?.id || nameMatches || emailMatches);
   const hasViewed = Boolean(task.viewerReadAt);
-  const isHighlighted = Boolean(user) && !hasViewed;
+  const effectiveHasViewed = readStateOverride ?? hasViewed;
+  const isHighlighted = Boolean(user) && !effectiveHasViewed;
   const hasAssignAction = Boolean(showAssignDesignerButton && onAssignDesigner);
+  const canToggleReadState = Boolean(user?.role === 'designer' && taskId);
+  const readToggleLabel = effectiveHasViewed ? 'Mark as unread' : 'Mark as read';
 
   const copyToClipboard = async (value: string) => {
     if (!value) return;
@@ -154,6 +162,10 @@ export function TaskCard({
       }
     }
   };
+
+  useEffect(() => {
+    setReadStateOverride(null);
+  }, [task.id, task.viewerReadAt]);
 
   useEffect(() => {
     return () => {
@@ -191,6 +203,45 @@ export function TaskCard({
     const subject = encodeURIComponent(`DesignDesk Task: ${task.title}`);
     const body = encodeURIComponent(`${taskShareText}\n${taskUrl}`);
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  };
+
+  const handleToggleReadState = async () => {
+    if (!canToggleReadState || isTogglingReadState) return;
+
+    const nextHasViewed = !effectiveHasViewed;
+    setIsTogglingReadState(true);
+    setReadStateOverride(nextHasViewed);
+
+    try {
+      if (API_URL) {
+        const response = await authFetch(`${API_URL}/api/tasks/${taskId}/viewed`, {
+          method: nextHasViewed ? 'POST' : 'DELETE',
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          const message =
+            payload && typeof payload.error === 'string' && payload.error.trim()
+              ? payload.error.trim()
+              : 'Failed to update task read state.';
+          throw new Error(message);
+        }
+        if (payload) {
+          window.dispatchEvent(new CustomEvent('designhub:task:updated', { detail: payload }));
+        }
+      } else {
+        const nextTask = {
+          ...task,
+          viewerReadAt: nextHasViewed ? new Date() : undefined,
+        };
+        upsertLocalTask(nextTask);
+        window.dispatchEvent(new CustomEvent('designhub:task:updated', { detail: nextTask }));
+      }
+    } catch (error) {
+      setReadStateOverride(null);
+      toast.error(error instanceof Error ? error.message : 'Failed to update task read state.');
+    } finally {
+      setIsTogglingReadState(false);
+    }
   };
 
   return (
@@ -235,6 +286,30 @@ export function TaskCard({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {canToggleReadState && (
+            <button
+              type="button"
+              onClick={handleToggleReadState}
+              disabled={isTogglingReadState}
+              className={cn(
+                "icon-action-press inline-flex h-8 w-8 items-center justify-center rounded-full border bg-white dark:bg-muted dark:border-border transition-colors dark:transition-none",
+                effectiveHasViewed
+                  ? "border-[#DCE6FF] text-slate-400 dark:text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 dark:hover:bg-muted/80 dark:hover:text-foreground"
+                  : "border-[#C8DAFF] bg-[#EEF4FF] text-[#3158B8] hover:border-[#AFC8FF] hover:bg-[#E4EEFF] dark:border-primary/50 dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/20",
+                isTogglingReadState && "cursor-wait opacity-70"
+              )}
+              title={readToggleLabel}
+              aria-label={readToggleLabel}
+            >
+              {isTogglingReadState ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : effectiveHasViewed ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <Circle className="h-4 w-4 fill-current" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleNativeShare}

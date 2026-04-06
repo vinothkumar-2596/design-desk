@@ -21,6 +21,24 @@ const isPublicRoute = (req) =>
     (route) => route.method === req.method && route.path === req.path
   );
 
+const ZIP_DOWNLOAD_ROUTE_PATTERN = /^\/api\/tasks\/[^/]+\/deliverables\/[^/]+\/zip\/?$/;
+
+const isZipDownloadRoute = (req) =>
+  req.method === "GET" && ZIP_DOWNLOAD_ROUTE_PATTERN.test(req.path);
+
+const getRequestToken = (req) => {
+  const header = req.header("authorization") || "";
+  if (header.startsWith("Bearer ")) {
+    return header.replace("Bearer ", "").trim();
+  }
+
+  if (isZipDownloadRoute(req)) {
+    return String(req.query?.access_token || "").trim();
+  }
+
+  return "";
+};
+
 export const signAccessToken = (user) => {
   const secret = getJwtSecret();
   return jwt.sign(
@@ -40,12 +58,11 @@ export const requireAuth = (req, res, next) => {
     return next();
   }
 
-  const header = req.header("authorization") || "";
-  if (!header.startsWith("Bearer ")) {
+  const token = getRequestToken(req);
+  if (!token) {
     return res.status(401).json({ error: "Unauthorized." });
   }
 
-  const token = header.replace("Bearer ", "").trim();
   try {
     const payload = jwt.verify(token, getJwtSecret());
     req.user = {

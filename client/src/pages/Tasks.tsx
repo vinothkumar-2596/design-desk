@@ -442,7 +442,7 @@ export default function Tasks() {
           </div>
         ) : filteredTasks.length > 0 ? (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {pagedTasks.map((task, index) => (
                 <div key={task.id} className="h-full" style={{ animationDelay: `${index * 50}ms` }}>
                   <TaskCard task={task} />
