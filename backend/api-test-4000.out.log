@@ -2385,3 +2385,453 @@ Designer joined room: chandruvino003@gmail.com
 Designer joined room: designers:queue
 [2026-04-06T09:24:46.616Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.335Z&limit=20
 [2026-04-06T09:24:46.617Z] GET /api/notifications/unread-count
+[2026-04-06T09:26:54.840Z] OPTIONS /api/tasks/69d3476f2b99ad2d59befe05/viewed
+[2026-04-06T09:26:54.841Z] DELETE /api/tasks/69d3476f2b99ad2d59befe05/viewed
+[2026-04-06T09:26:55.669Z] POST /api/tasks/69d3476f2b99ad2d59befe05/viewed
+[2026-04-06T09:26:56.240Z] DELETE /api/tasks/69d3476f2b99ad2d59befe05/viewed
+[2026-04-06T09:26:56.869Z] POST /api/tasks/69d3476f2b99ad2d59befe05/viewed
+[2026-04-06T09:26:57.253Z] DELETE /api/tasks/69d3476f2b99ad2d59befe05/viewed
+[2026-04-06T09:26:57.898Z] POST /api/tasks/69d3476f2b99ad2d59befe05/viewed
+[2026-04-06T09:26:58.361Z] DELETE /api/tasks/69d3476f2b99ad2d59befe05/viewed
+Socket disconnected: FvHCcUnEuaMnL_EdAAHX
+[2026-04-06T09:28:28.721Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:28:28.721Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:28:28.722Z] OPTIONS /api/tasks
+[2026-04-06T09:28:28.723Z] GET /api/notifications?limit=20
+[2026-04-06T09:28:28.724Z] GET /api/notifications/unread-count
+Socket connected: MtYaFeyn_K1QXSa0AAHZ
+[2026-04-06T09:28:28.725Z] GET /api/tasks
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+[2026-04-06T09:28:30.622Z] OPTIONS /api/tasks/availability
+[2026-04-06T09:28:30.622Z] GET /api/notifications?limit=20
+[2026-04-06T09:28:30.623Z] GET /api/notifications/unread-count
+[2026-04-06T09:28:30.624Z] GET /api/tasks/availability
+Socket disconnected: MtYaFeyn_K1QXSa0AAHZ
+Socket connected: GX486jhUAWJrAfJiAAHb
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+[2026-04-06T09:28:30.928Z] OPTIONS /api/notifications?after=2026-04-06T06%3A41%3A56.335Z&limit=20
+[2026-04-06T09:28:30.928Z] GET /api/notifications/unread-count
+[2026-04-06T09:28:30.930Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.335Z&limit=20
+Socket disconnected: bvlOfF8FXu59XWleAAGH
+Socket disconnected: bOvqnqHiWihhFqSvAAGJ
+[2026-04-06T09:28:39.775Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:28:39.776Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:28:39.776Z] OPTIONS /api/tasks/69d355b22b99ad2d59bf0a49
+[2026-04-06T09:28:39.777Z] OPTIONS /api/tasks
+[2026-04-06T09:28:39.777Z] GET /api/notifications?limit=20
+[2026-04-06T09:28:39.778Z] GET /api/notifications/unread-count
+[2026-04-06T09:28:39.779Z] GET /api/tasks/69d355b22b99ad2d59bf0a49
+[2026-04-06T09:28:39.780Z] GET /api/tasks
+Socket connected: 7fOr88sIgeShV8NhAAHd
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+Socket connected: aYdlfAp3tRYWRMP9AAHf
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:28:44.422Z] GET /api/notifications?limit=20
+[2026-04-06T09:28:44.425Z] GET /api/notifications/unread-count
+Socket disconnected: aYdlfAp3tRYWRMP9AAHf
+Socket disconnected: 7fOr88sIgeShV8NhAAHd
+Socket connected: CqwBkf_lP3WFWl92AAHh
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:28:44.739Z] OPTIONS /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:28:44.739Z] GET /api/notifications/unread-count
+[2026-04-06T09:28:44.740Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:28:47.579Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:28:47.580Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:28:47.580Z] OPTIONS /api/tasks/69d355b22b99ad2d59bf0a49
+[2026-04-06T09:28:47.581Z] GET /api/notifications?limit=20
+[2026-04-06T09:28:47.582Z] GET /api/notifications/unread-count
+[2026-04-06T09:28:47.583Z] GET /api/tasks/69d355b22b99ad2d59bf0a49
+Socket disconnected: CqwBkf_lP3WFWl92AAHh
+Socket connected: 4ui42HIbfFkInkL-AAHj
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:28:47.890Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:28:47.891Z] GET /api/notifications/unread-count
+Socket connected: F-XJOwfsOw3FFMHmAAHl
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+Socket disconnected: F-XJOwfsOw3FFMHmAAHl
+Socket disconnected: 4ui42HIbfFkInkL-AAHj
+[2026-04-06T09:29:03.417Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:29:03.418Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:29:03.419Z] GET /api/notifications?limit=20
+[2026-04-06T09:29:03.421Z] GET /api/notifications/unread-count
+Socket connected: ae-eNk5FSqV1kom0AAHn
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+Socket disconnected: ae-eNk5FSqV1kom0AAHn
+[2026-04-06T09:29:04.626Z] GET /api/notifications?limit=20
+[2026-04-06T09:29:04.627Z] GET /api/notifications/unread-count
+Socket connected: A4ajWcLwxCrngHgaAAHp
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:29:04.936Z] OPTIONS /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:29:04.936Z] GET /api/notifications/unread-count
+[2026-04-06T09:29:04.937Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:29:40.952Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:29:40.953Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:29:40.955Z] GET /api/notifications?limit=20
+Socket disconnected: A4ajWcLwxCrngHgaAAHp
+[2026-04-06T09:29:40.987Z] GET /api/notifications/unread-count
+Socket connected: f1GxmJqJoaPSmHi5AAHr
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:29:41.272Z] OPTIONS /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:29:41.274Z] GET /api/notifications/unread-count
+[2026-04-06T09:29:41.276Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+Socket disconnected: f1GxmJqJoaPSmHi5AAHr
+[2026-04-06T09:30:18.458Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:30:18.460Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:30:18.461Z] OPTIONS /api/tasks
+[2026-04-06T09:30:18.462Z] GET /api/notifications?limit=20
+[2026-04-06T09:30:18.492Z] GET /api/notifications/unread-count
+[2026-04-06T09:30:18.523Z] GET /api/tasks
+Socket connected: QvhxMB9e4XkoRyDaAAHt
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:30:18.770Z] OPTIONS /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:30:18.770Z] GET /api/notifications/unread-count
+[2026-04-06T09:30:18.771Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:30:22.645Z] GET /api/notifications?limit=20
+[2026-04-06T09:30:22.647Z] GET /api/notifications/unread-count
+Socket disconnected: QvhxMB9e4XkoRyDaAAHt
+Socket connected: IQfmXw5HfWsRDJtlAAHv
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:30:22.954Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:30:22.955Z] GET /api/notifications/unread-count
+Socket disconnected: IQfmXw5HfWsRDJtlAAHv
+[2026-04-06T09:30:24.208Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:30:24.209Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:30:24.209Z] OPTIONS /api/tasks
+[2026-04-06T09:30:24.211Z] GET /api/notifications?limit=20
+[2026-04-06T09:30:24.212Z] GET /api/notifications/unread-count
+[2026-04-06T09:30:24.213Z] GET /api/tasks
+Socket connected: fFrYGWVPd6H-9_m-AAHx
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:30:24.518Z] OPTIONS /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:30:24.519Z] GET /api/notifications/unread-count
+[2026-04-06T09:30:24.520Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:30:25.384Z] GET /api/notifications?limit=20
+[2026-04-06T09:30:25.385Z] GET /api/notifications/unread-count
+[2026-04-06T09:30:25.386Z] OPTIONS /api/tasks/69d355b22b99ad2d59bf0a49
+[2026-04-06T09:30:25.387Z] GET /api/tasks/69d355b22b99ad2d59bf0a49
+Socket disconnected: fFrYGWVPd6H-9_m-AAHx
+Socket connected: JpOVXhHvz-tcHv5DAAHz
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:30:25.702Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:30:25.703Z] GET /api/notifications/unread-count
+Socket connected: 0-sXKI0e6C6sOMTIAAH1
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:30:26.972Z] GET /api/notifications?limit=20
+[2026-04-06T09:30:26.973Z] GET /api/notifications/unread-count
+Socket disconnected: 0-sXKI0e6C6sOMTIAAH1
+Socket disconnected: JpOVXhHvz-tcHv5DAAHz
+Socket connected: zKNh5SviMuAPYeqCAAH3
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:30:27.285Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:30:27.286Z] GET /api/notifications/unread-count
+Socket disconnected: zKNh5SviMuAPYeqCAAH3
+[2026-04-06T09:30:28.079Z] GET /api/notifications?limit=20
+[2026-04-06T09:30:28.080Z] GET /api/notifications/unread-count
+Socket connected: Fg2l7r4iYOVC3HxLAAH5
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:30:28.397Z] GET /api/notifications?after=2026-04-06T06%3A41%3A56.319Z&limit=20
+[2026-04-06T09:30:28.398Z] GET /api/notifications/unread-count
+[2026-04-06T09:34:42.539Z] OPTIONS /api/files/upload
+[2026-04-06T09:34:42.547Z] POST /api/files/upload
+File upload request received.
+[2026-04-06T09:34:49.167Z] OPTIONS /api/tasks
+[2026-04-06T09:34:49.168Z] POST /api/tasks
+Request created: 69d37e392b99ad2d59bf1992
+Emitted request:new to room: designers:queue
+Emitted request:new to 1 treasurer rooms
+Emitted request:new to 1 designer rooms
+Drive upload success: 1D0POEMD8f7RM4UoTCbnLAXyaymnOwZUB
+Request created email sent: 250 2.0.0 OK  1775468095 98e67ed59e1d1-35dd368f538sm19397939a91.14 - gsmtp
+[2026-04-06T09:34:57.346Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:34:57.349Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:34:57.350Z] OPTIONS /api/tasks?requesterEmail=design%40smvec.ac.in&requesterId=69b40de96f83a74015c97e9e
+[2026-04-06T09:34:57.351Z] GET /api/notifications?limit=20
+Socket disconnected: Fg2l7r4iYOVC3HxLAAH5
+[2026-04-06T09:34:57.384Z] GET /api/notifications/unread-count
+[2026-04-06T09:34:57.410Z] GET /api/tasks?requesterEmail=design%40smvec.ac.in&requesterId=69b40de96f83a74015c97e9e
+Socket connected: ziOnnJyXGI7Nml67AAH7
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:34:57.659Z] OPTIONS /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+[2026-04-06T09:34:57.660Z] GET /api/notifications/unread-count
+[2026-04-06T09:34:57.661Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+[2026-04-06T09:34:59.811Z] OPTIONS /api/tasks/69d37e392b99ad2d59bf1992/viewed
+[2026-04-06T09:34:59.812Z] GET /api/notifications?limit=20
+[2026-04-06T09:34:59.813Z] GET /api/notifications/unread-count
+[2026-04-06T09:34:59.813Z] OPTIONS /api/tasks/69d37e392b99ad2d59bf1992
+[2026-04-06T09:34:59.814Z] POST /api/tasks/69d37e392b99ad2d59bf1992/viewed
+Socket disconnected: ziOnnJyXGI7Nml67AAH7
+[2026-04-06T09:34:59.815Z] GET /api/tasks/69d37e392b99ad2d59bf1992
+Socket connected: mFl-Fa1vcJxV3VmsAAH9
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:35:00.124Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+[2026-04-06T09:35:00.125Z] GET /api/notifications/unread-count
+Socket connected: uvJNFTXbBTDpZtyvAAH_
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+Socket disconnected: GX486jhUAWJrAfJiAAHb
+[2026-04-06T09:35:26.609Z] OPTIONS /api/notifications/69d37e3a2b99ad2d59bf19a3/read
+[2026-04-06T09:35:26.610Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:35:26.611Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:35:26.612Z] OPTIONS /api/tasks/69d37e392b99ad2d59bf1992/viewed
+[2026-04-06T09:35:26.612Z] OPTIONS /api/tasks/69d37e392b99ad2d59bf1992
+[2026-04-06T09:35:26.613Z] PATCH /api/notifications/69d37e3a2b99ad2d59bf19a3/read
+[2026-04-06T09:35:26.625Z] GET /api/notifications?limit=20
+[2026-04-06T09:35:26.627Z] GET /api/notifications/unread-count
+[2026-04-06T09:35:26.628Z] POST /api/tasks/69d37e392b99ad2d59bf1992/viewed
+[2026-04-06T09:35:26.629Z] GET /api/tasks/69d37e392b99ad2d59bf1992
+Socket connected: ykiI5ZutNgPh1rm4AAIB
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+Socket connected: Y_EJbd66FfmIRR2iAAID
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+[2026-04-06T09:35:26.681Z] GET /api/tasks/69d37e392b99ad2d59bf1992
+[2026-04-06T09:35:26.734Z] GET /api/tasks/69d37e392b99ad2d59bf1992
+[2026-04-06T09:35:29.920Z] OPTIONS /api/tasks/designers
+[2026-04-06T09:35:29.925Z] GET /api/tasks/designers
+Socket disconnected: Y_EJbd66FfmIRR2iAAID
+Socket disconnected: ykiI5ZutNgPh1rm4AAIB
+Socket disconnected: uvJNFTXbBTDpZtyvAAH_
+Socket disconnected: mFl-Fa1vcJxV3VmsAAH9
+[2026-04-06T09:39:10.275Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:39:10.276Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:39:10.277Z] OPTIONS /api/tasks/69d37e392b99ad2d59bf1992/viewed
+[2026-04-06T09:39:10.278Z] OPTIONS /api/tasks/69d37e392b99ad2d59bf1992
+[2026-04-06T09:39:10.278Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:39:10.279Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:39:10.279Z] OPTIONS /api/tasks/69d37e392b99ad2d59bf1992/viewed
+[2026-04-06T09:39:10.280Z] OPTIONS /api/tasks/69d37e392b99ad2d59bf1992
+[2026-04-06T09:39:10.281Z] GET /api/notifications?limit=20
+[2026-04-06T09:39:10.282Z] GET /api/notifications/unread-count
+[2026-04-06T09:39:10.283Z] POST /api/tasks/69d37e392b99ad2d59bf1992/viewed
+[2026-04-06T09:39:10.284Z] GET /api/tasks/69d37e392b99ad2d59bf1992
+Socket connected: nVVdb2e6-0tk6ljYAAIG
+[2026-04-06T09:39:10.285Z] GET /api/notifications?limit=20
+[2026-04-06T09:39:10.286Z] POST /api/tasks/69d37e392b99ad2d59bf1992/viewed
+[2026-04-06T09:39:10.287Z] GET /api/notifications/unread-count
+[2026-04-06T09:39:10.288Z] GET /api/tasks/69d37e392b99ad2d59bf1992
+Socket connected: VpbRH74xQdyewvKLAAIH
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+Socket connected: NLZJMmugaIthj446AAIK
+Socket connected: riVzTPgQ08HbIJI5AAIL
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+[2026-04-06T09:39:10.363Z] GET /api/tasks/69d37e392b99ad2d59bf1992
+[2026-04-06T09:39:10.419Z] GET /api/tasks/69d37e392b99ad2d59bf1992
+[2026-04-06T09:39:10.548Z] GET /api/tasks/69d37e392b99ad2d59bf1992
+[2026-04-06T09:39:10.607Z] GET /api/tasks/69d37e392b99ad2d59bf1992
+[2026-04-06T09:39:24.784Z] OPTIONS /api/tasks/designers
+[2026-04-06T09:39:24.787Z] GET /api/tasks/designers
+[2026-04-06T09:39:35.196Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:39:35.197Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:39:35.198Z] GET /api/notifications?limit=20
+Socket disconnected: NLZJMmugaIthj446AAIK
+Socket disconnected: VpbRH74xQdyewvKLAAIH
+[2026-04-06T09:39:35.224Z] GET /api/notifications/unread-count
+Socket connected: yHxlLJl801bSaOVKAAIN
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:39:35.509Z] OPTIONS /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+[2026-04-06T09:39:35.510Z] GET /api/notifications/unread-count
+[2026-04-06T09:39:35.511Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+Socket disconnected: yHxlLJl801bSaOVKAAIN
+[2026-04-06T09:39:36.441Z] GET /api/notifications?limit=20
+[2026-04-06T09:39:36.442Z] GET /api/notifications/unread-count
+Socket connected: 0T0yAFwGapcRDN61AAIP
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:39:36.745Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+[2026-04-06T09:39:36.746Z] GET /api/notifications/unread-count
+Socket disconnected: riVzTPgQ08HbIJI5AAIL
+Socket disconnected: nVVdb2e6-0tk6ljYAAIG
+[2026-04-06T09:39:54.666Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:39:54.667Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:39:54.668Z] GET /api/notifications?limit=20
+[2026-04-06T09:39:54.669Z] GET /api/notifications/unread-count
+Socket connected: SwpRZhs9vTDIpHbFAAIR
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+Socket disconnected: SwpRZhs9vTDIpHbFAAIR
+[2026-04-06T09:39:55.606Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:39:55.607Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:39:55.608Z] GET /api/notifications?limit=20
+[2026-04-06T09:39:55.609Z] GET /api/notifications/unread-count
+[2026-04-06T09:39:55.619Z] OPTIONS /api/tasks
+[2026-04-06T09:39:55.620Z] GET /api/tasks
+Socket connected: zDeICM3xjVH2mOD9AAIT
+Socket disconnected: zDeICM3xjVH2mOD9AAIT
+[2026-04-06T09:39:56.939Z] GET /api/notifications?limit=20
+[2026-04-06T09:39:56.941Z] GET /api/notifications/unread-count
+Socket connected: PRglSnPZ8WhCpd2dAAIV
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+[2026-04-06T09:39:57.252Z] OPTIONS /api/notifications?after=2026-04-06T09%3A34%3A50.689Z&limit=20
+[2026-04-06T09:39:57.252Z] GET /api/notifications/unread-count
+[2026-04-06T09:39:57.253Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.689Z&limit=20
+Socket disconnected: PRglSnPZ8WhCpd2dAAIV
+[2026-04-06T09:40:05.540Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:40:05.541Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:40:05.542Z] OPTIONS /api/tasks?requesterEmail=chandruvino003%40gmail.com&requesterId=69aaa18700b1cc9322ee0985
+[2026-04-06T09:40:05.542Z] GET /api/notifications?limit=20
+Socket connected: 9xx5s8ZaQE6YnyZbAAIX
+[2026-04-06T09:40:05.544Z] GET /api/notifications/unread-count
+[2026-04-06T09:40:05.544Z] GET /api/tasks?requesterEmail=chandruvino003%40gmail.com&requesterId=69aaa18700b1cc9322ee0985
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+[2026-04-06T09:40:06.859Z] GET /api/notifications?limit=20
+[2026-04-06T09:40:06.861Z] GET /api/notifications/unread-count
+Socket disconnected: 9xx5s8ZaQE6YnyZbAAIX
+Socket connected: fjnVdXkI-qcnfne_AAIZ
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+[2026-04-06T09:40:07.173Z] OPTIONS /api/notifications?after=2026-04-06T09%3A34%3A50.689Z&limit=20
+[2026-04-06T09:40:07.173Z] GET /api/notifications/unread-count
+[2026-04-06T09:40:07.174Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.689Z&limit=20
+Socket disconnected: fjnVdXkI-qcnfne_AAIZ
+[2026-04-06T09:40:07.566Z] GET /api/notifications?limit=20
+[2026-04-06T09:40:07.567Z] GET /api/notifications/unread-count
+Socket connected: BoTspZi6j4yJXDIOAAIb
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+[2026-04-06T09:40:07.882Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.689Z&limit=20
+[2026-04-06T09:40:07.884Z] GET /api/notifications/unread-count
+Socket disconnected: 0T0yAFwGapcRDN61AAIP
+[2026-04-06T09:40:15.780Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:40:15.781Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:40:15.782Z] OPTIONS /api/tasks
+[2026-04-06T09:40:15.783Z] GET /api/notifications?limit=20
+[2026-04-06T09:40:15.784Z] GET /api/notifications/unread-count
+[2026-04-06T09:40:15.813Z] GET /api/tasks
+Socket connected: GEU9foFbiTQphp6XAAId
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:40:16.090Z] OPTIONS /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+[2026-04-06T09:40:16.090Z] GET /api/notifications/unread-count
+[2026-04-06T09:40:16.092Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+[2026-04-06T09:40:18.122Z] GET /api/notifications?limit=20
+[2026-04-06T09:40:18.124Z] GET /api/notifications/unread-count
+Socket disconnected: GEU9foFbiTQphp6XAAId
+Socket connected: YO2f-UwWEQrmSvX1AAIf
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:40:18.431Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+[2026-04-06T09:40:18.432Z] GET /api/notifications/unread-count
+Socket disconnected: BoTspZi6j4yJXDIOAAIb
+[2026-04-06T09:40:24.049Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:40:24.051Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:40:24.052Z] OPTIONS /api/tasks
+[2026-04-06T09:40:24.053Z] GET /api/notifications?limit=20
+[2026-04-06T09:40:24.080Z] GET /api/notifications/unread-count
+[2026-04-06T09:40:24.109Z] GET /api/tasks
+Socket connected: JazdMnecsskrTnlIAAIh
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+[2026-04-06T09:40:24.789Z] OPTIONS /api/notifications?after=2026-04-06T09%3A34%3A50.689Z&limit=20
+[2026-04-06T09:40:24.789Z] GET /api/notifications/unread-count
+[2026-04-06T09:40:24.791Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.689Z&limit=20
+Socket disconnected: JazdMnecsskrTnlIAAIh
+[2026-04-06T09:40:24.973Z] GET /api/notifications?limit=20
+[2026-04-06T09:40:24.983Z] GET /api/notifications/unread-count
+[2026-04-06T09:40:24.989Z] OPTIONS /api/tasks?requesterEmail=chandruvino003%40gmail.com&requesterId=69aaa18700b1cc9322ee0985
+[2026-04-06T09:40:24.992Z] GET /api/tasks?requesterEmail=chandruvino003%40gmail.com&requesterId=69aaa18700b1cc9322ee0985
+Socket connected: i4bMbsJ5ZYmNd_aQAAIj
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+[2026-04-06T09:40:25.292Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.689Z&limit=20
+[2026-04-06T09:40:25.293Z] GET /api/notifications/unread-count
+[2026-04-06T09:40:28.014Z] GET /api/notifications?limit=20
+[2026-04-06T09:40:28.016Z] GET /api/notifications/unread-count
+[2026-04-06T09:40:28.017Z] OPTIONS /api/tasks/69d3476f2b99ad2d59befe05/viewed
+[2026-04-06T09:40:28.017Z] OPTIONS /api/tasks/69d3476f2b99ad2d59befe05
+[2026-04-06T09:40:28.018Z] POST /api/tasks/69d3476f2b99ad2d59befe05/viewed
+[2026-04-06T09:40:28.019Z] GET /api/tasks/69d3476f2b99ad2d59befe05
+Socket disconnected: i4bMbsJ5ZYmNd_aQAAIj
+[2026-04-06T09:40:28.092Z] GET /api/tasks/69d3476f2b99ad2d59befe05
+Socket connected: at7k1PtNyHxDPZdxAAIl
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+[2026-04-06T09:40:28.329Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.689Z&limit=20
+[2026-04-06T09:40:28.330Z] GET /api/notifications/unread-count
+Socket connected: oWYk6n0AHje8uoLxAAIn
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+[2026-04-06T09:40:29.849Z] OPTIONS /api/tasks/designers
+[2026-04-06T09:40:29.851Z] GET /api/tasks/designers
+Socket disconnected: YO2f-UwWEQrmSvX1AAIf
+[2026-04-06T09:41:21.539Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:41:21.540Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:41:21.541Z] GET /api/notifications?limit=20
+[2026-04-06T09:41:21.542Z] GET /api/notifications/unread-count
+Socket connected: vtFMWJCMFIN_6f6QAAIp
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:41:28.447Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:41:28.448Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:41:28.449Z] OPTIONS /api/tasks?requesterEmail=design%40smvec.ac.in&requesterId=69b40de96f83a74015c97e9e
+[2026-04-06T09:41:28.450Z] GET /api/notifications?limit=20
+Socket disconnected: vtFMWJCMFIN_6f6QAAIp
+[2026-04-06T09:41:28.478Z] GET /api/notifications/unread-count
+[2026-04-06T09:41:28.507Z] GET /api/tasks?requesterEmail=design%40smvec.ac.in&requesterId=69b40de96f83a74015c97e9e
+Socket connected: m6-UIxeLR3eDdpHzAAIr
+Designer joined room: 69b40de96f83a74015c97e9e
+Designer joined room: design@smvec.ac.in
+[2026-04-06T09:41:28.757Z] OPTIONS /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+[2026-04-06T09:41:28.758Z] GET /api/notifications/unread-count
+[2026-04-06T09:41:28.759Z] GET /api/notifications?after=2026-04-06T09%3A34%3A50.670Z&limit=20
+Socket disconnected: oWYk6n0AHje8uoLxAAIn
+Socket disconnected: at7k1PtNyHxDPZdxAAIl
+[2026-04-06T09:41:40.957Z] OPTIONS /api/notifications?limit=20
+[2026-04-06T09:41:40.957Z] OPTIONS /api/notifications/unread-count
+[2026-04-06T09:41:40.958Z] OPTIONS /api/tasks/69d3476f2b99ad2d59befe05/viewed
+[2026-04-06T09:41:40.958Z] OPTIONS /api/tasks/69d3476f2b99ad2d59befe05
+[2026-04-06T09:41:40.959Z] GET /api/notifications?limit=20
+[2026-04-06T09:41:40.960Z] GET /api/notifications/unread-count
+[2026-04-06T09:41:40.960Z] POST /api/tasks/69d3476f2b99ad2d59befe05/viewed
+Socket connected: G-hDoMtbV0zrd9rsAAIt
+[2026-04-06T09:41:40.961Z] GET /api/tasks/69d3476f2b99ad2d59befe05
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+Designer joined room: designers:queue
+Socket connected: YYRG4fVRUsJDXA9XAAIv
+Designer joined room: 69aaa18700b1cc9322ee0985
+Designer joined room: chandruvino003@gmail.com
+[2026-04-06T09:41:41.042Z] GET /api/tasks/69d3476f2b99ad2d59befe05
+[2026-04-06T09:41:41.098Z] GET /api/tasks/69d3476f2b99ad2d59befe05
+[2026-04-06T09:41:43.603Z] OPTIONS /api/tasks/designers
+[2026-04-06T09:41:43.604Z] GET /api/tasks/designers
