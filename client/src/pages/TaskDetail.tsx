@@ -131,7 +131,7 @@ import {
   getCollateralPreset,
   getCollateralSizeSummary,
 } from '@/lib/campaignRequest';
-import { mergeViewerReadAt } from '@/lib/taskHydration';
+import { inferTaskRequestType, mergeViewerReadAt } from '@/lib/taskHydration';
 
 type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
 const statusConfig: Record<DisplayTaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
@@ -1430,6 +1430,7 @@ function TaskDetailScreen() {
     const toDate = (value?: string | Date) => (value ? new Date(value) : undefined);
     return {
       ...raw,
+      requestType: inferTaskRequestType(raw),
       deadline: new Date(raw.deadline),
       createdAt: new Date(raw.createdAt),
       updatedAt: new Date(raw.updatedAt),
