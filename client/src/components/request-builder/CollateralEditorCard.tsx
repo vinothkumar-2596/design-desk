@@ -22,7 +22,7 @@ const fld = 'h-10 px-3 shadow-none';
 const dimensionField =
   'h-10 appearance-none px-3.5 shadow-none disabled:opacity-100 disabled:text-[#1E2A44]/80 dark:disabled:text-slate-100/85';
 const shellClass =
-  'overflow-hidden rounded-[11px] border border-[#D7E3FF]/65 bg-gradient-to-br from-white/90 via-[#F5F9FF]/80 to-[#EAF2FF]/74 supports-[backdrop-filter]:from-white/74 supports-[backdrop-filter]:via-[#F5F9FF]/64 supports-[backdrop-filter]:to-[#EAF2FF]/56 backdrop-blur-xl text-foreground dark:bg-sidebar-accent dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent dark:border-sidebar-border dark:backdrop-blur-xl dark:text-sidebar-foreground';
+  'relative overflow-hidden rounded-[11px] border border-[#D7E3FF]/65 bg-gradient-to-br from-white/90 via-[#F5F9FF]/80 to-[#EAF2FF]/74 supports-[backdrop-filter]:from-white/74 supports-[backdrop-filter]:via-[#F5F9FF]/64 supports-[backdrop-filter]:to-[#EAF2FF]/56 backdrop-blur-xl text-foreground dark:bg-sidebar-accent dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent dark:border-sidebar-border dark:backdrop-blur-xl dark:text-sidebar-foreground';
 const sectionSurface =
   'border-white/10 bg-white/18 supports-[backdrop-filter]:bg-white/12 backdrop-blur-xl dark:!border-sidebar-border dark:!bg-sidebar-accent';
 
@@ -57,11 +57,30 @@ export function CollateralEditorCard({
       ? format(collateral.deadline, 'EEE, dd MMM yyyy')
       : null;
   const updateCollateral = (next: SetStateAction<CollateralDraft>) => onChange(next);
+  const isCompleted = collateral.status === 'completed';
+  const shouldHighlight = expanded && !isCompleted;
 
   return (
-    <div className={shellClass}>
+    <div
+      className={`rounded-[12px] transition-all duration-300 ${
+        shouldHighlight ? 'shadow-[0_18px_38px_-30px_rgba(59,99,204,0.45)] dark:shadow-none' : ''
+      }`}
+    >
+      <div
+        className={`${shellClass} ${
+          shouldHighlight
+            ? 'task-unread-border border-[#CEDBFF]/50 dark:border-[#5E7AE8]/50'
+            : ''
+        }`}
+      >
       {/* Header */}
-      <div className="flex items-center justify-between gap-2.5 border-b border-transparent px-3.5 py-2.5 dark:border-sidebar-border dark:bg-sidebar/96">
+      <div
+        className={`flex items-center justify-between gap-2.5 border-b px-3.5 py-2.5 dark:bg-sidebar/96 ${
+          shouldHighlight
+            ? 'border-b-white/50 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(245,249,255,0.64))] dark:border-b-white/10'
+            : 'border-transparent dark:border-sidebar-border'
+        }`}
+      >
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-bold text-foreground">
             {getCollateralDisplayName(collateral as never)}
@@ -271,6 +290,7 @@ export function CollateralEditorCard({
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

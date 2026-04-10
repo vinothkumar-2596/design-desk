@@ -7,10 +7,13 @@ import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import {
   AlertCircle,
   Bell,
+  Calendar,
+  Download,
   FileText,
   HelpCircle,
   LayoutGrid,
   ListTodo,
+  Paperclip,
   Search,
   User,
   Users,
@@ -28,7 +31,6 @@ import {
   ArrowRight,
   CircleCheckBig,
   ClipboardCheck,
-  ImageOff,
 } from 'lucide-react';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { Link, useLocation } from 'react-router-dom';
@@ -45,6 +47,11 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useTheme } from 'next-themes';
 
 import { API_URL, authFetch, getAuthToken } from '@/lib/api';
+import {
+  formatCollateralStatusLabel,
+  getCollateralDisplayName,
+  getCollateralSizeSummary,
+} from '@/lib/campaignRequest';
 import { getPreferredDesignerDisplayName, isMainDesigner } from '@/lib/designerAccess';
 import { DESIGN_GOVERNANCE_NOTICE_COMPACT } from '@/lib/designGovernance';
 import { createSocket } from '@/lib/socket';
@@ -52,7 +59,7 @@ import { cn } from '@/lib/utils';
 import { GridSmallBackground } from '@/components/ui/background';
 import { GlassCard } from 'react-glass-ui';
 import { UnreadTaskNotificationsContext } from '@/contexts/UnreadTaskNotificationsContext';
-import type { RequestType, Task, TaskCategory, TaskStatus } from '@/types';
+import type { CollateralItem, RequestType, Task, TaskCategory, TaskStatus } from '@/types';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -93,23 +100,12 @@ type NotificationUiItem = NotificationItem & {
   previewTitle: string;
   previewStatusLabel: string;
   previewTypeLabel: string;
+  previewRequesterLabel: string;
   previewAssigneeLabel: string;
   previewDueLabel: string;
   previewSummary: string;
   previewUpdatedLabel: string;
   previewVisualLabel: string;
-  previewVisualAsset: NotificationPreviewAsset | null;
-};
-
-type NotificationPreviewAsset = {
-  name: string;
-  mime?: string;
-  url?: string;
-  driveId?: string;
-  webViewLink?: string;
-  webContentLink?: string;
-  thumbnailUrl?: string;
-  sourceLabel?: string;
 };
 
 type GlobalViewer = {
@@ -153,240 +149,6 @@ const requestTypeLabels: Record<RequestType, string> = {
   campaign_request: 'Campaign request',
 };
 
-const imageMimeByExt: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  webp: 'image/webp',
-  gif: 'image/gif',
-  svg: 'image/svg+xml',
-};
-
-const getWindowOrigin = () =>
-  typeof window !== 'undefined' ? String(window.location.origin || '').trim() : '';
-
-const getDriveFileId = (rawValue?: string) => {
-  const source = String(rawValue || '').trim();
-  if (!source) return '';
-  try {
-    const parsed = new URL(source, getWindowOrigin() || 'http://localhost');
-    const idFromQuery = parsed.searchParams.get('id');
-    if (idFromQuery) return idFromQuery;
-
-    const decodedPath = decodeURIComponent(parsed.pathname || '');
-    const pathPatterns = [
-      /\/file(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
-      /\/document(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
-      /\/spreadsheets(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
-      /\/presentation(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
-      /\/forms(?:\/u\/\d+)?\/d\/([^/?#]+)/i,
-      /\/d\/([^/?#]+)/i,
-      /\/api\/files\/download\/([^/?#]+)/i,
-    ];
-    for (const pattern of pathPatterns) {
-      const match = decodedPath.match(pattern);
-      if (match?.[1]) return match[1];
-    }
-  } catch {
-    // Fall back to regex-only extraction below.
-  }
-
-  const rawPatterns = [
-    /[?&]id=([A-Za-z0-9_-]{10,})/i,
-    /\/file(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
-    /\/document(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
-    /\/spreadsheets(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
-    /\/presentation(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
-    /\/forms(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{10,})/i,
-    /\/d\/([A-Za-z0-9_-]{10,})/i,
-    /\/api\/files\/download\/([A-Za-z0-9_-]{10,})/i,
-  ];
-  for (const pattern of rawPatterns) {
-    const match = source.match(pattern);
-    if (match?.[1]) return match[1];
-  }
-  return '';
-};
-
-const buildDrivePreviewUrl = (driveId?: string) => {
-  const normalizedId = String(driveId || '').trim();
-  if (!normalizedId) return '';
-  return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(normalizedId)}`;
-};
-
-const isImageFileName = (fileName?: string | null) => {
-  const ext = String(fileName || '').split('.').pop()?.trim().toLowerCase();
-  return Boolean(ext && imageMimeByExt[ext]);
-};
-
-const inferPreviewMimeType = (fileName?: string | null) => {
-  const ext = String(fileName || '').split('.').pop()?.trim().toLowerCase();
-  if (!ext) return '';
-  return imageMimeByExt[ext] || '';
-};
-
-const normalizePreviewAsset = (
-  value:
-    | {
-        name?: string;
-        mime?: string;
-        url?: string;
-        driveId?: string;
-        webViewLink?: string;
-        webContentLink?: string;
-        thumbnailUrl?: string;
-      }
-    | null
-    | undefined,
-  sourceLabel: string
-): NotificationPreviewAsset | null => {
-  if (!value) return null;
-  const asset: NotificationPreviewAsset = {
-    name: collapseNotificationText(value.name) || `${sourceLabel} preview`,
-    mime: collapseNotificationText(value.mime),
-    url: collapseNotificationText(value.url),
-    driveId: collapseNotificationText(value.driveId),
-    webViewLink: collapseNotificationText(value.webViewLink),
-    webContentLink: collapseNotificationText(value.webContentLink),
-    thumbnailUrl: collapseNotificationText(value.thumbnailUrl),
-    sourceLabel,
-  };
-  const hasDirectImage =
-    String(asset.mime || '').toLowerCase().startsWith('image/') ||
-    isImageFileName(asset.name);
-  const hasDriveAsset = Boolean(
-    asset.driveId ||
-      getDriveFileId(asset.webContentLink) ||
-      getDriveFileId(asset.url) ||
-      getDriveFileId(asset.webViewLink)
-  );
-  const hasRenderableSource = Boolean(
-    asset.thumbnailUrl ||
-      asset.url ||
-      asset.webContentLink ||
-      asset.webViewLink ||
-      hasDriveAsset
-  );
-  if (!hasRenderableSource || (!hasDirectImage && !asset.thumbnailUrl && !hasDriveAsset)) {
-    return null;
-  }
-  return asset;
-};
-
-const getLatestFinalDeliverableAsset = (task?: Task): NotificationPreviewAsset | null => {
-  const versions = Array.isArray(task?.finalDeliverableVersions)
-    ? [...task.finalDeliverableVersions]
-    : [];
-  versions.sort((left, right) => {
-    const rightVersion = Number(right.version || 0);
-    const leftVersion = Number(left.version || 0);
-    if (rightVersion !== leftVersion) return rightVersion - leftVersion;
-    return new Date(right.uploadedAt || 0).getTime() - new Date(left.uploadedAt || 0).getTime();
-  });
-  for (const version of versions) {
-    for (const file of version.files || []) {
-      const asset = normalizePreviewAsset(file, 'Latest deliverable');
-      if (asset) return asset;
-    }
-  }
-  return null;
-};
-
-const getLatestDesignVersionAsset = (task?: Task): NotificationPreviewAsset | null => {
-  const versions = Array.isArray(task?.designVersions) ? [...task.designVersions] : [];
-  versions.sort((left, right) => {
-    const rightVersion = Number(right.version || 0);
-    const leftVersion = Number(left.version || 0);
-    if (rightVersion !== leftVersion) return rightVersion - leftVersion;
-    return new Date(right.uploadedAt || 0).getTime() - new Date(left.uploadedAt || 0).getTime();
-  });
-  for (const version of versions) {
-    const asset = normalizePreviewAsset(
-      {
-        name: version.name,
-        url: version.url,
-      },
-      'Latest design'
-    );
-    if (asset) return asset;
-  }
-  return null;
-};
-
-const getRequestAttachmentAsset = (task?: Task): NotificationPreviewAsset | null => {
-  const files = Array.isArray(task?.files) ? [...task.files] : [];
-  files.sort((left, right) => {
-    const priority = (fileType?: string) => {
-      if (fileType === 'output') return 0;
-      if (fileType === 'working') return 1;
-      return 2;
-    };
-    const priorityDiff = priority(left.type) - priority(right.type);
-    if (priorityDiff !== 0) return priorityDiff;
-    return new Date(right.uploadedAt || 0).getTime() - new Date(left.uploadedAt || 0).getTime();
-  });
-  for (const file of files) {
-    const asset = normalizePreviewAsset(file, 'Request attachment');
-    if (asset) return asset;
-  }
-  return null;
-};
-
-const resolveNotificationPreviewAsset = (task?: Task): NotificationPreviewAsset | null =>
-  getLatestFinalDeliverableAsset(task) ||
-  getLatestDesignVersionAsset(task) ||
-  getRequestAttachmentAsset(task) ||
-  null;
-
-const getNotificationPreviewCandidates = (asset?: NotificationPreviewAsset | null) => {
-  if (!asset) return [] as string[];
-  const driveId =
-    String(asset.driveId || '').trim() ||
-    getDriveFileId(asset.webContentLink) ||
-    getDriveFileId(asset.url) ||
-    getDriveFileId(asset.webViewLink);
-  const drivePreviewUrl =
-    driveId
-      ? buildDrivePreviewUrl(driveId) ||
-        `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveId)}&sz=w1200`
-      : '';
-  const thumbnailUrl = String(asset.thumbnailUrl || '').trim();
-  const url = String(asset.url || '').trim();
-  const webContentLink = String(asset.webContentLink || '').trim();
-  const webViewLink = String(asset.webViewLink || '').trim();
-  const orderedCandidates = [
-    thumbnailUrl,
-    drivePreviewUrl,
-    webContentLink,
-    url,
-    webViewLink,
-  ];
-
-  return Array.from(
-    new Set(orderedCandidates.map((value) => String(value || '').trim()).filter(Boolean))
-  );
-};
-
-const getNotificationPreviewCacheKey = (asset?: NotificationPreviewAsset | null) => {
-  if (!asset) return '';
-  const driveId =
-    String(asset.driveId || '').trim() ||
-    getDriveFileId(asset.webContentLink) ||
-    getDriveFileId(asset.url) ||
-    getDriveFileId(asset.webViewLink);
-  return [
-    collapseNotificationText(asset.sourceLabel),
-    collapseNotificationText(asset.name),
-    collapseNotificationText(asset.thumbnailUrl),
-    collapseNotificationText(asset.url),
-    collapseNotificationText(asset.webContentLink),
-    collapseNotificationText(asset.webViewLink),
-    driveId,
-  ]
-    .filter(Boolean)
-    .join('::');
-};
-
 const collapseNotificationText = (value?: string | null) =>
   String(value || '')
     .replace(/\s+/g, ' ')
@@ -423,6 +185,382 @@ const formatTaskDueLabel = (deadline?: Date | string | null) => {
   if (isToday(parsed)) return 'Due today';
   if (isPast(parsed)) return `Overdue by ${formatDistanceToNow(parsed)}`;
   return `Due ${dueDistance}`;
+};
+
+const humanizeNotificationValue = (value?: string | null, fallback = '-') => {
+  const normalized = collapseNotificationText(value);
+  if (!normalized) return fallback;
+  return normalized.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const formatNotificationShortDate = (value?: Date | string | null, fallback = 'Not set') => {
+  if (!value) return fallback;
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return fallback;
+  return format(parsed, 'dd MMM yyyy');
+};
+
+const formatNotificationFileSize = (size?: number) => {
+  if (!Number.isFinite(Number(size)) || Number(size) <= 0) return '';
+  const normalized = Number(size);
+  if (normalized < 1024 * 1024) {
+    return `${Math.max(1, Math.round(normalized / 1024))} KB`;
+  }
+  return `${(normalized / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getNotificationCollateralStatusPillClass = (status?: string) => {
+  switch (String(status || '').trim().toLowerCase()) {
+    case 'completed':
+    case 'approved':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-950/35 dark:text-emerald-300';
+    case 'in_progress':
+    case 'submitted_for_review':
+      return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/35 dark:bg-sky-950/35 dark:text-sky-300';
+    case 'rework':
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/35 dark:bg-amber-950/35 dark:text-amber-300';
+    default:
+      return 'border-[#C9D7FF] bg-white text-[#3555A4] dark:border-white/10 dark:bg-white/5 dark:text-[#D6E2FF]';
+  }
+};
+
+const getNotificationTaskStatusPillClass = (status?: string) => {
+  switch (String(status || '').trim().toLowerCase()) {
+    case 'completed':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-950/35 dark:text-emerald-300';
+    case 'in_progress':
+    case 'accepted':
+    case 'under_review':
+      return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/35 dark:bg-sky-950/35 dark:text-sky-300';
+    case 'clarification_required':
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/35 dark:bg-amber-950/35 dark:text-amber-300';
+    default:
+      return 'border-[#C9D7FF] bg-white text-[#3555A4] dark:border-white/10 dark:bg-white/5 dark:text-[#D6E2FF]';
+  }
+};
+
+const NotificationSingleTaskSectionPreview = ({ task }: { task: Task }) => {
+  const description =
+    collapseNotificationText(task.description) || 'No request description added yet.';
+  const files = Array.isArray(task.files) ? task.files.filter(Boolean) : [];
+  const firstFile = files[0] || null;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#FBFDFF] dark:bg-[linear-gradient(180deg,rgba(14,26,48,0.98),rgba(10,18,35,0.98))]">
+      <div className="border-b border-[#E7EDF8] px-3 py-2.5 dark:border-[#243654]">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[7.5px] font-semibold uppercase tracking-[0.2em] text-[#7E8DAB] dark:text-[#8FA0C4]">
+              Request Overview
+            </p>
+            <h4 className="mt-1 truncate text-[12.5px] font-semibold leading-snug text-[#215ABB] dark:text-[#D6E2FF]">
+              {task.title}
+            </h4>
+          </div>
+          <span
+            className={cn(
+              'shrink-0 rounded-full border px-2 py-0.5 text-[8.5px] font-semibold',
+              getNotificationTaskStatusPillClass(task.status)
+            )}
+          >
+            {formatTaskStatusLabel(task.status)}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 border-b border-[#E7EDF8] dark:border-[#243654]">
+        <div className="px-3 py-2">
+          <p className="text-[7.5px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF] dark:text-[#8FA0C4]">
+            Category
+          </p>
+          <p className="mt-1 text-[9px] font-semibold text-[#1F2F4B] dark:text-[#F5F8FF]">
+            {formatTaskCategoryLabel(task.category) || 'General'}
+          </p>
+        </div>
+        <div className="border-l border-[#E7EDF8] px-3 py-2 dark:border-[#243654]">
+          <p className="text-[7.5px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF] dark:text-[#8FA0C4]">
+            Priority
+          </p>
+          <p className="mt-1 text-[9px] font-semibold text-[#1F2F4B] dark:text-[#F5F8FF]">
+            {humanizeNotificationValue(task.urgency, 'Normal')}
+          </p>
+        </div>
+        <div className="border-t border-[#E7EDF8] px-3 py-2 dark:border-[#243654]">
+          <p className="text-[7.5px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF] dark:text-[#8FA0C4]">
+            Delivery Target
+          </p>
+          <p className="mt-1 text-[9px] font-semibold text-[#1F2F4B] dark:text-[#F5F8FF]">
+            {formatNotificationShortDate(task.deadline)}
+          </p>
+        </div>
+        <div className="border-l border-t border-[#E7EDF8] px-3 py-2 dark:border-[#243654]">
+          <p className="text-[7.5px] font-semibold uppercase tracking-[0.16em] text-[#9AA7BF] dark:text-[#8FA0C4]">
+            Requested On
+          </p>
+          <p className="mt-1 text-[9px] font-semibold text-[#1F2F4B] dark:text-[#F5F8FF]">
+            {formatNotificationShortDate(task.createdAt)}
+          </p>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5 pr-2 scrollbar-thin">
+        <p className="text-[7.5px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB] dark:text-[#8FA0C4]">
+          Description
+        </p>
+        <p className="mt-1.5 text-[8.5px] leading-4 text-[#536482] dark:text-[#C4D0EA]">
+          {description}
+        </p>
+
+        <div className="mt-2">
+          <div className="flex items-center justify-between gap-2 text-[7.5px] font-semibold uppercase tracking-[0.16em] text-[#7E8DAB] dark:text-[#8FA0C4]">
+            <span>References</span>
+            <span>
+              {files.length} file{files.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="mt-1 rounded-[12px] border border-[#E4ECFB] bg-white px-2.5 py-2 dark:border-[#243654] dark:bg-white/5">
+            {firstFile ? (
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[8.5px] font-medium text-[#1E2E52] dark:text-[#F5F8FF]">
+                    {firstFile.name}
+                  </p>
+                  <p className="mt-0.5 text-[7.5px] text-[#7A8AA9] dark:text-[#91A3C5]">
+                    {formatNotificationFileSize(firstFile.size) || 'Attachment available'}
+                  </p>
+                </div>
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#D7E4FF] bg-[#F5F8FF] text-[#5270C7] dark:border-white/10 dark:bg-white/5 dark:text-[#B8CBFF]">
+                  <Paperclip className="h-2.5 w-2.5" />
+                </span>
+              </div>
+            ) : (
+              <p className="text-[8.5px] text-[#536482] dark:text-[#C4D0EA]">
+                No reference files attached yet.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const NotificationCampaignSectionPreview = ({ task }: { task: Task }) => {
+  const collateralItems = Array.isArray(task.collaterals) ? task.collaterals.filter(Boolean) : [];
+  const visibleItems = collateralItems.slice(0, 2);
+  const selectedCollateral =
+    visibleItems[0] || collateralItems[0] || null;
+  const overallBrief =
+    collapseNotificationText(task.campaign?.brief) ||
+    collapseNotificationText(task.description) ||
+    'No request brief was included.';
+  const selectedDeadline = selectedCollateral?.deadline || task.deadline;
+  const selectedReferenceCount = selectedCollateral?.referenceFiles?.length || 0;
+  const firstReference = selectedCollateral?.referenceFiles?.[0] || null;
+  const selectedTypeLine = [
+    selectedCollateral?.collateralType,
+    selectedCollateral?.usageType,
+    getCollateralSizeSummary((selectedCollateral || {}) as Partial<CollateralItem>),
+  ]
+    .map((value) => collapseNotificationText(value))
+    .filter(Boolean)
+    .join(' | ');
+
+  if (!selectedCollateral) return null;
+
+  return (
+    <div className="h-full overflow-hidden bg-[#FBFDFF] dark:bg-[linear-gradient(180deg,rgba(14,26,48,0.98),rgba(10,18,35,0.98))]">
+      <div className="grid h-full grid-cols-[108px_minmax(0,1fr)]">
+        <div className="border-r border-[#DCE7FB] bg-[linear-gradient(180deg,rgba(248,251,255,0.95),rgba(240,246,255,0.86))] px-2.5 py-2.5 dark:border-[#243654] dark:bg-[linear-gradient(180deg,rgba(17,30,56,0.94),rgba(13,24,46,0.94))]">
+          <p className="text-[7px] font-semibold uppercase tracking-[0.22em] text-[#7E8DAB] dark:text-[#8FA0C4]">
+            Collateral Flow
+          </p>
+          <p className="mt-1 text-[8px] leading-3.5 text-[#6B7C9F] line-clamp-3 dark:text-[#91A3C5]">
+            Select an item to review its brief, references, and delivery specs.
+          </p>
+          <div className="mt-2.5 space-y-1.5">
+            {visibleItems.map((item, index) => {
+              const isActive = item.id === selectedCollateral.id;
+              return (
+                <div
+                  key={item.id || `preview-collateral-${index}`}
+                  className={cn(
+                    'rounded-[12px] border px-2 py-2',
+                    isActive
+                      ? 'border-[#8FB0FF] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(235,243,255,0.94))] shadow-[0_12px_28px_-24px_rgba(54,90,187,0.65)] dark:border-[#36508E] dark:bg-[linear-gradient(135deg,rgba(23,40,74,0.96),rgba(18,32,61,0.94))]'
+                      : 'border-[#D9E6FF] bg-white/75 dark:border-white/10 dark:bg-white/5'
+                  )}
+                >
+                  <div className="flex items-start gap-2">
+                    <span
+                      className={cn(
+                        'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold',
+                        isActive
+                          ? 'bg-[#3366E8] text-white'
+                          : 'border border-[#D7E4FF] bg-[#F7FAFF] text-[#5270C7] dark:border-white/10 dark:bg-white/5 dark:text-[#B8CBFF]'
+                      )}
+                    >
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-1.5">
+                        <p className="truncate text-[8.5px] font-semibold text-[#203254] dark:text-[#F5F8FF]">
+                          {getCollateralDisplayName(item as Partial<CollateralItem>)}
+                        </p>
+                        <span
+                          className={cn(
+                            'shrink-0 rounded-full border px-1.5 py-0.5 text-[7px] font-semibold',
+                            getNotificationCollateralStatusPillClass(item.status)
+                          )}
+                        >
+                          {formatCollateralStatusLabel(item.status)}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-[7.5px] text-[#7A8AA9] dark:text-[#91A3C5]">
+                        {[
+                          humanizeNotificationValue(item.collateralType, ''),
+                          getCollateralSizeSummary(item as Partial<CollateralItem>),
+                        ]
+                          .filter(Boolean)
+                          .join(' | ')}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[7px] text-[#7A8AA9] dark:text-[#91A3C5]">
+                        <span className="inline-flex items-center gap-1">
+                          <Calendar className="h-2.5 w-2.5" />
+                          {formatNotificationShortDate(item.deadline)}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Paperclip className="h-2.5 w-2.5" />
+                          {item.referenceFiles?.length || 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="p-3">
+          <div className="border-b border-[#E6EEF9] pb-2.5 dark:border-[#243654]">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h4 className="truncate text-[13px] font-semibold text-[#18315F] dark:text-[#F5F8FF]">
+                  {getCollateralDisplayName(selectedCollateral as Partial<CollateralItem>)}
+                </h4>
+                <p className="mt-0.5 truncate text-[8.5px] text-[#7383A3] dark:text-[#91A3C5]">
+                  {selectedTypeLine || 'No specs added yet.'}
+                </p>
+              </div>
+              <span
+                className={cn(
+                  'shrink-0 rounded-full border px-2 py-0.5 text-[8px] font-semibold',
+                  getNotificationCollateralStatusPillClass(selectedCollateral.status)
+                )}
+              >
+                {formatCollateralStatusLabel(selectedCollateral.status)}
+              </span>
+            </div>
+            <p className="mt-1.5 text-[8px] text-[#617291] dark:text-[#91A3C5]">
+              {`Deadline: ${formatNotificationShortDate(selectedDeadline)} | Progress: ${formatCollateralStatusLabel(selectedCollateral.status)}${selectedCollateral.assignedToName ? ` | Owner: ${selectedCollateral.assignedToName}` : ''}`}
+            </p>
+          </div>
+
+          <div className="mt-2.5 grid grid-cols-[minmax(0,1fr)_106px] gap-3">
+            <div className="space-y-2.5">
+              <div>
+                <p className="text-[7px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB] dark:text-[#8FA0C4]">
+                  Overall Brief
+                </p>
+                <div className="mt-1 border-t border-[#E7EDF8] pt-1.5 text-[8px] leading-3.5 text-[#536482] line-clamp-3 dark:border-[#243654] dark:text-[#C4D0EA]">
+                  {overallBrief}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[7px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB] dark:text-[#8FA0C4]">
+                  Content Brief
+                </p>
+                <div className="mt-1 border-t border-[#E7EDF8] pt-1.5 text-[8px] leading-3.5 text-[#536482] line-clamp-3 dark:border-[#243654] dark:text-[#C4D0EA]">
+                  {collapseNotificationText(selectedCollateral.brief) ||
+                    'No collateral-specific brief was added for this item.'}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-2 text-[7px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB] dark:text-[#8FA0C4]">
+                  <span>References</span>
+                  <span>
+                    {selectedReferenceCount} file{selectedReferenceCount === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div className="mt-1 rounded-[12px] border border-[#E4ECFB] bg-white px-2.5 py-2 text-[#536482] dark:border-[#243654] dark:bg-white/5 dark:text-[#C4D0EA]">
+                  {firstReference ? (
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[8px] font-medium text-[#1E2E52] dark:text-[#F5F8FF]">
+                          {firstReference.name}
+                        </p>
+                        <p className="mt-0.5 text-[7px] text-[#7A8AA9] dark:text-[#91A3C5]">
+                          {formatNotificationFileSize(firstReference.size) || `${selectedReferenceCount} file attached`}
+                        </p>
+                      </div>
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#D7E4FF] bg-[#F5F8FF] text-[#5270C7] dark:border-white/10 dark:bg-white/5 dark:text-[#B8CBFF]">
+                        <Eye className="h-2.5 w-2.5" />
+                      </span>
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#D7E4FF] bg-[#F5F8FF] text-[#5270C7] dark:border-white/10 dark:bg-white/5 dark:text-[#B8CBFF]">
+                        <Download className="h-2.5 w-2.5" />
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-[8px]">
+                      No reference files attached yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              <div>
+                <p className="text-[7px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB] dark:text-[#8FA0C4]">
+                  Specifications
+                </p>
+                <div className="mt-1 space-y-1 border-t border-[#E7EDF8] pt-1.5 text-[8px] text-[#536482] dark:border-[#243654] dark:text-[#C4D0EA]">
+                  <div className="flex items-center justify-between gap-2"><span>Platform</span><span className="text-right font-medium text-[#1E2E52] dark:text-[#F5F8FF]">{selectedCollateral.platform || '—'}</span></div>
+                  <div className="flex items-center justify-between gap-2"><span>Usage</span><span className="text-right font-medium text-[#1E2E52] dark:text-[#F5F8FF]">{selectedCollateral.usageType || humanizeNotificationValue(selectedCollateral.collateralType)}</span></div>
+                  <div className="flex items-center justify-between gap-2"><span>Size</span><span className="text-right font-medium text-[#1E2E52] dark:text-[#F5F8FF]">{getCollateralSizeSummary(selectedCollateral as Partial<CollateralItem>) || '—'}</span></div>
+                  <div className="flex items-center justify-between gap-2"><span>Orientation</span><span className="text-right font-medium text-[#1E2E52] dark:text-[#F5F8FF]">{humanizeNotificationValue(selectedCollateral.orientation)}</span></div>
+                  <div className="flex items-center justify-between gap-2"><span>Priority</span><span className="text-right font-medium text-[#1E2E52] dark:text-[#F5F8FF]">{humanizeNotificationValue(selectedCollateral.priority, 'Normal')}</span></div>
+                  <div className="flex items-center justify-between gap-2"><span>Owner</span><span className="text-right font-medium text-[#1E2E52] dark:text-[#F5F8FF]">{selectedCollateral.assignedToName || task.assignedToName || 'Unassigned'}</span></div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[7px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB] dark:text-[#8FA0C4]">
+                  Delivery
+                </p>
+                <div className="mt-1 space-y-1 border-t border-[#E7EDF8] pt-1.5 text-[8px] text-[#536482] dark:border-[#243654] dark:text-[#C4D0EA]">
+                  <div className="flex items-center justify-between gap-2"><span>Deadline</span><span className="text-right font-medium text-[#1E2E52] dark:text-[#F5F8FF]">{formatNotificationShortDate(selectedDeadline)}</span></div>
+                  <div className="flex items-center justify-between gap-2"><span>References</span><span className="text-right font-medium text-[#1E2E52] dark:text-[#F5F8FF]">{selectedReferenceCount} file{selectedReferenceCount === 1 ? '' : 's'}</span></div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[7px] font-semibold uppercase tracking-[0.18em] text-[#7E8DAB] dark:text-[#8FA0C4]">
+                  Status
+                </p>
+                <div className="mt-1 rounded-full border border-[#C9D7FF] bg-white px-2.5 py-1 text-[8px] font-semibold text-[#1E2E52] dark:border-white/10 dark:bg-white/5 dark:text-[#F5F8FF]">
+                  {formatCollateralStatusLabel(selectedCollateral.status)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const getNotificationPreviewSummary = (entry: NotificationItem, task?: Task) => {
@@ -595,12 +733,10 @@ export function DashboardLayout({
   const [canUseNotificationHoverPreview, setCanUseNotificationHoverPreview] = useState(false);
   const [activeNotificationPreviewId, setActiveNotificationPreviewId] = useState<string | null>(null);
   const [notificationPreviewTop, setNotificationPreviewTop] = useState(NOTIFICATION_PREVIEW_OFFSET);
-  const notificationPreviewUrlCacheRef = useRef<Map<string, string>>(new Map());
-  const [notificationPreviewCandidateIndex, setNotificationPreviewCandidateIndex] = useState(0);
-  const [notificationPreviewImageUrl, setNotificationPreviewImageUrl] = useState('');
-  const [notificationPreviewImageState, setNotificationPreviewImageState] = useState<
-    'idle' | 'loading' | 'ready' | 'error'
-  >('idle');
+  const notificationPreviewCardRef = useRef<HTMLDivElement | null>(null);
+  const notificationPreviewAnchorTopRef = useRef(NOTIFICATION_PREVIEW_OFFSET);
+  const [notificationTaskCache, setNotificationTaskCache] = useState<Record<string, Task>>({});
+  const notificationTaskFetchInFlightRef = useRef<Set<string>>(new Set());
 
   const isCurrentUserViewer = useCallback(
     (viewer?: GlobalViewer | null) => {
@@ -1126,6 +1262,14 @@ export function DashboardLayout({
     return { byId, byTitle };
   }, [hydratedTasks]);
 
+  const notificationTaskIndex = useMemo(() => {
+    const byId = new Map<string, Task>();
+    Object.entries(notificationTaskCache).forEach(([id, task]) => {
+      if (id) byId.set(id, task);
+    });
+    return byId;
+  }, [notificationTaskCache]);
+
   const globalPresenceList = useMemo(() => {
     const list = [...globalViewers];
     list.sort((a, b) => {
@@ -1223,7 +1367,7 @@ export function DashboardLayout({
           taskId = match[1];
         }
       }
-      let task = taskId ? taskIndex.byId.get(taskId) : undefined;
+      let task = entry.task || (taskId ? taskIndex.byId.get(taskId) || notificationTaskIndex.get(taskId) : undefined);
       if (!task) {
         const candidate = extractTitleFromNotification(entry.title || '');
         if (candidate) {
@@ -1234,7 +1378,7 @@ export function DashboardLayout({
         }
       }
       if (!task && taskId) {
-        task = taskIndex.byId.get(taskId);
+        task = taskIndex.byId.get(taskId) || notificationTaskIndex.get(taskId);
       }
       const linkTaskMatch = link ? link.match(/\/tasks?\/([^/?#]+)/) : null;
       const linkTaskId = linkTaskMatch && linkTaskMatch[1] ? linkTaskMatch[1] : '';
@@ -1243,7 +1387,7 @@ export function DashboardLayout({
       }
       return { link, taskId, task };
     },
-    [extractTitleFromNotification, taskIndex]
+    [extractTitleFromNotification, notificationTaskIndex, taskIndex]
   );
 
   const getLatestEntry = (entries: any[]) => {
@@ -1471,9 +1615,9 @@ export function DashboardLayout({
       const title = cleanNotificationTitle(entry.title);
       const message = collapseNotificationText(entry.message);
       const previewSummary = getNotificationPreviewSummary({ ...entry, title, message }, task);
-      const previewVisualAsset = resolveNotificationPreviewAsset(task);
       const linkState =
         entry.linkState ?? (task ? { task } : undefined);
+      const eventKind = resolveNotificationEventKind({ ...entry, title, message }, task);
       return {
         ...entry,
         title,
@@ -1482,7 +1626,7 @@ export function DashboardLayout({
         taskId: resolved.taskId || entry.taskId,
         linkState,
         task,
-        eventKind: resolveNotificationEventKind({ ...entry, title, message }, task),
+        eventKind,
         rowPreview: previewSummary,
         previewTitle: collapseNotificationText(task?.title) || title || 'Task update',
         previewStatusLabel: formatTaskStatusLabel(task?.status),
@@ -1490,6 +1634,9 @@ export function DashboardLayout({
           formatTaskCategoryLabel(task?.category) ||
           formatTaskRequestTypeLabel(task?.requestType) ||
           'Task update',
+        previewRequesterLabel: task?.requesterName
+          ? `Requested by ${task.requesterName}`
+          : 'Requester not available',
         previewAssigneeLabel: task?.assignedToName
           ? `Assigned to ${task.assignedToName}`
           : 'Assigned user not set',
@@ -1498,8 +1645,7 @@ export function DashboardLayout({
         previewUpdatedLabel: task?.updatedAt
           ? `Updated ${formatDistanceToNow(new Date(task.updatedAt), { addSuffix: true })}`
           : '',
-        previewVisualLabel: previewVisualAsset?.sourceLabel || 'No visual preview yet',
-        previewVisualAsset,
+        previewVisualLabel: task ? 'Live task snapshot' : 'Live notification snapshot',
       };
     });
   }, [
@@ -1515,146 +1661,78 @@ export function DashboardLayout({
     () => uiNotifications.find((entry) => entry.id === activeNotificationPreviewId) ?? null,
     [activeNotificationPreviewId, uiNotifications]
   );
-  const activeNotificationPreviewCandidates = useMemo(
-    () => getNotificationPreviewCandidates(activeNotificationPreview?.previewVisualAsset),
+  const activeNotificationPreviewIconConfig = useMemo(
+    () =>
+      activeNotificationPreview
+        ? getNotificationIconConfig(activeNotificationPreview.eventKind)
+        : null,
     [activeNotificationPreview]
   );
-  const activeNotificationPreviewCacheKey = useMemo(
-    () => getNotificationPreviewCacheKey(activeNotificationPreview?.previewVisualAsset),
-    [activeNotificationPreview]
-  );
+  const activeNotificationPreviewFrameHeight = useMemo(() => {
+    if (!activeNotificationPreview?.task) return 188;
+    return activeNotificationPreview.task.collaterals?.length ? 188 : 238;
+  }, [activeNotificationPreview]);
 
   useEffect(() => {
-    return () => {
-      notificationPreviewUrlCacheRef.current.clear();
-    };
-  }, []);
+    if (!notificationsOpen || !useServerNotifications || !apiUrl) {
+      return;
+    }
 
-  useEffect(() => {
-    if (!notificationsOpen || !canUseNotificationHoverPreview) return;
+    const taskIdsToLoad = Array.from(
+      new Set(
+        uiNotifications
+          .slice(0, 8)
+          .map((entry) => String(entry.taskId || '').trim())
+          .filter(Boolean)
+      )
+    ).filter(
+      (taskId) =>
+        !taskIndex.byId.has(taskId) &&
+        !notificationTaskIndex.has(taskId) &&
+        !notificationTaskFetchInFlightRef.current.has(taskId)
+    );
+
+    if (taskIdsToLoad.length === 0) {
+      return;
+    }
+
     let cancelled = false;
 
-    const loadImageElement = (src: string, timeoutMs = 900) =>
-      new Promise<string>((resolve, reject) => {
-        let settled = false;
-        const image = new window.Image();
-
-        const cleanup = () => {
-          image.onload = null;
-          image.onerror = null;
-          window.clearTimeout(timeoutId);
-        };
-
-        const settle = (callback: () => void) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          callback();
-        };
-
-        const timeoutId = window.setTimeout(() => {
-          settle(() => reject(new Error(`Image load timed out for ${src}`)));
-        }, timeoutMs);
-
-        image.onload = () => settle(() => resolve(src));
-        image.onerror = () => settle(() => reject(new Error(`Image load failed for ${src}`)));
-        image.src = src;
-      });
-
-    const warmNotificationPreviews = async () => {
-      const candidatesToWarm = uiNotifications
-        .slice(0, 8)
-        .map((entry) => ({
-          key: getNotificationPreviewCacheKey(entry.previewVisualAsset),
-          candidates: getNotificationPreviewCandidates(entry.previewVisualAsset).slice(0, 2),
-        }))
-        .filter((entry) => entry.key && entry.candidates.length > 0);
-
+    const loadNotificationTasks = async () => {
       await Promise.all(
-        candidatesToWarm.map(async (entry) => {
-          if (notificationPreviewUrlCacheRef.current.has(entry.key)) return;
-          for (const candidate of entry.candidates) {
-            try {
-              await loadImageElement(candidate);
-              if (cancelled) return;
-              notificationPreviewUrlCacheRef.current.set(entry.key, candidate);
-              return;
-            } catch {
-              // Try the next direct candidate.
-            }
+        taskIdsToLoad.map(async (taskId) => {
+          notificationTaskFetchInFlightRef.current.add(taskId);
+          try {
+            const response = await authFetch(`${apiUrl}/api/tasks/${encodeURIComponent(taskId)}`);
+            if (!response.ok) return;
+            const task = await response.json();
+            const resolvedTaskId = String(task?.id || task?._id || taskId).trim();
+            if (cancelled || !resolvedTaskId) return;
+            setNotificationTaskCache((prev) => {
+              const cacheIds = Array.from(new Set([taskId, resolvedTaskId].filter(Boolean)));
+              const hasAllEntries = cacheIds.every((id) => prev[id]);
+              if (hasAllEntries) return prev;
+              const next = { ...prev };
+              cacheIds.forEach((id) => {
+                next[id] = task;
+              });
+              return next;
+            });
+          } catch (error) {
+            console.error('Failed to load notification task preview:', error);
+          } finally {
+            notificationTaskFetchInFlightRef.current.delete(taskId);
           }
         })
       );
     };
 
-    void warmNotificationPreviews();
+    void loadNotificationTasks();
 
     return () => {
       cancelled = true;
     };
-  }, [canUseNotificationHoverPreview, notificationsOpen, uiNotifications]);
-
-  useEffect(() => {
-    const previewAsset = activeNotificationPreview?.previewVisualAsset;
-    if (
-      !notificationsOpen ||
-      !canUseNotificationHoverPreview ||
-      !previewAsset ||
-      activeNotificationPreviewCandidates.length === 0
-    ) {
-      setNotificationPreviewCandidateIndex(0);
-      setNotificationPreviewImageUrl('');
-      setNotificationPreviewImageState(previewAsset ? 'error' : 'idle');
-      return;
-    }
-
-    const cachedPreviewUrl = activeNotificationPreviewCacheKey
-      ? notificationPreviewUrlCacheRef.current.get(activeNotificationPreviewCacheKey)
-      : '';
-    if (cachedPreviewUrl) {
-      const cachedIndex = activeNotificationPreviewCandidates.findIndex(
-        (candidate) => candidate === cachedPreviewUrl
-      );
-      setNotificationPreviewCandidateIndex(cachedIndex >= 0 ? cachedIndex : 0);
-      setNotificationPreviewImageUrl(cachedPreviewUrl);
-      setNotificationPreviewImageState('ready');
-      return;
-    }
-
-    setNotificationPreviewCandidateIndex(0);
-    setNotificationPreviewImageUrl(activeNotificationPreviewCandidates[0] || '');
-    setNotificationPreviewImageState('loading');
-  }, [
-    activeNotificationPreview,
-    activeNotificationPreviewCacheKey,
-    activeNotificationPreviewCandidates,
-    canUseNotificationHoverPreview,
-    notificationsOpen,
-  ]);
-
-  const handleNotificationPreviewImageLoad = useCallback(() => {
-    if (!notificationPreviewImageUrl) return;
-    if (activeNotificationPreviewCacheKey) {
-      notificationPreviewUrlCacheRef.current.set(
-        activeNotificationPreviewCacheKey,
-        notificationPreviewImageUrl
-      );
-    }
-    setNotificationPreviewImageState('ready');
-  }, [activeNotificationPreviewCacheKey, notificationPreviewImageUrl]);
-
-  const handleNotificationPreviewImageError = useCallback(() => {
-    const nextIndex = notificationPreviewCandidateIndex + 1;
-    const nextCandidate = activeNotificationPreviewCandidates[nextIndex];
-    if (nextCandidate) {
-      setNotificationPreviewCandidateIndex(nextIndex);
-      setNotificationPreviewImageUrl(nextCandidate);
-      setNotificationPreviewImageState('loading');
-      return;
-    }
-    setNotificationPreviewImageUrl('');
-    setNotificationPreviewImageState('error');
-  }, [activeNotificationPreviewCandidates, notificationPreviewCandidateIndex]);
+  }, [apiUrl, notificationTaskIndex, notificationsOpen, taskIndex.byId, uiNotifications, useServerNotifications]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1683,6 +1761,21 @@ export function DashboardLayout({
     }, 120);
   }, [clearNotificationHoverPreviewTimer]);
 
+  const clampNotificationPreviewTop = useCallback((anchorTop?: number) => {
+    if (!notificationsPanelRef.current) return;
+    const nextAnchorTop =
+      typeof anchorTop === 'number' ? anchorTop : notificationPreviewAnchorTopRef.current;
+    const measuredCardHeight =
+      notificationPreviewCardRef.current?.offsetHeight || NOTIFICATION_PREVIEW_CARD_HEIGHT;
+    const maxTop = Math.max(
+      NOTIFICATION_PREVIEW_OFFSET,
+      notificationsPanelRef.current.offsetHeight - measuredCardHeight - NOTIFICATION_PREVIEW_OFFSET
+    );
+    setNotificationPreviewTop(
+      Math.min(Math.max(NOTIFICATION_PREVIEW_OFFSET, nextAnchorTop), maxTop)
+    );
+  }, []);
+
   const handleNotificationRowHoverStart = useCallback(
     (entryId: string, rowElement: HTMLButtonElement) => {
       if (!canUseNotificationHoverPreview) return;
@@ -1692,18 +1785,28 @@ export function DashboardLayout({
       const panelRect = notificationsPanelRef.current.getBoundingClientRect();
       const rowRect = rowElement.getBoundingClientRect();
       const nextTop = rowRect.top - panelRect.top - 8;
-      const maxTop = Math.max(
-        NOTIFICATION_PREVIEW_OFFSET,
-        notificationsPanelRef.current.offsetHeight -
-          NOTIFICATION_PREVIEW_CARD_HEIGHT -
-          NOTIFICATION_PREVIEW_OFFSET
-      );
-      setNotificationPreviewTop(
-        Math.min(Math.max(NOTIFICATION_PREVIEW_OFFSET, nextTop), maxTop)
-      );
+      notificationPreviewAnchorTopRef.current = nextTop;
+      clampNotificationPreviewTop(nextTop);
     },
-    [canUseNotificationHoverPreview, clearNotificationHoverPreviewTimer]
+    [canUseNotificationHoverPreview, clampNotificationPreviewTop, clearNotificationHoverPreviewTimer]
   );
+
+  useEffect(() => {
+    if (!notificationsOpen || !canUseNotificationHoverPreview || !activeNotificationPreviewId) return;
+    if (typeof window === 'undefined') return;
+    const frame = window.requestAnimationFrame(() => {
+      clampNotificationPreviewTop();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    activeNotificationPreviewId,
+    activeNotificationPreview?.previewSummary,
+    activeNotificationPreview?.task?.id,
+    activeNotificationPreview?.task?.collaterals?.length,
+    canUseNotificationHoverPreview,
+    clampNotificationPreviewTop,
+    notificationsOpen,
+  ]);
 
   useEffect(() => {
     if (notificationsOpen && canUseNotificationHoverPreview) return;
@@ -1963,6 +2066,7 @@ export function DashboardLayout({
           style={{ marginTop: `${notificationPreviewTop}px` }}
         >
           <div
+            ref={notificationPreviewCardRef}
             onMouseEnter={clearNotificationHoverPreviewTimer}
             onMouseLeave={scheduleNotificationHoverPreviewClear}
             className="w-[336px] rounded-[20px] border border-[#E4EAF5] bg-white p-4 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.28)] dark:border-[#2A3A5A] dark:bg-[linear-gradient(180deg,rgba(15,24,42,0.985),rgba(10,17,31,0.985))] dark:shadow-[0_28px_58px_-32px_rgba(2,8,23,0.96)]"
@@ -1977,48 +2081,63 @@ export function DashboardLayout({
                 </span>
               ) : null}
             </div>
-            <div className="relative mt-3 overflow-hidden rounded-[16px] border border-[#D8E4FB] bg-[linear-gradient(180deg,rgba(248,251,255,0.94),rgba(239,245,255,0.92))] dark:border-[#243654] dark:bg-[#0D1730]">
-              <div className="absolute left-3 top-3 z-10 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-semibold text-[#36559E] shadow-[0_10px_22px_-18px_rgba(15,23,42,0.3)] dark:bg-[#17233E] dark:text-[#D6E2FF] dark:shadow-none">
-                {activeNotificationPreview.previewVisualLabel}
-              </div>
-              <div className="aspect-[16/9]">
-                {notificationPreviewImageUrl ? (
-                  <div className="relative h-full w-full bg-[linear-gradient(135deg,rgba(240,246,255,0.98),rgba(230,238,255,0.94))] dark:bg-[linear-gradient(180deg,rgba(18,32,63,0.95),rgba(11,22,44,0.92))]">
-                    <img
-                      src={notificationPreviewImageUrl}
-                      alt={activeNotificationPreview.previewTitle}
-                      onLoad={handleNotificationPreviewImageLoad}
-                      onError={handleNotificationPreviewImageError}
-                      className={cn(
-                        "h-full w-full object-cover object-top transition-opacity duration-150",
-                        notificationPreviewImageState === 'ready' ? 'opacity-100' : 'opacity-0'
-                      )}
-                    />
-                    {notificationPreviewImageState === 'loading' ? (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="flex items-center gap-2 rounded-full border border-[#D7E3FF] bg-white/85 px-3 py-1.5 text-[11px] font-medium text-[#4B5FA8] dark:border-[#30466F] dark:bg-[#14213D] dark:text-[#C8D7FF]">
-                          <span className="h-2 w-2 animate-pulse rounded-full bg-[#5A74D6] dark:bg-[#8EA9FF]" />
-                          Loading preview
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
+            <div
+              className="relative mt-3 overflow-hidden rounded-[16px] border border-[#D8E4FB] bg-[linear-gradient(135deg,rgba(247,250,255,0.98),rgba(235,242,255,0.95))] dark:border-[#243654] dark:bg-[linear-gradient(180deg,rgba(15,29,58,0.98),rgba(10,19,39,0.98))]"
+              style={{ height: `${activeNotificationPreviewFrameHeight}px` }}
+            >
+              {activeNotificationPreview.task ? (
+                activeNotificationPreview.task.collaterals?.length ? (
+                  <NotificationCampaignSectionPreview task={activeNotificationPreview.task} />
                 ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,rgba(240,246,255,0.98),rgba(231,239,255,0.94))] px-5 text-center dark:bg-[linear-gradient(180deg,rgba(18,32,63,0.95),rgba(11,22,44,0.92))]">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#D7E3FF] bg-white/85 text-[#4863B7] dark:border-[#30466F] dark:bg-[#14213D] dark:text-[#B8CBFF]">
-                      <ImageOff className="h-[18px] w-[18px]" />
+                  <NotificationSingleTaskSectionPreview task={activeNotificationPreview.task} />
+                )
+              ) : (
+                <>
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(109,141,233,0.18),transparent_40%),radial-gradient(circle_at_bottom_left,rgba(96,165,250,0.16),transparent_38%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(109,141,233,0.24),transparent_40%),radial-gradient(circle_at_bottom_left,rgba(37,99,235,0.16),transparent_40%)]" />
+                  <div className="relative flex h-full flex-col justify-between p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <span className="inline-flex rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-semibold text-[#36559E] shadow-[0_10px_22px_-18px_rgba(15,23,42,0.3)] dark:bg-[#17233E] dark:text-[#D6E2FF] dark:shadow-none">
+                          {activeNotificationPreview.previewVisualLabel}
+                        </span>
+                        <p className="mt-3 text-[13px] font-semibold leading-5 text-[#203052] line-clamp-2 dark:text-[#F5F8FF]">
+                          {activeNotificationPreview.rowPreview}
+                        </p>
+                      </div>
+                      {activeNotificationPreviewIconConfig ? (
+                        <div
+                          className={cn(
+                            'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/70 shadow-[0_18px_30px_-24px_rgba(15,23,42,0.45)] dark:border-white/10 dark:shadow-none',
+                            activeNotificationPreviewIconConfig.containerClassName
+                          )}
+                        >
+                          <activeNotificationPreviewIconConfig.Icon
+                            className={cn('h-5 w-5', activeNotificationPreviewIconConfig.iconClassName)}
+                          />
+                        </div>
+                      ) : null}
                     </div>
-                    <div>
-                      <p className="text-[12px] font-semibold text-[#1E2A43] dark:text-[#F5F8FF]">
-                        No visual preview available
-                      </p>
-                      <p className="mt-1 text-[11.5px] text-[#6B7A99] dark:text-[#8FA0C4]">
-                        This notification does not have a thumbnail, design image, or deliverable preview yet.
-                      </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2 backdrop-blur-sm dark:border-white/10 dark:bg-white/5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8A9AB8] dark:text-[#7F91B5]">
+                          Status
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold text-[#1E2A43] line-clamp-1 dark:text-[#F5F8FF]">
+                          {activeNotificationPreview.previewStatusLabel}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2 backdrop-blur-sm dark:border-white/10 dark:bg-white/5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8A9AB8] dark:text-[#7F91B5]">
+                          Type
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold text-[#1E2A43] line-clamp-1 dark:text-[#F5F8FF]">
+                          {activeNotificationPreview.previewTypeLabel}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </div>
             <h4 className="mt-3 text-[15px] font-semibold leading-5 text-[#1E2A43] line-clamp-2 dark:text-[#F5F8FF]">
               {activeNotificationPreview.previewTitle}
@@ -2032,6 +2151,10 @@ export function DashboardLayout({
               </span>
             </div>
             <div className="mt-4 space-y-2.5">
+              <div className="flex items-center gap-2 text-[12px] text-[#55647C] dark:text-[#C4D0EA]">
+                <FileText className="h-3.5 w-3.5 text-[#8FA0BD] dark:text-[#7E92B9]" />
+                <span className="line-clamp-1">{activeNotificationPreview.previewRequesterLabel}</span>
+              </div>
               <div className="flex items-center gap-2 text-[12px] text-[#55647C] dark:text-[#C4D0EA]">
                 <User className="h-3.5 w-3.5 text-[#8FA0BD] dark:text-[#7E92B9]" />
                 <span className="line-clamp-1">{activeNotificationPreview.previewAssigneeLabel}</span>
