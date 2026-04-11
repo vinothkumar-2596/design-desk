@@ -1079,6 +1079,32 @@ export default function NewRequest() {
     toast.message('Draft restored.');
   }, [restoreDraftRequested, routeRequestType, user?.department, user?.email, user?.id, user?.phone]);
 
+  useEffect(() => {
+    if (!expandedCollateralId || collaterals.length === 0) return;
+
+    const expandedIndex = collaterals.findIndex((item) => item.id === expandedCollateralId);
+    const orderedCandidates =
+      expandedIndex >= 0
+        ? [...collaterals.slice(expandedIndex + 1), ...collaterals.slice(0, expandedIndex)]
+        : collaterals;
+    const nextPendingId =
+      orderedCandidates.find((item) => item.status === 'pending')?.id ||
+      orderedCandidates.find((item) => item.status !== 'completed')?.id ||
+      null;
+
+    if (expandedIndex === -1) {
+      if (nextPendingId !== expandedCollateralId) {
+        setExpandedCollateralId(nextPendingId);
+      }
+      return;
+    }
+
+    if (collaterals[expandedIndex]?.status !== 'completed') return;
+    if (nextPendingId !== expandedCollateralId) {
+      setExpandedCollateralId(nextPendingId);
+    }
+  }, [collaterals, expandedCollateralId]);
+
   const completeTour = useCallback(() => {
     setIsTourOpen(false);
     setTourSpotlight(null);
@@ -2955,7 +2981,7 @@ export default function NewRequest() {
               onClick={() => handleRequestTypeSelect(option.value)}
               className={cn(
                 sidebarInsetSurfaceClass,
-                'animate-slide-up group relative h-full overflow-hidden p-5 text-left transform-gpu will-change-transform transition-[transform,border-color,background-color] duration-300 hover:-translate-y-1 hover:border-[#C8D7FF] hover:bg-white/80 focus-visible:-translate-y-1 focus-visible:border-[#C8D7FF] focus-visible:bg-white/80 dark:hover:border-border dark:hover:bg-card/85 dark:focus-visible:border-border dark:focus-visible:bg-card/85'
+                'animate-slide-up group relative isolate h-full overflow-hidden p-5 text-left transition-[border-color,background-color,box-shadow] duration-300 hover:border-[#C8D7FF] hover:bg-white/80 hover:shadow-[0_20px_40px_-28px_rgba(59,99,204,0.22)] focus-visible:border-[#C8D7FF] focus-visible:bg-white/80 focus-visible:shadow-[0_20px_40px_-28px_rgba(59,99,204,0.22)] dark:hover:border-border dark:hover:bg-card/85 dark:hover:shadow-none dark:focus-visible:border-border dark:focus-visible:bg-card/85 dark:focus-visible:shadow-none'
               )}
               style={{ animationDelay: `${index * 90}ms`, ...REQUEST_TYPE_HOVER_TRANSITION_STYLE }}
             >
@@ -2972,7 +2998,7 @@ export default function NewRequest() {
                   <div
                     className={cn(
                       sidebarIconTileClass,
-                      'group-hover:-translate-y-0.5 group-focus-visible:-translate-y-0.5'
+                      'transition-colors duration-300'
                     )}
                     style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
                   >
@@ -2996,7 +3022,7 @@ export default function NewRequest() {
                   <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-[#223067] transition-colors duration-300 ease-out dark:text-foreground">
                     {option.cta}
                     <ArrowRight
-                      className="h-4 w-4 transform-gpu transition-transform duration-500 group-hover:translate-x-1.5 group-focus-visible:translate-x-1.5"
+                      className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1 group-focus-visible:translate-x-1"
                       style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
                     />
                   </div>
@@ -3827,7 +3853,7 @@ export default function NewRequest() {
           onSelect={(preset) => {
             const draft = createCollateralDraftFromPreset(preset, deadlineMode, commonDeadline);
             setCollaterals((previous) => [...previous, draft]);
-            setExpandedCollateralId(draft.id);
+            setExpandedCollateralId((previous) => previous ?? draft.id);
             setIsPresetDialogOpen(false);
             toast.success(`${preset.label} added.`);
           }}
@@ -3836,7 +3862,7 @@ export default function NewRequest() {
               createCollateralDraftFromPreset(preset, deadlineMode, commonDeadline)
             );
             setCollaterals((previous) => [...previous, ...drafts]);
-            setExpandedCollateralId(drafts[drafts.length - 1].id);
+            setExpandedCollateralId((previous) => previous ?? drafts[0]?.id ?? null);
             setIsPresetDialogOpen(false);
             toast.success(`${presets.length} presets added.`);
           }}
