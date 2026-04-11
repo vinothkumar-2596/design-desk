@@ -3700,7 +3700,6 @@ const handleDeliverablesZipDownload = async (req, res) => {
       return res.status(502).json({ error: "ZIP archive could not be created for the selected files." });
     }
 
-    const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
     const taskTitle = String(task?.title || task?._id || "deliverables")
       .replace(/[^a-zA-Z0-9_\-. ]/g, "")
       .trim()
@@ -3712,7 +3711,26 @@ const handleDeliverablesZipDownload = async (req, res) => {
       "Content-Disposition",
       `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`
     );
-    res.send(zipBuffer);
+    res.setHeader("Cache-Control", "no-store");
+
+    const zipStream = zip.generateNodeStream({
+      type: "nodebuffer",
+      streamFiles: true,
+      // Hosted runtimes are much more sensitive to CPU spikes than local dev.
+      // "STORE" skips compression and keeps ZIP downloads reliable for large binary assets.
+      compression: "STORE",
+    });
+
+    zipStream.on("error", (streamError) => {
+      console.error("ZIP stream error:", streamError?.message || streamError);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to stream ZIP archive." });
+      } else {
+        res.end();
+      }
+    });
+
+    zipStream.pipe(res);
   } catch (error) {
     console.error("ZIP download error:", error?.message || error);
     res.status(500).json({ error: "Failed to generate ZIP archive." });
