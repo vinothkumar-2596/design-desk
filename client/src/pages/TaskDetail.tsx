@@ -55,6 +55,7 @@ import {
   Send,
   Edit3,
   Upload,
+  FileUp,
   Paperclip,
   Loader2,
   CheckCircle2,
@@ -686,6 +687,18 @@ type UploadItem = {
   url?: string;
   error?: string;
 };
+type FinalUploadPreviewEntry =
+  | {
+      type: 'file';
+      key: string;
+      item: UploadItem;
+    }
+  | {
+      type: 'folder';
+      key: string;
+      folderName: string;
+      items: UploadItem[];
+    };
 type WorkingUploadStatus = 'preparing' | 'uploading' | 'done' | 'error';
 type WorkingUploadItem = {
   id: string;
@@ -722,6 +735,12 @@ type PendingFinalFile = {
   mime?: string;
   thumbnailUrl?: string;
 };
+type FinalLinkDraft = {
+  id: string;
+  url: string;
+  name: string;
+  validationError: string;
+};
 type OutputDisplayFile = {
   id: string;
   name: string;
@@ -742,6 +761,41 @@ type FileLinkLike = {
   webViewLink?: string;
   webContentLink?: string;
   driveId?: string;
+};
+type UploadBrowserFile = File & {
+  webkitRelativePath?: string;
+};
+type DirectoryPickerFileHandle = {
+  kind: 'file';
+  name: string;
+  getFile?: () => Promise<File>;
+};
+type DirectoryPickerHandle = DirectoryPickerFileHandle | DirectoryPickerDirectoryHandle;
+type DirectoryPickerDirectoryHandle = {
+  kind: 'directory';
+  name: string;
+  values?: () => AsyncIterable<DirectoryPickerHandle>;
+};
+type WindowWithDirectoryPicker = Window & {
+  showDirectoryPicker?: () => Promise<DirectoryPickerDirectoryHandle>;
+};
+type DragDropFileSystemEntry = {
+  isFile?: boolean;
+  isDirectory?: boolean;
+  name?: string;
+  file?: (
+    successCallback: (file: File) => void,
+    errorCallback?: (error: DOMException | Error) => void
+  ) => void;
+  createReader?: () => {
+    readEntries: (
+      successCallback: (entries: DragDropFileSystemEntry[]) => void,
+      errorCallback?: (error: DOMException | Error) => void
+    ) => void;
+  };
+};
+type DragDropDataTransferItem = DataTransferItem & {
+  webkitGetAsEntry?: () => DragDropFileSystemEntry | null;
 };
 const getFileListItemKey = (
   file: { id?: string; url?: string; name?: string },
@@ -839,6 +893,394 @@ const shouldPromptDriveReconnect = (errorMessage?: string) => {
   );
 };
 
+type DriveFolderPreviewItem = {
+  id: string;
+  name: string;
+  mimeType?: string;
+  size?: number;
+  modifiedTime?: string;
+  thumbnailUrl?: string;
+  webViewLink?: string;
+  webContentLink?: string;
+  isFolder?: boolean;
+};
+
+type DriveFolderPreviewPayload = {
+  id: string;
+  itemCount: number;
+  truncated?: boolean;
+  items: DriveFolderPreviewItem[];
+};
+
+const driveFolderPreviewCache = new Map<string, DriveFolderPreviewPayload>();
+
+const buildDriveFolderLink = (folderId?: string) => {
+  const normalizedId = String(folderId || '').trim();
+  if (!normalizedId) return '';
+  return `https://drive.google.com/drive/folders/${encodeURIComponent(normalizedId)}`;
+};
+
+const buildDriveThumbnailUrl = (fileId?: string, size = 'w320-h320') => {
+  const normalizedId = String(fileId || '').trim();
+  if (!normalizedId) return '';
+  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(normalizedId)}&sz=${size}`;
+};
+
+const attachRelativeUploadPath = (file: File, relativePath?: string) => {
+  const normalizedPath = String(relativePath || '').trim().replace(/\\/g, '/');
+  if (!normalizedPath) return file as UploadBrowserFile;
+  const uploadFile = file as UploadBrowserFile;
+  try {
+    Object.defineProperty(uploadFile, 'webkitRelativePath', {
+      configurable: true,
+      value: normalizedPath,
+    });
+  } catch {
+    uploadFile.webkitRelativePath = normalizedPath;
+  }
+  return uploadFile;
+};
+
+const collectDirectoryPickerFiles = async (
+  directoryHandle: DirectoryPickerDirectoryHandle,
+  parentPath = ''
+): Promise<UploadBrowserFile[]> => {
+  const handleName = String(directoryHandle.name || '').trim();
+  const currentPath = [parentPath, handleName].filter(Boolean).join('/');
+  if (typeof directoryHandle.values !== 'function') return [];
+
+  const collected: UploadBrowserFile[] = [];
+  for await (const handle of directoryHandle.values()) {
+    if (!handle) continue;
+    const childName = String(handle.name || '').trim();
+    if (!childName) continue;
+
+    if (handle.kind === 'file' && typeof handle.getFile === 'function') {
+      try {
+        const file = await handle.getFile();
+        collected.push(
+          attachRelativeUploadPath(file, [currentPath, childName].filter(Boolean).join('/'))
+        );
+      } catch {
+        continue;
+      }
+      continue;
+    }
+
+    if (handle.kind === 'directory') {
+      collected.push(...(await collectDirectoryPickerFiles(handle, currentPath)));
+    }
+  }
+
+  return collected;
+};
+
+const getUploadRelativeFolderPath = (file: File) => {
+  const relativePath = String((file as UploadBrowserFile).webkitRelativePath || '')
+    .trim()
+    .replace(/\\/g, '/');
+  if (!relativePath || !relativePath.includes('/')) return [];
+  return relativePath
+    .split('/')
+    .slice(0, -1)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
+};
+
+const getUploadDisplayName = (file: File) => {
+  const relativePath = String((file as UploadBrowserFile).webkitRelativePath || '')
+    .trim()
+    .replace(/\\/g, '/');
+  return relativePath || file.name;
+};
+
+const getUploadItemPathSegments = (value?: string) =>
+  String(value || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+const getUploadItemFolderName = (item: UploadItem) => {
+  const segments = getUploadItemPathSegments(item.name);
+  return segments.length > 1 ? segments[0] : '';
+};
+
+const getUploadItemNestedLabel = (item: UploadItem) => {
+  const segments = getUploadItemPathSegments(item.name);
+  return segments.length > 1 ? segments.slice(1).join('/') : item.name;
+};
+
+const readDragDropDirectoryEntries = async (entry: DragDropFileSystemEntry) => {
+  const reader = entry.createReader?.();
+  if (!reader) return [] as DragDropFileSystemEntry[];
+  const entries: DragDropFileSystemEntry[] = [];
+
+  while (true) {
+    const batch = await new Promise<DragDropFileSystemEntry[]>((resolve, reject) => {
+      reader.readEntries(resolve, reject);
+    }).catch(() => [] as DragDropFileSystemEntry[]);
+
+    if (!Array.isArray(batch) || batch.length === 0) {
+      break;
+    }
+    entries.push(...batch);
+  }
+
+  return entries;
+};
+
+const collectDroppedUploadFiles = async (
+  entry: DragDropFileSystemEntry,
+  parentPath = ''
+): Promise<UploadBrowserFile[]> => {
+  const entryName = String(entry.name || '').trim();
+  const currentPath = [parentPath, entryName].filter(Boolean).join('/');
+
+  if (entry.isFile && typeof entry.file === 'function') {
+    return new Promise<UploadBrowserFile[]>((resolve, reject) => {
+      entry.file!(
+        (file) => resolve([attachRelativeUploadPath(file, currentPath)]),
+        reject
+      );
+    }).catch(() => []);
+  }
+
+  if (entry.isDirectory) {
+    const children = await readDragDropDirectoryEntries(entry);
+    const nested = await Promise.all(
+      children.map((child) => collectDroppedUploadFiles(child, currentPath))
+    );
+    return nested.flat();
+  }
+
+  return [];
+};
+
+const extractDroppedUploadFiles = async (dataTransfer: DataTransfer) => {
+  const itemEntries = Array.from(dataTransfer.items || [])
+    .map((item) => (item as DragDropDataTransferItem).webkitGetAsEntry?.())
+    .filter((entry): entry is DragDropFileSystemEntry => Boolean(entry));
+
+  if (itemEntries.length === 0) {
+    return Array.from(dataTransfer.files || []).map((file) => file as UploadBrowserFile);
+  }
+
+  const extracted = await Promise.all(
+    itemEntries.map((entry) => collectDroppedUploadFiles(entry))
+  );
+
+  return extracted.flat();
+};
+
+const isImageMimeType = (mimeType?: string) =>
+  String(mimeType || '').trim().toLowerCase().startsWith('image/');
+
+const formatFolderPreviewFileSize = (bytes?: number) => {
+  if (!Number.isFinite(Number(bytes)) || Number(bytes) <= 0) return '';
+  const normalized = Number(bytes);
+  if (normalized < 1024) return `${normalized} B`;
+  if (normalized < 1024 * 1024) return `${Math.max(1, Math.round(normalized / 1024))} KB`;
+  return `${(normalized / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+function DriveFolderHoverPreview({
+  folderId,
+  apiUrl,
+}: {
+  folderId: string;
+  apiUrl?: string;
+}) {
+  const normalizedFolderId = String(folderId || '').trim();
+  const [previewState, setPreviewState] = useState<{
+    status: 'idle' | 'loading' | 'ready' | 'error';
+    data: DriveFolderPreviewPayload | null;
+    error: string;
+  }>(() => {
+    const cached = normalizedFolderId ? driveFolderPreviewCache.get(normalizedFolderId) : null;
+    return cached
+      ? { status: 'ready', data: cached, error: '' }
+      : { status: 'idle', data: null, error: '' };
+  });
+
+  useEffect(() => {
+    if (!normalizedFolderId) {
+      setPreviewState({ status: 'error', data: null, error: 'Folder link is missing.' });
+      return;
+    }
+
+    const cached = driveFolderPreviewCache.get(normalizedFolderId);
+    if (cached) {
+      setPreviewState({ status: 'ready', data: cached, error: '' });
+      return;
+    }
+
+    if (!apiUrl) {
+      setPreviewState({ status: 'error', data: null, error: 'Backend is required for folder preview.' });
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewState({ status: 'loading', data: null, error: '' });
+
+    authFetch(`${apiUrl}/api/files/folder-preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderId: normalizedFolderId }),
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to load folder preview.');
+        }
+        return data as DriveFolderPreviewPayload;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        driveFolderPreviewCache.set(normalizedFolderId, data);
+        setPreviewState({ status: 'ready', data, error: '' });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setPreviewState({
+          status: 'error',
+          data: null,
+          error: String(error?.message || 'Failed to load folder preview.'),
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, normalizedFolderId]);
+
+  if (previewState.status === 'loading' || previewState.status === 'idle') {
+    return (
+      <div className="rounded-xl border border-[#D9E6FF] bg-white/70 p-3 dark:border-border dark:bg-muted/20">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Folder Items
+            </p>
+            <p className="text-xs text-muted-foreground">Loading preview...</p>
+          </div>
+          <Loader2 className="h-4 w-4 animate-spin text-[#3D5A9E] dark:text-slate-200" />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={`folder-preview-skeleton-${index}`} className="space-y-2">
+              <div className="aspect-square rounded-lg bg-[#EEF4FF] dark:bg-white/10" />
+              <div className="h-3 rounded bg-[#EEF4FF] dark:bg-white/10" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (previewState.status === 'error') {
+    return (
+      <div className="rounded-xl border border-[#F0D4D4] bg-[#FFF7F7] p-4 dark:border-red-500/35 dark:bg-red-950/15">
+        <p className="text-sm font-medium text-[#8E3A3A] dark:text-red-200">
+          {previewState.error}
+        </p>
+      </div>
+    );
+  }
+
+  const previewData = previewState.data;
+  const items = previewData?.items || [];
+
+  if (items.length === 0) {
+    return (
+      <div className="rounded-xl border border-[#D9E6FF] bg-white/70 p-3 dark:border-border dark:bg-muted/20">
+        <p className="text-sm font-medium text-foreground">This folder is empty.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-[#D9E6FF] bg-white/70 p-3 dark:border-border dark:bg-muted/20">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Folder Items
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {previewData?.itemCount || items.length} item
+            {(previewData?.itemCount || items.length) === 1 ? '' : 's'}
+            {previewData?.truncated ? ' shown from this folder' : ''}
+          </p>
+        </div>
+      </div>
+      <div className="max-h-[16rem] overflow-y-auto pr-1 scrollbar-thin">
+        <div className="grid grid-cols-3 gap-2">
+          {items.map((item) => {
+            const href =
+              String(item.webViewLink || '').trim() ||
+              (item.isFolder ? buildDriveFolderLink(item.id) : '');
+            const previewUrl = String(item.thumbnailUrl || '').trim()
+              || (item.isFolder || !isImageMimeType(item.mimeType) ? '' : buildDriveThumbnailUrl(item.id));
+            const hasVisualPreview = previewUrl !== '';
+            const metaLabel = item.isFolder
+              ? 'Folder'
+              : formatFolderPreviewFileSize(item.size) || 'Drive file';
+
+            return (
+              <a
+                key={item.id}
+                href={href || undefined}
+                target={href ? '_blank' : undefined}
+                rel={href ? 'noreferrer' : undefined}
+                className="group block"
+              >
+                <div className="relative aspect-square overflow-hidden rounded-lg border border-[#D9E6FF] bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.55),_transparent_58%),linear-gradient(160deg,_rgba(245,248,255,0.96),_rgba(225,235,255,0.82))] dark:border-border dark:bg-[linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.82))]">
+                  {!hasVisualPreview && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="flex flex-col items-center gap-1 text-center">
+                        {item.isFolder ? (
+                          <Folder className="h-8 w-8 text-[#D5911C] dark:text-amber-300" />
+                        ) : (
+                          <img
+                            src="/google-drive.ico"
+                            alt=""
+                            aria-hidden="true"
+                            className="h-7 w-7 object-contain opacity-85"
+                          />
+                        )}
+                        <span className="px-2 text-[10px] font-medium text-[#536482] dark:text-slate-200">
+                          {metaLabel}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {previewUrl && (
+                    <img
+                      src={previewUrl}
+                      alt={item.name}
+                      className="relative z-10 h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                      loading="lazy"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      onError={(event) => {
+                        event.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  )}
+                </div>
+                <p className="mt-1 truncate text-[10px] font-medium text-foreground">
+                  {item.name}
+                </p>
+                <p className="truncate text-[10px] text-muted-foreground">{metaLabel}</p>
+              </a>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AttachmentThumbnail({
   previewUrls,
   name,
@@ -890,6 +1332,13 @@ function AttachmentThumbnail({
     />
   );
 }
+
+const createFinalLinkDraft = (): FinalLinkDraft => ({
+  id: `final-link-draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  url: '',
+  name: '',
+  validationError: '',
+});
 
 function TaskDetailScreen() {
   const { id } = useParams();
@@ -1023,12 +1472,11 @@ function TaskDetailScreen() {
     url: string;
   } | null>(null);
   const [isEmergencyUpdating, setIsEmergencyUpdating] = useState(false);
-  const [finalLinkName, setFinalLinkName] = useState('');
-  const [finalLinkUrl, setFinalLinkUrl] = useState('');
-  const [finalLinkValidationError, setFinalLinkValidationError] = useState('');
+  const [finalLinkDrafts, setFinalLinkDrafts] = useState<FinalLinkDraft[]>(() => [
+    createFinalLinkDraft(),
+  ]);
   const [finalVersionNote, setFinalVersionNote] = useState('');
   const [selectedFinalVersionId, setSelectedFinalVersionId] = useState('');
-  const [isAddingFinalLink, setIsAddingFinalLink] = useState(false);
   const [isUpdatingFinalVersionNote, setIsUpdatingFinalVersionNote] = useState(false);
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [isAcceptingTask, setIsAcceptingTask] = useState(false);
@@ -1060,6 +1508,7 @@ function TaskDetailScreen() {
   const [attachmentPreviewFile, setAttachmentPreviewFile] = useState<AttachmentPreviewFile | null>(
     null
   );
+  const [isFinalUploadMenuOpen, setIsFinalUploadMenuOpen] = useState(false);
   const [draftReviewAnnotationsByFile, setDraftReviewAnnotationsByFile] = useState<
     Record<string, FinalDeliverableReviewAnnotation>
   >({});
@@ -1079,6 +1528,7 @@ function TaskDetailScreen() {
   const copiedFileResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mentionBlurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const zipStatusTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const finalUploadMenuCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isChatComposerFocusedRef = useRef(false);
   const clientIdRef = useRef<string>('');
   const finalUploadAbortRef = useRef<AbortController | null>(null);
@@ -1086,6 +1536,9 @@ function TaskDetailScreen() {
   useEffect(() => {
     return () => {
       zipStatusTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+      if (finalUploadMenuCloseTimeoutRef.current) {
+        clearTimeout(finalUploadMenuCloseTimeoutRef.current);
+      }
     };
   }, []);
   const workingUploadDismissTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -3877,6 +4330,20 @@ function TaskDetailScreen() {
     [draftReviewAnnotationsByFile]
   );
   const hasPendingFinalFiles = pendingFinalFiles.length > 0;
+  const filledFinalLinkDrafts = useMemo(
+    () =>
+      finalLinkDrafts.filter(
+        (draft) => draft.url.trim().length > 0 || draft.name.trim().length > 0
+      ),
+    [finalLinkDrafts]
+  );
+  const hasDraftFinalLink = filledFinalLinkDrafts.length > 0;
+  const hasFinalLinkDraftErrors = finalLinkDrafts.some(
+    (draft) => draft.validationError.trim().length > 0
+  );
+  const hasEmptyFinalLinkDraft = finalLinkDrafts.some(
+    (draft) => draft.url.trim().length === 0 && draft.name.trim().length === 0
+  );
   const latestFinalUploadAt = useMemo(() => {
     if (sortedFinalDeliverableVersions.length === 0) return 0;
     const latest = sortedFinalDeliverableVersions[0];
@@ -3885,14 +4352,14 @@ function TaskDetailScreen() {
   const isTaskCompleted = normalizedTaskStatus === 'completed';
   const canHandover =
     canFinalizeTaskActions &&
-    hasPendingFinalFiles &&
+    (hasPendingFinalFiles || hasDraftFinalLink) &&
     !isUploadingFinal;
   const submitActionLabel =
     finalDeliverableReviewStatus === 'rejected' || isTaskCompleted
       ? 'Submit Revision'
       : 'Submit for Review';
   const submitActionHint =
-    'Submit creates the next version (V1, V2, ...) and moves the task into review.';
+    'Submit creates the next version (V1, V2, ...) and includes any uploaded files or Drive links.';
   const shouldShowFileManagementPanel =
     hasFinalDeliverables ||
     canFinalizeTaskActions ||
@@ -3905,7 +4372,60 @@ function TaskDetailScreen() {
     isAssignedToCurrentUser &&
     emergencyStatus !== 'approved' &&
     (normalizedTaskStatus === 'assigned' || normalizedTaskStatus === 'pending');
-  const finalUploadTotals = finalUploadItems.reduce(
+  const finalUploadPreviewItems = useMemo<UploadItem[]>(
+    () =>
+      finalUploadItems.length > 0
+        ? finalUploadItems
+        : pendingFinalFiles.map((file, index) => ({
+            id:
+              String(file.driveId || '').trim() ||
+              String(file.url || '').trim() ||
+              `pending-final-${index}`,
+            name: file.name,
+            status: 'done' as const,
+            progress: 100,
+            size: file.size,
+            url: file.url,
+          })),
+    [finalUploadItems, pendingFinalFiles]
+  );
+  const finalUploadPreviewEntries = useMemo<FinalUploadPreviewEntry[]>(() => {
+    const entries: FinalUploadPreviewEntry[] = [];
+    const folderGroups = new Map<
+      string,
+      Extract<FinalUploadPreviewEntry, { type: 'folder' }>
+    >();
+
+    finalUploadPreviewItems.forEach((item) => {
+      const folderName = getUploadItemFolderName(item);
+      if (!folderName) {
+        entries.push({
+          type: 'file',
+          key: item.id,
+          item,
+        });
+        return;
+      }
+
+      const existingGroup = folderGroups.get(folderName);
+      if (existingGroup) {
+        existingGroup.items.push(item);
+        return;
+      }
+
+      const nextGroup: Extract<FinalUploadPreviewEntry, { type: 'folder' }> = {
+        type: 'folder',
+        key: `folder-${folderName}`,
+        folderName,
+        items: [item],
+      };
+      folderGroups.set(folderName, nextGroup);
+      entries.push(nextGroup);
+    });
+
+    return entries;
+  }, [finalUploadPreviewItems]);
+  const finalUploadTotals = finalUploadPreviewItems.reduce(
     (acc, item) => {
       if (item.status === 'uploading') acc.uploading += 1;
       if (item.status === 'done') acc.done += 1;
@@ -3915,29 +4435,29 @@ function TaskDetailScreen() {
     { uploading: 0, done: 0, error: 0 }
   );
   const finalUploadProgress = useMemo(() => {
-    if (finalUploadItems.length === 0) return 0;
-    const totalProgress = finalUploadItems.reduce((sum, item) => {
+    if (finalUploadPreviewItems.length === 0) return 0;
+    const totalProgress = finalUploadPreviewItems.reduce((sum, item) => {
       if (item.status === 'done') return sum + 100;
       const raw = Number(item.progress);
       const normalized = Number.isFinite(raw) ? Math.max(0, Math.min(99, Math.round(raw))) : 0;
       return sum + normalized;
     }, 0);
-    return Math.max(0, Math.min(100, Math.round(totalProgress / finalUploadItems.length)));
-  }, [finalUploadItems]);
+    return Math.max(0, Math.min(100, Math.round(totalProgress / finalUploadPreviewItems.length)));
+  }, [finalUploadPreviewItems]);
   const hasPendingFinalUploads =
     finalUploadTotals.uploading > 0;
   const finalUploadLabel =
     hasPendingFinalUploads
-      ? `Uploading ${finalUploadItems.length} item${finalUploadItems.length === 1 ? '' : 's'} (${finalUploadProgress}%)`
+      ? `Uploading ${finalUploadPreviewItems.length} item${finalUploadPreviewItems.length === 1 ? '' : 's'} (${finalUploadProgress}%)`
       : finalUploadTotals.error > 0
         ? `${finalUploadTotals.done} completed, ${finalUploadTotals.error} issue${finalUploadTotals.error === 1 ? '' : 's'}`
         : `${finalUploadTotals.done} item${finalUploadTotals.done === 1 ? '' : 's'} completed`;
   const hasFinalUploadQueueIssues = finalUploadTotals.error > 0;
   const isFinalUploadQueueComplete =
-    finalUploadItems.length > 0 &&
+    finalUploadPreviewItems.length > 0 &&
     finalUploadTotals.uploading === 0 &&
     finalUploadTotals.error === 0 &&
-    finalUploadTotals.done === finalUploadItems.length;
+    finalUploadTotals.done === finalUploadPreviewItems.length;
   const finalUploadStatusText = isFinalUploadQueueComplete
     ? `${finalUploadTotals.done} completed, ready to submit`
     : hasPendingFinalUploads
@@ -3951,7 +4471,178 @@ function TaskDetailScreen() {
       : hasFinalUploadQueueIssues
         ? `${finalUploadTotals.error} item${finalUploadTotals.error === 1 ? '' : 's'} need attention before submit.`
         : `${finalUploadTotals.done} completed, ready to submit`;
-  const shouldCompactFinalUploadQueue = finalUploadItems.length > 6;
+  const shouldCompactFinalUploadQueue = finalUploadPreviewItems.length > 6;
+  const renderFinalUploadPreviewFileItem = (
+    item: UploadItem,
+    displayName = item.name
+  ) => {
+    const extension = getFileExtension(item.name);
+    const isUploading = item.status === 'uploading';
+    const hasUploadError = item.status === 'error';
+    const uploadProgress = isUploading
+      ? Math.max(0, Math.min(100, Number(item.progress ?? 0)))
+      : item.status === 'done'
+        ? 100
+        : Math.max(0, Math.min(99, Number(item.progress ?? 0)));
+
+    return (
+      <div
+        key={item.id}
+        className="rounded-xl border border-[#CFE0FF]/20 bg-white/95 px-3 py-2.5 shadow-none dark:border-border dark:bg-slate-900/70"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:border dark:border-border dark:bg-muted dark:text-foreground">
+              {extension}
+            </div>
+
+            <div className="min-w-0">
+              <span className="block truncate text-xs font-medium text-foreground">
+                {displayName}
+              </span>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                <span className={hasUploadError ? 'text-destructive' : 'text-muted-foreground'}>
+                  {isUploading
+                    ? 'Uploading'
+                    : hasUploadError
+                      ? 'Needs attention'
+                      : 'Completed'}
+                </span>
+                {item.size ? (
+                  <span className="text-muted-foreground">{formatFileSize(item.size)}</span>
+                ) : null}
+                {isUploading ? (
+                  <span className="font-medium tabular-nums text-muted-foreground">
+                    {uploadProgress}%
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {hasUploadError ? (
+                <>
+                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                  <span className="font-semibold text-red-500">Failed</span>
+                </>
+              ) : null}
+              {isUploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-[#7D8FB8] dark:text-slate-300" />
+                  <span className="font-semibold uppercase tracking-[0.08em] text-[#7D8FB8] dark:text-slate-300">
+                    Uploading
+                  </span>
+                </>
+              ) : null}
+              {!isUploading && !hasUploadError ? (
+                <>
+                  <Check className="h-4 w-4 text-primary" />
+                  <span className="font-semibold tabular-nums text-primary">100%</span>
+                </>
+              ) : null}
+            </div>
+
+            {!isUploading ? (
+              <button
+                type="button"
+                onClick={() => handleRemoveFinalUploadItem(item.id)}
+                className="inline-flex shrink-0 items-center justify-center h-8 w-8 rounded-lg border border-[#E1E9FF]/20 bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF]/30 hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 active:translate-y-[1px] active:scale-[0.94] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35"
+                aria-label={`Remove ${item.name}`}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {hasUploadError && item.error ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <p className="text-xs text-destructive">{item.error}</p>
+            {shouldPromptDriveReconnect(item.error) ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 border-destructive px-2 text-xs text-destructive hover:bg-destructive hover:text-white"
+                onClick={async (event) => {
+                  event.preventDefault();
+                  try {
+                    await openDriveReconnectWindow();
+                  } catch (error) {
+                    const message =
+                      error instanceof Error ? error.message : 'Failed to get auth URL';
+                    toast.error('Drive reconnect failed', {
+                      description: message,
+                    });
+                  }
+                }}
+              >
+                Connect
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {isUploading ? (
+          <div className="mt-2 flex items-center gap-2">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#D7E3FF]/90 dark:bg-slate-800/90">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-300"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+            <span className="w-9 text-right text-[11px] font-medium tabular-nums text-muted-foreground">
+              {uploadProgress}%
+            </span>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+  const renderFinalUploadPreviewEntry = (entry: FinalUploadPreviewEntry) => {
+    if (entry.type === 'file') {
+      return renderFinalUploadPreviewFileItem(entry.item);
+    }
+
+    const folderUploading = entry.items.filter((item) => item.status === 'uploading').length;
+    const folderErrors = entry.items.filter((item) => item.status === 'error').length;
+    const folderDone = entry.items.filter((item) => item.status === 'done').length;
+    const folderStatusLabel =
+      folderUploading > 0
+        ? `${folderUploading} uploading`
+        : folderErrors > 0
+          ? `${folderErrors} issue${folderErrors === 1 ? '' : 's'}`
+          : `${folderDone} completed`;
+
+    return (
+      <div
+        key={entry.key}
+        className="rounded-xl border border-[#CFE0FF]/20 bg-white/95 px-3 py-3 shadow-none dark:border-border dark:bg-slate-900/70"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[#D9E6FF]/20 bg-[#F5F8FF] text-[#4B57A6] dark:border-border dark:bg-muted dark:text-foreground">
+            <Folder className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <span className="block truncate text-xs font-semibold text-foreground">
+              {entry.folderName}
+            </span>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+              <span>{entry.items.length} file{entry.items.length === 1 ? '' : 's'}</span>
+              <span>{folderStatusLabel}</span>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 space-y-2 border-t border-[#E1E9FF]/20 pt-3 dark:border-border">
+          {entry.items.map((item) =>
+            renderFinalUploadPreviewFileItem(item, getUploadItemNestedLabel(item))
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const getVersionLabel = (version: DesignVersion) => `V${version.version}`;
   const formatVersionTimestamp = (value?: Date | string) => {
@@ -4206,6 +4897,30 @@ function TaskDetailScreen() {
     const normalizedId = String(driveId || '').trim();
     if (!normalizedId) return '';
     return `https://drive.google.com/uc?id=${encodeURIComponent(normalizedId)}&export=download`;
+  };
+  const buildDriveHoverEmbedUrl = (url: string) => {
+    const trimmedUrl = String(url || '').trim();
+    if (!trimmedUrl) return '';
+    const driveMeta = getDriveLinkMeta(trimmedUrl);
+    const itemId = driveMeta.itemId || getDriveFileId(trimmedUrl);
+    if (!driveMeta.isGoogleDrive || !itemId) return '';
+
+    switch (driveMeta.itemType) {
+      case 'folder':
+        return '';
+      case 'file':
+        return `https://drive.google.com/file/d/${encodeURIComponent(itemId)}/preview`;
+      case 'doc':
+        return `https://docs.google.com/document/d/${encodeURIComponent(itemId)}/preview`;
+      case 'sheet':
+        return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(itemId)}/preview`;
+      case 'slide':
+        return `https://docs.google.com/presentation/d/${encodeURIComponent(itemId)}/preview`;
+      case 'form':
+        return `https://docs.google.com/forms/d/${encodeURIComponent(itemId)}/viewform?embedded=true`;
+      default:
+        return '';
+    }
   };
   const resolveStoredFileUrl = (file?: FileLinkLike | null) => {
     const rawUrl = String(file?.url || '').trim();
@@ -5847,13 +6562,36 @@ function TaskDetailScreen() {
     setPendingFinalFiles([]);
     setFinalUploadItems([]);
     setFinalVersionNote('');
+    setFinalLinkDrafts([createFinalLinkDraft()]);
     return hydrated;
   };
 
   const handleHandoverTask = async () => {
     if (!taskState) return;
     if (!ensureWritableTask({ allowMainDesignerFinalize: true })) return;
-    if (!hasPendingFinalFiles) {
+    const { files: draftFinalLinks, error: draftFinalLinkError } =
+      await buildPendingFinalLinksFromDrafts();
+    if (draftFinalLinkError) {
+      toast.error(draftFinalLinkError);
+      return;
+    }
+
+    const filesToSubmit = [...pendingFinalFiles];
+    for (const draftFinalLink of draftFinalLinks) {
+      const hasMatchingDraftLink = filesToSubmit.some((file) => {
+        const fileUrl = String(file.url || '').trim();
+        const fileDriveId = String(file.driveId || '').trim();
+        return (
+          (fileUrl !== '' && fileUrl === draftFinalLink.url) ||
+          (!!draftFinalLink.driveId && fileDriveId !== '' && fileDriveId === draftFinalLink.driveId)
+        );
+      });
+      if (!hasMatchingDraftLink) {
+        filesToSubmit.push(draftFinalLink);
+      }
+    }
+
+    if (filesToSubmit.length === 0) {
       if (finalDeliverableReviewStatus === 'pending') {
         toast.message('The latest final submission is already under review.');
         return;
@@ -5863,10 +6601,10 @@ function TaskDetailScreen() {
         return;
       }
       if (finalDeliverableReviewStatus === 'rejected') {
-        toast.message('Upload updated files or links before submitting the next revision.');
+        toast.message('Upload updated files or add Drive links before submitting the next revision.');
         return;
       }
-      toast.message('Upload final files before handing over the task.');
+      toast.message('Upload final files or add Google Drive links before handing over the task.');
       return;
     }
     if (!apiUrl) {
@@ -5875,7 +6613,7 @@ function TaskDetailScreen() {
     }
     try {
       const updatedTask = await submitFinalDeliverableVersion({
-        files: pendingFinalFiles,
+        files: filesToSubmit,
         note: finalVersionNote.trim(),
       });
       if (normalizeTaskStatus(updatedTask?.status) === 'under_review') {
@@ -6316,12 +7054,14 @@ function TaskDetailScreen() {
     taskTitle,
     taskId,
     uploadId,
+    relativeFolderPath,
     signal,
   }: {
     file: File;
     taskTitle: string;
     taskId: string;
     uploadId: string;
+    relativeFolderPath?: string[];
     signal: AbortSignal;
   }) =>
     new Promise<FileUploadResponse>((resolve, reject) => {
@@ -6335,6 +7075,9 @@ function TaskDetailScreen() {
       formData.append('file', file);
       formData.append('taskTitle', taskTitle);
       formData.append('taskId', taskId);
+      if (Array.isArray(relativeFolderPath) && relativeFolderPath.length > 0) {
+        formData.append('relativeFolderPath', JSON.stringify(relativeFolderPath));
+      }
 
       const handleAbort = () => xhr.abort();
       signal.addEventListener('abort', handleAbort, { once: true });
@@ -6413,7 +7156,7 @@ function TaskDetailScreen() {
     const batchId = Date.now();
     const uploadItems = uploads.map((file, index) => ({
       id: `final-${batchId}-${index}`,
-      name: file.name,
+      name: getUploadDisplayName(file),
       status: 'uploading' as const,
       progress: 0,
       size: file.size,
@@ -6444,12 +7187,15 @@ function TaskDetailScreen() {
       for (let index = 0; index < uploads.length; index += 1) {
         const file = uploads[index];
         const uploadId = uploadItems[index]?.id;
+        const relativeFolderPath = getUploadRelativeFolderPath(file);
+        const displayName = getUploadDisplayName(file);
         try {
           const data = await uploadFinalFileWithProgress({
             file,
             taskTitle: taskState.title,
             taskId,
             uploadId,
+            relativeFolderPath,
             signal: controller.signal,
           });
           const uploadedUrl = resolveUploadedDriveUrl(data);
@@ -6457,7 +7203,7 @@ function TaskDetailScreen() {
             throw new Error('Upload succeeded but file link is missing. Please retry.');
           }
           uploadedFiles.push({
-            name: file.name,
+            name: displayName,
             url: uploadedUrl,
             driveId: data.id,
             webViewLink: data.webViewLink,
@@ -6737,9 +7483,61 @@ function TaskDetailScreen() {
     }
   };
 
+  const clearFinalUploadMenuCloseTimeout = () => {
+    if (finalUploadMenuCloseTimeoutRef.current) {
+      clearTimeout(finalUploadMenuCloseTimeoutRef.current);
+      finalUploadMenuCloseTimeoutRef.current = null;
+    }
+  };
+
+  const openFinalUploadMenu = () => {
+    if (isUploadingFinal) return;
+    clearFinalUploadMenuCloseTimeout();
+    setIsFinalUploadMenuOpen(true);
+  };
+
+  const scheduleCloseFinalUploadMenu = () => {
+    clearFinalUploadMenuCloseTimeout();
+    finalUploadMenuCloseTimeoutRef.current = setTimeout(() => {
+      setIsFinalUploadMenuOpen(false);
+      finalUploadMenuCloseTimeoutRef.current = null;
+    }, 120);
+  };
+
   const openFinalFilePicker = () => {
     if (isUploadingFinal) return;
+    clearFinalUploadMenuCloseTimeout();
+    setIsFinalUploadMenuOpen(false);
+    if (finalUploadInputRef.current) {
+      finalUploadInputRef.current.value = '';
+    }
     finalUploadInputRef.current?.click();
+  };
+
+  const openFinalFolderPicker = async () => {
+    if (isUploadingFinal) return;
+    clearFinalUploadMenuCloseTimeout();
+    setIsFinalUploadMenuOpen(false);
+
+    const directoryPicker = (window as WindowWithDirectoryPicker).showDirectoryPicker;
+    if (typeof directoryPicker !== 'function') {
+      toast.error('Folder picker is not supported here. Drag a folder into Final Delivery instead.');
+      return;
+    }
+
+    try {
+      const directoryHandle = await directoryPicker.call(window);
+      const selectedFiles = await collectDirectoryPickerFiles(directoryHandle);
+      if (selectedFiles.length === 0) {
+        toast.message('Selected folder is empty.');
+        return;
+      }
+      await uploadFinalFiles(selectedFiles);
+    } catch (error) {
+      const maybeAbortError = error as { name?: string };
+      if (maybeAbortError?.name === 'AbortError') return;
+      toast.error('Folder upload could not start. Drag the folder into Final Delivery and retry.');
+    }
   };
 
   const handleFinalUploadDragOver = (event: React.DragEvent<HTMLDivElement>) => {
@@ -6762,7 +7560,7 @@ function TaskDetailScreen() {
     event.preventDefault();
     setIsFinalUploadDragging(false);
     if (isUploadingFinal) return;
-    const files = Array.from(event.dataTransfer.files || []);
+    const files = await extractDroppedUploadFiles(event.dataTransfer);
     if (files.length === 0) return;
     await uploadFinalFiles(files);
   };
@@ -6778,7 +7576,7 @@ function TaskDetailScreen() {
   };
 
   const handleRemoveFinalUploadItem = (uploadId: string) => {
-    const target = finalUploadItems.find((item) => item.id === uploadId);
+    const target = finalUploadPreviewItems.find((item) => item.id === uploadId);
     if (!target) return;
 
     setFinalUploadItems((prev) => prev.filter((item) => item.id !== uploadId));
@@ -6847,73 +7645,151 @@ function TaskDetailScreen() {
     }
   };
 
-  const handleAddFinalLink = async () => {
-    if (!ensureWritableTask({ allowMainDesignerFinalize: true })) return;
-    const trimmedUrl = finalLinkUrl.trim();
-    const linkValidation = validateFinalGoogleDriveLink(trimmedUrl);
-    if (!linkValidation.valid) {
-      setFinalLinkValidationError(linkValidation.message);
-      toast.error(linkValidation.message);
+  const handleFinalLinkDraftChange = (
+    draftId: string,
+    field: 'url' | 'name',
+    value: string
+  ) => {
+    setFinalLinkDrafts((prev) =>
+      prev.map((draft) => {
+        if (draft.id !== draftId) return draft;
+        const nextDraft = { ...draft, [field]: value };
+        if (field === 'url') {
+          if (!draft.validationError) return nextDraft;
+          if (!value.trim()) {
+            return { ...nextDraft, validationError: '' };
+          }
+          const nextValidation = validateFinalGoogleDriveLink(value);
+          return {
+            ...nextDraft,
+            validationError: nextValidation.valid ? '' : nextValidation.message,
+          };
+        }
+        if (!nextDraft.url.trim()) {
+          return draft.validationError ? { ...nextDraft, validationError: '' } : nextDraft;
+        }
+        if (!draft.validationError) return nextDraft;
+        const nextValidation = validateFinalGoogleDriveLink(nextDraft.url);
+        return {
+          ...nextDraft,
+          validationError: nextValidation.valid ? '' : nextValidation.message,
+        };
+      })
+    );
+  };
+
+  const handleAddFinalLinkDraft = () => {
+    if (hasEmptyFinalLinkDraft) {
+      toast.message('Add the current link before creating another.');
       return;
     }
-    setFinalLinkValidationError('');
-    let inferredName = finalLinkName.trim();
-    if (!inferredName) {
-      inferredName = inferDriveItemNameFromUrl(trimmedUrl);
-      const driveMeta = getDriveLinkMeta(trimmedUrl);
-      if (driveMeta.itemId && apiUrl) {
-        try {
-          const metaResponse = await authFetch(`${apiUrl}/api/files/metadata`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileId: driveMeta.itemId }),
-          });
-          if (metaResponse.ok) {
-            const metaData = await metaResponse.json();
-            if (typeof metaData?.name === 'string' && metaData.name.trim()) {
-              inferredName = metaData.name.trim();
+    setFinalLinkDrafts((prev) => [...prev, createFinalLinkDraft()]);
+  };
+
+  const handleRemoveFinalLinkDraft = (draftId: string) => {
+    setFinalLinkDrafts((prev) => {
+      const nextDrafts = prev.filter((draft) => draft.id !== draftId);
+      return nextDrafts.length > 0 ? nextDrafts : [createFinalLinkDraft()];
+    });
+  };
+
+  const buildPendingFinalLinksFromDrafts = async (): Promise<{
+    files: PendingFinalFile[];
+    error: string;
+  }> => {
+    const nextDrafts = [...finalLinkDrafts];
+    const pendingLinks: PendingFinalFile[] = [];
+    let firstError = '';
+
+    for (let index = 0; index < nextDrafts.length; index += 1) {
+      const draft = nextDrafts[index];
+      const trimmedUrl = draft.url.trim();
+      const trimmedName = draft.name.trim();
+
+      if (!trimmedUrl && !trimmedName) {
+        nextDrafts[index] = { ...draft, validationError: '' };
+        continue;
+      }
+
+      if (!trimmedUrl) {
+        const message = 'Paste a Google Drive link to continue.';
+        nextDrafts[index] = { ...draft, validationError: message };
+        if (!firstError) firstError = message;
+        continue;
+      }
+
+      const linkValidation = validateFinalGoogleDriveLink(trimmedUrl);
+      if (!linkValidation.valid) {
+        nextDrafts[index] = { ...draft, validationError: linkValidation.message };
+        if (!firstError) firstError = linkValidation.message;
+        continue;
+      }
+
+      let inferredName = trimmedName;
+      if (!inferredName) {
+        inferredName = inferDriveItemNameFromUrl(trimmedUrl);
+        const driveMeta = getDriveLinkMeta(trimmedUrl);
+        if (driveMeta.itemId && apiUrl) {
+          try {
+            const metaResponse = await authFetch(`${apiUrl}/api/files/metadata`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fileId: driveMeta.itemId }),
+            });
+            if (metaResponse.ok) {
+              const metaData = await metaResponse.json();
+              if (typeof metaData?.name === 'string' && metaData.name.trim()) {
+                inferredName = metaData.name.trim();
+              }
             }
+          } catch {
+            // keep inferred fallback when metadata cannot be resolved
           }
-        } catch {
-          // keep inferred fallback when metadata cannot be resolved
         }
       }
-    }
 
-    setIsAddingFinalLink(true);
-    try {
       const driveLinkMeta = getDriveLinkMeta(trimmedUrl);
       const driveId = driveLinkMeta.itemType === 'file' ? driveLinkMeta.itemId : '';
-      setPendingFinalFiles((prev) => [
-        ...prev,
-        {
-          name: inferredName,
-          url: trimmedUrl,
-          driveId,
-          webViewLink: driveId ? buildDriveViewUrl(driveId) : '',
-          webContentLink: driveId ? buildDriveDirectDownloadUrl(driveId) : '',
-          mime: 'link',
-        },
-      ]);
-      setFinalUploadItems((prev) => [
-        ...prev,
-        {
-          id: `final-link-${Date.now()}`,
-          name: inferredName,
-          status: 'done',
-          progress: 100,
-        },
-      ]);
-      setShowFinalUploadList(true);
-      setFinalLinkName('');
-      setFinalLinkUrl('');
-      setFinalLinkValidationError('');
-      toast.success('Link staged. Click Submit to create the next version.');
-    } catch (error) {
-      toast.error('Failed to stage final deliverable link.');
-    } finally {
-      setIsAddingFinalLink(false);
+      pendingLinks.push({
+        name: inferredName,
+        url: trimmedUrl,
+        driveId,
+        webViewLink: driveId ? buildDriveViewUrl(driveId) : '',
+        webContentLink: driveId ? buildDriveDirectDownloadUrl(driveId) : '',
+        mime: 'link',
+      });
+      nextDrafts[index] = { ...draft, validationError: '' };
     }
+
+    setFinalLinkDrafts(nextDrafts);
+    if (firstError) {
+      return { files: [], error: firstError };
+    }
+
+    return {
+      files: pendingLinks,
+      error: '',
+    };
+  };
+
+  const getFinalLinkDraftPreviewTarget = (draft: FinalLinkDraft): OutputDisplayFile => {
+    const trimmedUrl = draft.url.trim();
+    const driveMeta = getDriveLinkMeta(trimmedUrl);
+    const driveId = driveMeta.itemId || getDriveFileId(trimmedUrl);
+    const sanitizedName = sanitizeLinkDisplayName(draft.name, trimmedUrl || 'Google Drive');
+    return {
+      id: draft.id,
+      name: sanitizedName,
+      url: trimmedUrl,
+      type: 'output',
+      uploadedAt: new Date(0),
+      uploadedBy: '',
+      mime: 'link',
+      driveId,
+      webViewLink: driveMeta.itemType === 'file' && driveId ? buildDriveViewUrl(driveId) : '',
+      webContentLink:
+        driveMeta.itemType === 'file' && driveId ? buildDriveDirectDownloadUrl(driveId) : '',
+    };
   };
 
   const handleRollbackVersion = (versionId: string) => {
@@ -8941,7 +9817,13 @@ function TaskDetailScreen() {
                         </div>
 
                         {(selectedCampaignCollateral.referenceFiles?.length || 0) > 0 ? (
-                          <div className="mt-4 space-y-2">
+                          <div
+                            className={cn(
+                              'mt-4 space-y-2',
+                              (selectedCampaignCollateral.referenceFiles?.length || 0) > 4 &&
+                                'max-h-[18rem] overflow-y-auto pr-1 scrollbar-thin'
+                            )}
+                          >
                             {selectedCampaignCollateral.referenceFiles.map((file, index) => {
                               const fileLinkUrl = getFileActionUrl(file);
                               const sizeLabel =
@@ -9241,7 +10123,13 @@ function TaskDetailScreen() {
                                 </span>
                               </div>
                               {(selectedCampaignCollateral.referenceFiles?.length || 0) > 0 ? (
-                                <div className="mt-3 min-w-0 space-y-1.5">
+                                <div
+                                  className={cn(
+                                    'mt-3 min-w-0 space-y-1.5',
+                                    (selectedCampaignCollateral.referenceFiles?.length || 0) > 4 &&
+                                      'max-h-[18rem] overflow-y-auto pr-1 scrollbar-thin'
+                                  )}
+                                >
                                   {selectedCampaignCollateral.referenceFiles.map((file, index) => {
                                     const fileLinkUrl = getFileActionUrl(file);
                                     const sizeLabel =
@@ -9895,7 +10783,7 @@ function TaskDetailScreen() {
             </div> */}
 
             {/* 60/40 split: Job+Chat (60%) + Progress (40%) */}
-            <div className="grid gap-5 items-start xl:grid-cols-[3fr_2fr]">
+            <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <div className="min-w-0 space-y-5">
             {shouldShowFileManagementPanel ? (
             <div className={`${glassPanelClass} p-5 animate-slide-up`}>
@@ -10704,7 +11592,7 @@ function TaskDetailScreen() {
 
                   <div
                     className={cn(
-                      'mt-6 overflow-hidden rounded-xl border border-[#D9E6FF] bg-white dark:border-border dark:bg-card',
+                      'mt-6 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-[#D9E6FF] bg-white dark:border-border dark:bg-card',
                       isFinalUploadDragging && 'border-primary/40 ring-2 ring-primary/10'
                     )}
                     onDragOver={handleFinalUploadDragOver}
@@ -10712,7 +11600,7 @@ function TaskDetailScreen() {
                     onDrop={handleFinalUploadDrop}
                   >
                     {/* Panel header */}
-                    <div className="border-b border-[#E8EEFB] px-4 py-3.5 dark:border-border">
+                    <div className="border-b border-[#E8EEFB] px-5 py-3.5 dark:border-border">
                       <p className="text-[13px] font-semibold text-[#1B3260] dark:text-slate-100">
                         Final Delivery
                       </p>
@@ -10724,24 +11612,60 @@ function TaskDetailScreen() {
                     </div>
 
                     {/* Section: Files */}
-                    <div className="px-4 pt-4">
-                      <div className="flex items-center justify-between">
+                    <div className="min-w-0 px-5 pt-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                           Files
                         </p>
-                        <button
-                          type="button"
-                          onClick={openFinalFilePicker}
-                          disabled={isUploadingFinal}
-                          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[#D0DCFF] bg-[#F5F8FF] px-3 text-[11.5px] font-medium text-[#3D5A9E] transition hover:bg-[#EBF1FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-muted dark:text-slate-300 dark:hover:bg-muted/80"
+                        <div
+                          className="relative shrink-0"
+                          onMouseEnter={openFinalUploadMenu}
+                          onMouseLeave={scheduleCloseFinalUploadMenu}
                         >
-                          <Upload className="h-3.5 w-3.5" />
-                          {isFinalUploadDragging ? 'Drop here' : 'Add files'}
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              clearFinalUploadMenuCloseTimeout();
+                              setIsFinalUploadMenuOpen((current) => !current);
+                            }}
+                            disabled={isUploadingFinal}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-[14px] border border-[#D0DCFF] bg-[#F5F8FF] px-3.5 text-[11.5px] font-medium text-[#3D5A9E] transition hover:bg-[#EBF1FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-muted dark:text-slate-300 dark:hover:bg-muted/80"
+                          >
+                            <FileUp className="h-3.5 w-3.5 shrink-0 text-[#4C63B7] dark:text-slate-200" />
+                            {isFinalUploadDragging ? 'Drop here' : 'Upload Content'}
+                            <ChevronDown className="h-3.5 w-3.5 opacity-80" />
+                          </button>
+                          {isFinalUploadMenuOpen && (
+                            <div className="absolute right-0 top-[calc(100%+0.35rem)] z-30 w-48 rounded-2xl border border-[#D9E6FF] bg-white/92 p-1.5 text-[#2F3A56] shadow-[0_18px_45px_-30px_rgba(37,99,235,0.22)] ring-1 ring-white/70 backdrop-blur-md dark:border-border dark:bg-card/92 dark:text-slate-200 dark:ring-0">
+                              <button
+                                type="button"
+                                onClick={openFinalFilePicker}
+                                disabled={isUploadingFinal}
+                                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-medium text-[#2F3A56] transition hover:bg-[#F5F8FF] hover:text-[#1E2A5A] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-200 dark:hover:bg-muted dark:hover:text-white"
+                              >
+                                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border border-[#D9E6FF] bg-gradient-to-br from-white/95 via-[#F7FAFF]/88 to-[#E6F1FF]/90 text-[#4F66BC] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-border dark:bg-card/85 dark:text-slate-200">
+                                  <Upload className="h-3.5 w-3.5" />
+                                </span>
+                                Add files
+                              </button>
+                              <button
+                                type="button"
+                                onClick={openFinalFolderPicker}
+                                disabled={isUploadingFinal}
+                                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px] font-medium text-[#2F3A56] transition hover:bg-[#F5F8FF] hover:text-[#1E2A5A] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-200 dark:hover:bg-muted dark:hover:text-white"
+                              >
+                                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border border-[#D9E6FF] bg-gradient-to-br from-white/95 via-[#F7FAFF]/88 to-[#E6F1FF]/90 text-[#4F66BC] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-border dark:bg-card/85 dark:text-slate-200">
+                                  <Folder className="h-3.5 w-3.5" />
+                                </span>
+                                Upload folder
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
-                      {finalUploadItems.length > 0 ? (
-                        <div className="relative mt-3 overflow-hidden rounded-[22px] border border-[#CBD9FF]/60 bg-gradient-to-br from-white/92 via-[#F8FBFF]/84 to-[#E8F1FF]/86 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-[#F8FBFF]/62 supports-[backdrop-filter]:to-[#E8F1FF]/64 backdrop-blur-2xl shadow-none ring-1 ring-white/60 dark:border-border dark:bg-card/78 dark:bg-none dark:ring-0">
+                      {finalUploadPreviewItems.length > 0 ? (
+                        <div className="relative mt-3 overflow-hidden rounded-[22px] border border-[#CBD9FF]/20 bg-gradient-to-br from-white/92 via-[#F8FBFF]/84 to-[#E8F1FF]/86 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-[#F8FBFF]/62 supports-[backdrop-filter]:to-[#E8F1FF]/64 backdrop-blur-2xl shadow-none ring-1 ring-white/60 dark:border-border dark:bg-card/78 dark:bg-none dark:ring-0">
                           <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-white/70 dark:bg-white/5" />
                           <div className="pointer-events-none absolute -left-8 top-1 h-24 w-24 rounded-full bg-white/55 blur-3xl dark:hidden" />
                           <div className="pointer-events-none absolute -right-6 bottom-[-24px] h-28 w-28 rounded-full bg-[#DDE9FF]/80 blur-3xl dark:hidden" />
@@ -10809,6 +11733,7 @@ function TaskDetailScreen() {
                                   <Progress
                                     value={finalUploadProgress}
                                     className="h-1.5 rounded-full bg-[#E7EEFF] dark:bg-muted"
+                                    indicatorClassName="bg-gradient-to-r from-[#3657C9] via-[#4F6EE0] to-[#7FA3FF] shadow-[0_0_18px_-8px_rgba(79,110,224,0.85)]"
                                   />
                                   <span className="min-w-[3rem] text-right text-[11px] font-semibold tabular-nums text-foreground/90 dark:text-slate-100">
                                     {finalUploadProgress}%
@@ -10825,136 +11750,7 @@ function TaskDetailScreen() {
                                     shouldCompactFinalUploadQueue && 'max-h-[30rem] overflow-y-auto pr-1 scrollbar-thin'
                                   )}
                                 >
-                                  {finalUploadItems.map((item) => {
-                                    const extension = getFileExtension(item.name);
-                                    const isUploading = item.status === 'uploading';
-                                    const hasUploadError = item.status === 'error';
-                                    const uploadProgress = isUploading
-                                      ? Math.max(0, Math.min(100, Number(item.progress ?? 0)))
-                                      : item.status === 'done'
-                                        ? 100
-                                        : Math.max(0, Math.min(99, Number(item.progress ?? 0)));
-
-                                    return (
-                                      <div
-                                        key={item.id}
-                                        className="rounded-xl border border-[#CFE0FF] bg-white/95 px-3 py-2.5 shadow-none dark:border-border dark:bg-slate-900/70"
-                                      >
-                                        <div className="flex items-center justify-between gap-3">
-                                          <div className="flex min-w-0 items-center gap-3">
-                                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF3FF] text-[10px] font-semibold text-[#4B57A6] dark:border dark:border-border dark:bg-muted dark:text-foreground">
-                                              {extension}
-                                            </div>
-
-                                            <div className="min-w-0">
-                                              <span className="block truncate text-xs font-medium text-foreground">
-                                                {item.name}
-                                              </span>
-                                              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                                                <span className={hasUploadError ? 'text-destructive' : 'text-muted-foreground'}>
-                                                  {isUploading
-                                                    ? 'Uploading'
-                                                    : hasUploadError
-                                                      ? 'Needs attention'
-                                                      : 'Completed'}
-                                                </span>
-                                                {item.size ? (
-                                                  <span className="text-muted-foreground">
-                                                    {formatFileSize(item.size)}
-                                                  </span>
-                                                ) : null}
-                                                {isUploading ? (
-                                                  <span className="font-medium tabular-nums text-muted-foreground">
-                                                    {uploadProgress}%
-                                                  </span>
-                                                ) : null}
-                                              </div>
-                                            </div>
-                                          </div>
-
-                                          <div className="flex shrink-0 items-center gap-2">
-                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                              {hasUploadError ? (
-                                                <>
-                                                  <AlertTriangle className="h-4 w-4 text-red-500" />
-                                                  <span className="font-semibold text-red-500">Failed</span>
-                                                </>
-                                              ) : null}
-                                              {isUploading ? (
-                                                <>
-                                                  <Loader2 className="h-4 w-4 animate-spin text-[#7D8FB8] dark:text-slate-300" />
-                                                  <span className="font-semibold uppercase tracking-[0.08em] text-[#7D8FB8] dark:text-slate-300">
-                                                    Uploading
-                                                  </span>
-                                                </>
-                                              ) : null}
-                                              {!isUploading && !hasUploadError ? (
-                                                <>
-                                                  <Check className="h-4 w-4 text-primary" />
-                                                  <span className="font-semibold tabular-nums text-primary">100%</span>
-                                                </>
-                                              ) : null}
-                                            </div>
-
-                                            {!isUploading ? (
-                                              <button
-                                                type="button"
-                                                onClick={() => handleRemoveFinalUploadItem(item.id)}
-                                                className="inline-flex shrink-0 items-center justify-center h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 active:translate-y-[1px] active:scale-[0.94] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35"
-                                                aria-label={`Remove ${item.name}`}
-                                              >
-                                                <X className="h-4 w-4" />
-                                              </button>
-                                            ) : null}
-                                          </div>
-                                        </div>
-
-                                        {hasUploadError && item.error ? (
-                                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                                            <p className="text-xs text-destructive">{item.error}</p>
-                                            {shouldPromptDriveReconnect(item.error) ? (
-                                              <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                className="h-6 border-destructive px-2 text-xs text-destructive hover:bg-destructive hover:text-white"
-                                                onClick={async (event) => {
-                                                  event.preventDefault();
-                                                  try {
-                                                    await openDriveReconnectWindow();
-                                                  } catch (error) {
-                                                    const message =
-                                                      error instanceof Error
-                                                        ? error.message
-                                                        : 'Failed to get auth URL';
-                                                    toast.error('Drive reconnect failed', {
-                                                      description: message,
-                                                    });
-                                                  }
-                                                }}
-                                              >
-                                                Connect
-                                              </Button>
-                                            ) : null}
-                                          </div>
-                                        ) : null}
-
-                                        {isUploading ? (
-                                          <div className="mt-2 flex items-center gap-2">
-                                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#D7E3FF]/90 dark:bg-slate-800/90">
-                                              <div
-                                                className="h-full rounded-full bg-primary transition-all duration-300"
-                                                style={{ width: `${uploadProgress}%` }}
-                                              />
-                                            </div>
-                                            <span className="w-9 text-right text-[11px] font-medium tabular-nums text-muted-foreground">
-                                              {uploadProgress}%
-                                            </span>
-                                          </div>
-                                        ) : null}
-                                      </div>
-                                    );
-                                  })}
+                                  {finalUploadPreviewEntries.map(renderFinalUploadPreviewEntry)}
                                 </div>
 
                                 <p className="text-xs text-muted-foreground">{finalUploadFooterText}</p>
@@ -10965,13 +11761,19 @@ function TaskDetailScreen() {
                       ) : (
                         <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-[#D3E1F8] bg-[#F8FBFF]/60 px-3 py-3 text-xs text-muted-foreground dark:border-border/50 dark:bg-muted/20">
                           <Upload className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                          <span>No files added yet — click <span className="font-medium text-[#3D5A9E] dark:text-slate-300">Add files</span> or drag &amp; drop here</span>
+                          <span>
+                            No files added yet — click{' '}
+                            <span className="font-medium text-[#3D5A9E] dark:text-slate-300">
+                              Add files
+                            </span>{' '}
+                            or drag &amp; drop files or folders here
+                          </span>
                         </div>
                       )}
                     </div>
 
                     {/* Section: Version Note */}
-                    <div className="mt-4 px-4">
+                    <div className="min-w-0 mt-4 px-5">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         Version Note <span className="font-normal normal-case tracking-normal opacity-55">(optional)</span>
                       </p>
@@ -10985,7 +11787,7 @@ function TaskDetailScreen() {
                     </div>
 
                     {/* Section: Google Drive link */}
-                    <div className="mt-4 px-4 pb-4">
+                    <div className="min-w-0 mt-4 px-5 pb-4">
                       <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         <img
                           src="/google-drive.ico"
@@ -10993,69 +11795,230 @@ function TaskDetailScreen() {
                           aria-hidden="true"
                           className="h-[12px] w-[12px] shrink-0 object-contain opacity-80"
                         />
-                        Google Drive Link <span className="font-normal normal-case tracking-normal opacity-55">(optional)</span>
+                        Google Drive Links <span className="font-normal normal-case tracking-normal opacity-55">(optional)</span>
                       </p>
-                      <div className="mt-2 space-y-2">
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="https://drive.google.com/..."
-                            value={finalLinkUrl}
-                            onChange={(event) => {
-                              const nextValue = event.target.value;
-                              setFinalLinkUrl(nextValue);
-                              if (!finalLinkValidationError) return;
-                              if (!nextValue.trim()) {
-                                setFinalLinkValidationError('');
-                                return;
-                              }
-                              const nextValidation = validateFinalGoogleDriveLink(nextValue);
-                              if (nextValidation.valid) {
-                                setFinalLinkValidationError('');
-                              }
-                            }}
-                            className={cn(
-                              'h-9 select-text rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 text-sm dark:border-border dark:bg-muted/30 dark:text-slate-100 dark:placeholder:text-slate-500',
-                              finalLinkValidationError &&
-                                'border-red-300 bg-red-50/40 focus-visible:border-red-400 dark:border-red-400/70 dark:bg-red-950/20'
-                            )}
-                          />
+                      <div className="mt-2 w-full space-y-3">
+                        <div
+                          className={cn(
+                            'w-full',
+                            finalLinkDrafts.length > 1 && 'max-h-[14.5rem] overflow-y-auto pr-1'
+                          )}
+                        >
+                          <div className="w-full space-y-3">
+                            {finalLinkDrafts.map((draft, index) => {
+                              const draftPreviewTarget = getFinalLinkDraftPreviewTarget(draft);
+                              const draftDriveMeta = getDriveLinkMeta(draft.url);
+                              const previewEmbedUrl = buildDriveHoverEmbedUrl(draft.url);
+                              const previewUrl = getPreviewUrl(draftPreviewTarget);
+                              const previewTitle = sanitizeLinkDisplayName(draft.name, draft.url);
+                              const previewSubLabel = getLinkSubLabel(draft.url);
+                              const shouldShowPreviewSubLabel =
+                                previewSubLabel.trim().toLowerCase() !==
+                                previewTitle.trim().toLowerCase();
+                              const previewHref =
+                                resolveStoredFileUrl(draftPreviewTarget) || draft.url.trim();
+                              const canShowHoverPreview =
+                                draft.url.trim().length > 0 && !draft.validationError;
+                              const folderPreviewId =
+                                draftDriveMeta.itemType === 'folder' ? draftDriveMeta.itemId : '';
+                              const previewUsesEmbed = previewEmbedUrl !== '';
+                              const isFolderPreview = draftDriveMeta.itemType === 'folder';
+                              const previewCardWidth = isFolderPreview
+                                ? 'w-[24rem] max-w-[calc(100vw-2rem)]'
+                                : 'w-[28rem] max-w-[calc(100vw-2rem)]';
+                              const urlInput = (
+                                <Input
+                                  placeholder="https://drive.google.com/..."
+                                  value={draft.url}
+                                  onChange={(event) =>
+                                    handleFinalLinkDraftChange(draft.id, 'url', event.target.value)
+                                  }
+                                  className={cn(
+                                    'h-9 w-full select-text rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 text-sm dark:border-border dark:bg-muted/30 dark:text-slate-100 dark:placeholder:text-slate-500',
+                                    draft.validationError &&
+                                      'border-red-300 bg-red-50/40 focus-visible:border-red-400 dark:border-red-400/70 dark:bg-red-950/20'
+                                  )}
+                                />
+                              );
+
+                              return (
+                                <div
+                                  key={draft.id}
+                                  className="w-full min-w-0 rounded-xl border border-[#E1E9FF] bg-white/70 p-3 dark:border-border/70 dark:bg-muted/10"
+                                >
+                                  <div className="mb-2 flex items-center justify-between gap-2">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                      Link {index + 1}
+                                    </p>
+                                    {finalLinkDrafts.length > 1 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() => handleRemoveFinalLinkDraft(draft.id)}
+                                        aria-label={`Remove link ${index + 1}`}
+                                        className="h-7 rounded-md px-2 text-xs text-muted-foreground hover:text-foreground"
+                                      >
+                                        <X className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 space-y-2">
+                                    <HoverCard openDelay={120}>
+                                      <HoverCardTrigger asChild>
+                                        <div className="block w-full min-w-0">{urlInput}</div>
+                                      </HoverCardTrigger>
+                                      {canShowHoverPreview ? (
+                                        <HoverCardContent
+                                          side="right"
+                                          align="start"
+                                          className={cn(
+                                            previewCardWidth,
+                                            'border-[#D9E6FF] bg-white/95 p-3 dark:border-border dark:bg-card'
+                                          )}
+                                        >
+                                          <div className="space-y-3">
+                                            <div>
+                                              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                Live Preview
+                                              </p>
+                                              <div className="mt-1 flex items-center gap-2">
+                                                <img
+                                                  src="/google-drive.ico"
+                                                  alt=""
+                                                  aria-hidden="true"
+                                                  className="h-4 w-4 shrink-0 object-contain opacity-85"
+                                                />
+                                                <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+                                                  {previewTitle}
+                                                </p>
+                                              </div>
+                                              {shouldShowPreviewSubLabel && (
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                  {previewSubLabel}
+                                                </p>
+                                              )}
+                                            </div>
+                                            {isFolderPreview && folderPreviewId ? (
+                                              <DriveFolderHoverPreview
+                                                folderId={folderPreviewId}
+                                                apiUrl={apiUrl}
+                                              />
+                                            ) : (
+                                              <div
+                                                className={cn(
+                                                  'relative h-56 overflow-hidden rounded-xl border border-[#D9E6FF] bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.55),_transparent_58%),linear-gradient(160deg,_rgba(245,248,255,0.96),_rgba(225,235,255,0.82))] dark:border-border dark:bg-[linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.82))]'
+                                                )}
+                                              >
+                                                {previewUsesEmbed ? (
+                                                  <iframe
+                                                    src={previewEmbedUrl}
+                                                    title={`${previewTitle} preview`}
+                                                    className="h-full w-full bg-white pointer-events-none"
+                                                    loading="lazy"
+                                                    referrerPolicy="strict-origin-when-cross-origin"
+                                                  />
+                                                ) : (
+                                                  <>
+                                                    <div className="absolute inset-0 flex items-center justify-center">
+                                                      <div className="flex flex-col items-center gap-2 text-center">
+                                                        <img
+                                                          src="/google-drive.ico"
+                                                          alt=""
+                                                          aria-hidden="true"
+                                                          className="h-8 w-8 object-contain opacity-85"
+                                                        />
+                                                        <p className="text-[11px] font-medium text-[#3D5A9E] dark:text-slate-200">
+                                                          {previewSubLabel}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+                                                    {previewUrl && (
+                                                      <img
+                                                        src={previewUrl}
+                                                        alt={previewTitle}
+                                                        className="relative z-10 h-full w-full object-cover"
+                                                        loading="lazy"
+                                                        onError={(event) => {
+                                                          event.currentTarget.style.display = 'none';
+                                                        }}
+                                                      />
+                                                    )}
+                                                  </>
+                                                )}
+                                              </div>
+                                            )}
+                                            <p className="truncate text-[11px] text-muted-foreground">
+                                              {draft.url.trim()}
+                                            </p>
+                                            <a
+                                              href={previewHref}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="inline-flex items-center gap-1 text-xs font-medium text-[#3D5A9E] transition-colors hover:text-[#27427E] hover:underline dark:text-slate-200 dark:hover:text-white"
+                                            >
+                                              Open link
+                                              <ExternalLink className="h-3.5 w-3.5" />
+                                            </a>
+                                          </div>
+                                        </HoverCardContent>
+                                      ) : null}
+                                    </HoverCard>
+                                    <Input
+                                      placeholder="Item name (optional)"
+                                      value={draft.name}
+                                      onChange={(event) =>
+                                        handleFinalLinkDraftChange(draft.id, 'name', event.target.value)
+                                      }
+                                      className="h-9 w-full select-text rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 text-sm dark:border-border dark:bg-muted/30 dark:text-slate-100 dark:placeholder:text-slate-500"
+                                    />
+                                    {draft.validationError && (
+                                      <p className="text-xs font-medium text-red-500 dark:text-red-300">
+                                        {draft.validationError}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={handleAddFinalLink}
-                            disabled={!finalLinkUrl.trim() || isAddingFinalLink}
-                            className="h-9 shrink-0 rounded-lg border-[#D0DCFF] px-4 text-sm text-[#3D5A9E] hover:bg-[#EEF2FF] dark:border-border dark:text-slate-300 dark:hover:bg-muted/60"
+                            onClick={handleAddFinalLinkDraft}
+                            className="h-9 shrink-0 rounded-[14px] border-[#D0DCFF]/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(243,247,255,0.96))] px-3.5 text-[11.5px] font-semibold leading-none text-[#3D5A9E] shadow-none transition-all duration-150 hover:border-[#C6D5FF]/85 hover:bg-[#EEF3FF] hover:text-[#27427E] dark:border-border/70 dark:bg-muted/45 dark:text-slate-200 dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-55"
                           >
-                            {isAddingFinalLink ? 'Adding...' : 'Add link'}
+                            Add another link
                           </Button>
+                          <div className="text-right">
+                            {!hasFinalLinkDraftErrors && hasDraftFinalLink && (
+                              <p className="text-xs text-muted-foreground">
+                                {filledFinalLinkDrafts.length === 1
+                                  ? 'This link will be included when you submit the next version.'
+                                  : 'These links will be included when you submit the next version.'}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <Input
-                          placeholder="Item name (optional)"
-                          value={finalLinkName}
-                          onChange={(event) => setFinalLinkName(event.target.value)}
-                          className="h-9 select-text rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 text-sm dark:border-border dark:bg-muted/30 dark:text-slate-100 dark:placeholder:text-slate-500"
-                        />
-                        {finalLinkValidationError && (
-                          <p className="text-xs font-medium text-red-500 dark:text-red-300">
-                            {finalLinkValidationError}
-                          </p>
-                        )}
                       </div>
                     </div>
 
                     {/* Panel footer — submit action */}
-                    {(normalizedTaskStatus !== 'completed' || hasPendingFinalFiles) && (
+                    {(normalizedTaskStatus !== 'completed' ||
+                      hasPendingFinalFiles ||
+                      hasDraftFinalLink) && (
                       <div className="flex items-center justify-between gap-3 border-t border-[#E8EEFB] bg-[#F8FBFF]/60 px-4 py-3 dark:border-border dark:bg-muted/20">
                         <span className="text-xs text-muted-foreground">
-                          {hasPendingFinalFiles
+                          {hasPendingFinalFiles || hasDraftFinalLink
                             ? submitActionHint
                             : finalDeliverableReviewStatus === 'pending'
                             ? 'The latest submission is under review.'
                             : finalDeliverableReviewStatus === 'rejected'
-                            ? 'Add updated files or a link to submit the next revision.'
+                            ? 'Add updated files or links to submit the next revision.'
                             : hasFinalDeliverables
                             ? 'Final approval will move this task to completed.'
-                            : 'Add files or a Drive link to submit.'}
+                            : 'Add files or Drive links to submit.'}
                         </span>
                         <Button
                           onClick={handleHandoverTask}
@@ -11322,7 +12285,7 @@ function TaskDetailScreen() {
           </div>
 
           {/* Right Column - Metadata */}
-          <div className={`space-y-6 ${usesCampaignOverviewLayout ? "hidden" : ""}`}>
+          <div className={`min-w-0 space-y-6 ${usesCampaignOverviewLayout ? "hidden" : ""}`}>
             {/* Task Info */}
             <div className={`${glassPanelClass} p-5 animate-slide-up`}>
               <h2 className="font-semibold text-foreground mb-4">Details</h2>

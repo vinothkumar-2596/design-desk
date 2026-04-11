@@ -80,18 +80,49 @@ const buildDriveDownloadLink = (fileId) => {
   if (!normalizedId) return "";
   return `https://drive.google.com/uc?id=${encodeURIComponent(normalizedId)}&export=download`;
 };
-const buildTaskSubfolderPath = ({ aiMode, taskId, taskTitle, taskSection }) => {
+const normalizeRelativeFolderPath = (value) => {
+  const normalizeSegmentList = (segments) =>
+    Array.from(
+      new Set(
+        (Array.isArray(segments) ? segments : [])
+          .map((segment) => String(segment || "").trim())
+          .filter((segment) => segment && segment !== "." && segment !== "..")
+      )
+    );
+
+  if (Array.isArray(value)) {
+    return normalizeSegmentList(value);
+  }
+
+  const rawValue = String(value || "").trim();
+  if (!rawValue) return [];
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (Array.isArray(parsed)) {
+      return normalizeSegmentList(parsed);
+    }
+  } catch {
+    // Fall back to path-splitting below.
+  }
+
+  return normalizeSegmentList(rawValue.split(/[\\/]+/g));
+};
+
+const buildTaskSubfolderPath = ({ aiMode, taskId, taskTitle, taskSection, relativeFolderPath }) => {
   const normalizedTaskId = String(taskId || "").trim();
   const normalizedTaskTitle = String(taskTitle || "").trim();
   const normalizedTaskSection = String(taskSection || "").trim();
+  const normalizedRelativeFolderPath = normalizeRelativeFolderPath(relativeFolderPath);
   const taskFolderLabel = normalizedTaskId
     ? `Task-${normalizedTaskId}`
     : normalizedTaskTitle;
   const subfolderPath = aiMode
-    ? ["AI Mode Files"]
+    ? ["AI Mode Files", ...normalizedRelativeFolderPath]
     : [
       ...(taskFolderLabel ? [taskFolderLabel] : []),
       ...(normalizedTaskSection ? [normalizedTaskSection] : []),
+      ...normalizedRelativeFolderPath,
     ];
 
   return {
@@ -131,6 +162,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     const { aiMode, taskTitle } = req.body;
     const taskId = String(req.body?.taskId || "").trim();
     const taskSection = String(req.body?.taskSection || "").trim();
+    const relativeFolderPath = req.body?.relativeFolderPath;
     const uploadedBy = req.user?.email || req.user?.name || req.body.uploadedBy || "Guest";
     const isAiMode = aiMode === "true";
 
@@ -141,6 +173,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       taskId,
       taskTitle,
       taskSection,
+      relativeFolderPath,
     });
 
     let file;
@@ -502,6 +535,62 @@ router.post("/metadata", async (req, res) => {
   } catch (error) {
     console.error("Drive metadata lookup failed:", error?.message || error);
     res.status(500).json({ error: "Failed to load file metadata." });
+  }
+});
+
+router.post("/folder-preview", async (req, res) => {
+  try {
+    const folderId = String(req.body?.folderId || "").trim();
+    if (!folderId) {
+      return res.status(400).json({ error: "Folder id is required." });
+    }
+    req.auditTargetId = folderId;
+
+    const drive = getDriveClient();
+    const response = await drive.files.list({
+      q: [`'${folderId.replace(/'/g, "\\'")}' in parents`, "trashed = false"].join(" and "),
+      fields:
+        "nextPageToken,files(id,name,mimeType,size,thumbnailLink,webViewLink,webContentLink,modifiedTime)",
+      spaces: "drive",
+      pageSize: 24,
+      orderBy: "folder,name_natural",
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+
+    const files = Array.isArray(response?.data?.files) ? response.data.files : [];
+    const items = files.map((file) => {
+      const itemId = String(file?.id || "").trim();
+      const mimeType = String(file?.mimeType || "").trim();
+      const isFolder = mimeType === "application/vnd.google-apps.folder";
+      const sizeValue = file?.size ? Number(file.size) : undefined;
+
+      return {
+        id: itemId,
+        name: String(file?.name || "Untitled"),
+        mimeType,
+        size: Number.isNaN(sizeValue) ? undefined : sizeValue,
+        modifiedTime: file?.modifiedTime || "",
+        thumbnailUrl: String(file?.thumbnailLink || ""),
+        webViewLink: isFolder
+          ? `https://drive.google.com/drive/folders/${encodeURIComponent(itemId)}`
+          : file?.webViewLink || buildDriveViewLink(itemId),
+        webContentLink: isFolder
+          ? ""
+          : file?.webContentLink || buildDriveDownloadLink(itemId),
+        isFolder,
+      };
+    });
+
+    res.json({
+      id: folderId,
+      itemCount: items.length,
+      truncated: Boolean(response?.data?.nextPageToken),
+      items,
+    });
+  } catch (error) {
+    console.error("Drive folder preview lookup failed:", error?.message || error);
+    res.status(500).json({ error: "Failed to load folder preview." });
   }
 });
 
