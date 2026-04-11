@@ -65,7 +65,19 @@ const PORTAL_SHARE_TEXT = 'Open the DesignDesk portal';
 const PORTAL_QR_LIGHT_IMAGE_SRC = '/portal-qr-light.svg';
 const PORTAL_QR_DARK_IMAGE_SRC = '/portal-qr-dark.svg';
 const APP_VERSION_LABEL = `v${String(__APP_VERSION__ || '0.0.0').replace(/^v/i, '')}`;
-const APP_BUILD_LABEL = `Build ${String(__APP_BUILD_ID__ || '').trim() || 'local'}`;
+const formatBuildDisplayId = (value: string) => {
+  const raw = String(value || '').trim();
+  if (!raw) return 'local';
+
+  const compactTimestamp = raw.replace(/\./g, '');
+  if (/^\d{10,12}$/.test(compactTimestamp)) {
+    return raw;
+  }
+
+  // Hide provider-specific deployment ids such as `dpl_*` or commit hashes.
+  return String(__APP_VERSION__ || '0.0.0').replace(/^v/i, '');
+};
+const APP_BUILD_LABEL = `Build ${formatBuildDisplayId(__APP_BUILD_ID__)}`;
 const decodeValue = (value: string) => {
   try {
     return decodeURIComponent(value || '');
