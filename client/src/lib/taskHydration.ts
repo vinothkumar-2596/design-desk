@@ -1,6 +1,25 @@
-import type { CollateralItem, Task } from '@/types';
+import type { CollateralItem, RequestType, Task } from '@/types';
 
 const toDate = (value?: string | Date | null) => (value ? new Date(value) : undefined);
+const isKnownRequestType = (value?: string | null): value is RequestType =>
+  value === 'single_task' || value === 'campaign_request';
+
+export const inferTaskRequestType = (
+  raw?: Pick<Task, 'requestType' | 'campaign' | 'collaterals'> | null
+): RequestType => {
+  if (isKnownRequestType(raw?.requestType)) {
+    return raw.requestType;
+  }
+
+  const hasCampaignStructure = Boolean(raw?.campaign);
+  const hasCollaterals = Array.isArray(raw?.collaterals) && raw.collaterals.length > 0;
+
+  if (hasCampaignStructure || hasCollaterals) {
+    return 'campaign_request';
+  }
+
+  return 'single_task';
+};
 
 export const mergeViewerReadAt = <
   T extends { viewerReadAt?: string | Date | null } | null | undefined,
@@ -28,6 +47,7 @@ const hydrateCollateral = (collateral: CollateralItem): CollateralItem => ({
 
 export const hydrateTask = (raw: Task): Task => ({
   ...raw,
+  requestType: inferTaskRequestType(raw),
   deadline: new Date(raw.deadline),
   createdAt: new Date(raw.createdAt),
   updatedAt: new Date(raw.updatedAt),

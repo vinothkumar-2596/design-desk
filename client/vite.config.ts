@@ -30,6 +30,7 @@ const normalizedBuildId = String(buildIdSource || "")
   .trim()
   .replace(/[^a-zA-Z0-9.-]+/g, "")
   .slice(0, 12) || buildTimestampLabel;
+const buildCreatedAt = new Date().toISOString();
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -50,7 +51,29 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [
+    react(),
+    mode === "development" && componentTagger(),
+    {
+      name: "emit-build-version",
+      apply: "build",
+      generateBundle() {
+        this.emitFile({
+          type: "asset",
+          fileName: "version.json",
+          source: JSON.stringify(
+            {
+              version: packageJson.version || "0.0.0",
+              buildId: normalizedBuildId,
+              builtAt: buildCreatedAt,
+            },
+            null,
+            2
+          ),
+        });
+      },
+    },
+  ].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

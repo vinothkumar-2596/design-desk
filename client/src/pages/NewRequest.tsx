@@ -1844,7 +1844,7 @@ export default function NewRequest() {
   const sidebarSurfaceClass =
     'rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:border-border dark:bg-card/95 dark:bg-none dark:text-foreground';
   const sidebarInsetSurfaceClass =
-    'rounded-[1.26rem] border border-[#D9E6FF] bg-white/72 dark:bg-card/78 dark:border-border shadow-none';
+    'rounded-[1.26rem] border border-[#D9E6FF] bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(250,252,255,0.92)_58%,rgba(244,248,255,0.9))] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(250,252,255,0.76)_58%,rgba(244,248,255,0.72))] backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border dark:bg-card/78 dark:[background-image:none] dark:backdrop-blur-none dark:shadow-none';
   const sidebarPillClass =
     'inline-flex items-center rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-muted dark:border-border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#23396F] dark:text-foreground';
   const sidebarIconTileClass =
@@ -2986,7 +2986,7 @@ export default function NewRequest() {
               style={{ animationDelay: `${index * 90}ms`, ...REQUEST_TYPE_HOVER_TRANSITION_STYLE }}
             >
               <div
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(143,168,255,0.09),transparent_34%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(110,141,255,0.14),transparent_42%)]"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.8),transparent_24%),radial-gradient(circle_at_top_left,rgba(143,168,255,0.09),transparent_34%)] opacity-80 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-[radial-gradient(circle_at_top_left,rgba(110,141,255,0.14),transparent_42%)]"
                 style={REQUEST_TYPE_HOVER_TRANSITION_STYLE}
               />
               <div
