@@ -2316,6 +2316,15 @@
   }
 }
 
+.task-unread-border {
+  isolation: isolate;
+}
+
+.task-unread-border > * {
+  position: relative;
+  z-index: 1;
+}
+
 .task-unread-border::before {
   content: "";
   position: absolute;
@@ -2332,6 +2341,7 @@
     linear-gradient(#fff 0 0);
   mask-composite: exclude;
   animation: unreadBorderSpin 4s linear infinite;
+  z-index: 2;
   pointer-events: none;
 }
 

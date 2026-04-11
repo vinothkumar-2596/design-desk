@@ -24,7 +24,7 @@ const dimensionField =
 const shellClass =
   'relative overflow-hidden rounded-[11px] border border-[#D7E3FF]/65 bg-gradient-to-br from-white/90 via-[#F5F9FF]/80 to-[#EAF2FF]/74 supports-[backdrop-filter]:from-white/74 supports-[backdrop-filter]:via-[#F5F9FF]/64 supports-[backdrop-filter]:to-[#EAF2FF]/56 backdrop-blur-xl text-foreground dark:bg-sidebar-accent dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent dark:border-sidebar-border dark:backdrop-blur-xl dark:text-sidebar-foreground';
 const sectionSurface =
-  'border-white/10 bg-white/18 supports-[backdrop-filter]:bg-white/12 backdrop-blur-xl dark:!border-sidebar-border dark:!bg-sidebar-accent';
+  'border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(246,250,255,0.68)_42%,rgba(232,240,255,0.72)_100%)] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.58)_0%,rgba(246,250,255,0.48)_42%,rgba(232,240,255,0.54)_100%)] backdrop-blur-xl dark:!border-sidebar-border dark:!bg-sidebar-accent dark:[background-image:none]';
 
 type CollateralEditorCardProps = {
   collateral: CollateralDraft;
@@ -77,7 +77,7 @@ export function CollateralEditorCard({
       <div
         className={`flex items-center justify-between gap-2.5 border-b px-3.5 py-2.5 dark:bg-sidebar/96 ${
           shouldHighlight
-            ? 'border-b-white/50 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(245,249,255,0.64))] dark:border-b-white/10'
+            ? 'border-b-white/50 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(245,249,255,0.64))] dark:border-b-white/10 dark:[background-image:none]'
             : 'border-transparent dark:border-sidebar-border'
         }`}
       >
