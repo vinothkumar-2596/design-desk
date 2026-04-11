@@ -98,6 +98,32 @@ const buildDrivePreviewUrl = (driveId?: string) => {
   return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(normalizedId)}`;
 };
 
+const isLikelyDownloadUrl = (rawValue?: string) => {
+  const source = String(rawValue || '').trim();
+  if (!source) return false;
+
+  try {
+    const parsed = new URL(source, getWindowOrigin() || 'http://localhost');
+    if (parsed.pathname.includes('/api/files/download/')) {
+      return true;
+    }
+    if (parsed.pathname === '/uc' && parsed.searchParams.get('export') === 'download') {
+      return true;
+    }
+    if (parsed.searchParams.get('download') === '1') {
+      return true;
+    }
+  } catch {
+    // Fall back to regex-only detection below.
+  }
+
+  return (
+    /\/api\/files\/download\//i.test(source) ||
+    /[?&]export=download\b/i.test(source) ||
+    /[?&]download=1\b/i.test(source)
+  );
+};
+
 export const getAttachmentPreviewKind = (fileName: string): 'image' | 'pdf' | 'none' => {
   const ext = String(fileName || '').split('.').pop()?.trim().toLowerCase();
   if (!ext) return 'none';
@@ -132,6 +158,7 @@ const getAttachmentPreviewCandidates = (
     driveId && normalizedApiBase
       ? `${normalizedApiBase}/api/files/download/${encodeURIComponent(driveId)}`
       : '';
+  const webViewLink = String(file.webViewLink || '').trim();
   const webContentLink = String(file.webContentLink || '').trim();
   const url = String(file.url || '').trim();
   const thumbnailUrl = String(file.thumbnailUrl || '').trim();
@@ -143,7 +170,17 @@ const getAttachmentPreviewCandidates = (
 
   return Array.from(
     new Set(
-      [localPreviewUrl, apiDownloadUrl, webContentLink, url, drivePreviewUrl, thumbnailUrl]
+      [
+        localPreviewUrl,
+        !isLikelyDownloadUrl(url) ? url : '',
+        !isLikelyDownloadUrl(webViewLink) ? webViewLink : '',
+        drivePreviewUrl,
+        thumbnailUrl,
+        apiDownloadUrl,
+        webContentLink,
+        url,
+        webViewLink,
+      ]
         .map((value) => String(value || '').trim())
         .filter(Boolean)
     )
@@ -319,6 +356,11 @@ export function AttachmentPreviewDialog({
       }
     };
 
+    const canDirectLoadCandidate = (src: string) => {
+      if (!src) return false;
+      return !isLikelyDownloadUrl(src);
+    };
+
     const resolvePreview = async () => {
       revokePreviewObjectUrl();
       for (const candidate of candidates) {
@@ -355,7 +397,7 @@ export function AttachmentPreviewDialog({
           }
         }
 
-        if (previewKind === 'image') {
+        if (previewKind === 'image' && canDirectLoadCandidate(candidate)) {
           try {
             await loadImageElement(candidate);
             if (cancelled) return;
@@ -367,7 +409,7 @@ export function AttachmentPreviewDialog({
           }
         }
 
-        if (previewKind === 'pdf') {
+        if (previewKind === 'pdf' && canDirectLoadCandidate(candidate)) {
           if (cancelled) return;
           setResolvedUrl(candidate);
           setPreviewState('ready');

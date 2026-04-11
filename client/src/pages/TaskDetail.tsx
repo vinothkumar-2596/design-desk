@@ -1844,10 +1844,17 @@ function TaskDetailScreen() {
     }
     const socket = createSocket(apiUrl);
     socketRef.current = socket;
-    socket.emit('task:join', { taskId: roomId, userId: user.id });
-    socket.emit('join', { userId: user.id });
-    if (user.email) {
-      socket.emit('join', { userId: user.email });
+    const joinRealtimeRooms = () => {
+      socket.emit('task:join', { taskId: roomId, userId: user.id });
+      socket.emit('join', { userId: user.id });
+      if (user.email) {
+        socket.emit('join', { userId: user.email });
+      }
+    };
+
+    socket.on('connect', joinRealtimeRooms);
+    if (socket.connected) {
+      joinRealtimeRooms();
     }
 
     socket.on('comment:typing', (payload: any) => {
@@ -1916,13 +1923,14 @@ function TaskDetailScreen() {
     return () => {
       clearTyping();
       socket.emit('task:leave', { taskId: roomId, userId: user.id });
+      socket.off('connect', joinRealtimeRooms);
       socket.disconnect();
       socketRef.current = null;
       typingTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
       typingTimeoutsRef.current.clear();
       setTypingUsers({});
     };
-  }, [apiUrl, taskState?.id, taskState?._id, id, user?.id, user?.name, user?.role]);
+  }, [apiUrl, taskState?.id, taskState?._id, id, user?.email, user?.id, user?.name, user?.role]);
 
   useEffect(() => {
     const handleTaskUpdated = (event: Event) => {
