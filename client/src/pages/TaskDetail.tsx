@@ -927,6 +927,7 @@ function TaskDetailScreen() {
     shouldAwaitFreshTaskOnEntry ? 'loading' : hasInitialTask ? 'ready' : id ? 'loading' : 'not_found'
   );
   const [isStaffStatusPanelExpanded, setIsStaffStatusPanelExpanded] = useState(true);
+  const [isStaffStatusPanelDismissed, setIsStaffStatusPanelDismissed] = useState(false);
   const [staffStatusPanelPosition, setStaffStatusPanelPosition] = useState<{
     left: number;
     top: number;
@@ -980,6 +981,9 @@ function TaskDetailScreen() {
   const staffStatusPanelRef = useRef<HTMLDivElement | null>(null);
   const staffStatusPanelDragOffsetRef = useRef({ x: 0, y: 0 });
   const staffStatusPanelDragActiveRef = useRef(false);
+  const staffStatusPanelDragStartRef = useRef({ x: 0, y: 0 });
+  const staffStatusPanelLastPointerRef = useRef({ x: 0, y: 0 });
+  const fileDragDepthRef = useRef(0);
   const initialApprovalStatus: ApprovalStatus | undefined =
     initialTask?.approvalStatus ?? ((initialTask?.changeCount ?? 0) >= 3 ? 'pending' : undefined);
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus | undefined>(
@@ -1043,6 +1047,7 @@ function TaskDetailScreen() {
   const [isWorkingUploadDragging, setIsWorkingUploadDragging] = useState(false);
   const [isCommentComposerDragging, setIsCommentComposerDragging] = useState(false);
   const [isReplyComposerDragging, setIsReplyComposerDragging] = useState(false);
+  const [isPageFileDragActive, setIsPageFileDragActive] = useState(false);
   const [copiedFileKey, setCopiedFileKey] = useState('');
   const [approvalDecisionInFlight, setApprovalDecisionInFlight] = useState<ApprovalDecision | null>(null);
   const [approvalRequestInFlight, setApprovalRequestInFlight] = useState(false);
@@ -2905,6 +2910,14 @@ function TaskDetailScreen() {
         };
       }
 
+      if (audience === 'staff') {
+        return {
+          breadcrumbItems: ['Files Uploaded', 'Feedback Received', 'Resubmit'],
+          statusPillLabel: 'Update Needed',
+          description: `Design Lead marked this submission as update needed.${finalDeliverableReviewNote ? ` Reason: ${finalDeliverableReviewNote}` : ''} Upload updates and submit again.`,
+        };
+      }
+
       if (hasUrgentWorkloadReason) {
         return audience === 'staff'
           ? {
@@ -3465,6 +3478,34 @@ function TaskDetailScreen() {
       };
     }
 
+    if (isStaffRole) {
+      if (finalDeliverableReviewStatus === 'pending') {
+        return {
+          stepIndex: 3,
+          headline: 'Awaiting review',
+          summary: 'Final deliverables are waiting for Design Lead approval.',
+          supportItems: [
+            compactDeadlineLabel,
+            `${Math.max(baseStaffTrackerProgressPercent, 80)}% complete`,
+            `Assigned to ${workflowAssigneeLabel}`,
+          ],
+        };
+      }
+
+      if (finalDeliverableReviewStatus === 'rejected') {
+        return {
+          stepIndex: 2,
+          headline: 'Revision in progress',
+          summary: 'Feedback was shared. Waiting for the next designer submission.',
+          supportItems: [
+            compactDeadlineLabel,
+            `${Math.max(baseStaffTrackerProgressPercent, 60)}% complete`,
+            `Assigned to ${workflowAssigneeLabel}`,
+          ],
+        };
+      }
+    }
+
     if (isDesignerRole && isMainDesignerUser) {
       if (!hasWorkflowAssignee || normalizedTaskStatus === 'pending') {
         return {
@@ -3552,6 +3593,7 @@ function TaskDetailScreen() {
     compactDeadlineLabel,
     displayedChangeCount,
     finalDeliverableReviewStatus,
+    isStaffRole,
     hasWorkflowAssignee,
     isDesignerRole,
     isMainDesignerUser,
@@ -3671,16 +3713,50 @@ function TaskDetailScreen() {
       top: Math.min(Math.max(minTop, top), maxTop),
     };
   };
+  const shouldDismissStaffStatusPanel = (clientX: number, clientY: number) => {
+    if (typeof window === 'undefined') return false;
+
+    const horizontalEdgeThreshold = 88;
+    const verticalEdgeThreshold = 96;
+    const throwDistance = Math.hypot(
+      clientX - staffStatusPanelDragStartRef.current.x,
+      clientY - staffStatusPanelDragStartRef.current.y
+    );
+    const isNearViewportEdge =
+      clientX <= horizontalEdgeThreshold ||
+      clientX >= window.innerWidth - horizontalEdgeThreshold ||
+      clientY <= verticalEdgeThreshold ||
+      clientY >= window.innerHeight - verticalEdgeThreshold;
+
+    return throwDistance >= 120 && isNearViewportEdge;
+  };
   const handleStaffStatusPanelDragStart = (event: MouseEvent<HTMLElement>) => {
     if (!staffStatusPanelRef.current) return;
     if (event.button !== 0) return;
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest(
+        'button, a, input, textarea, select, option, [role="button"], [data-no-panel-drag]'
+      )
+    ) {
+      return;
+    }
 
     const rect = staffStatusPanelRef.current.getBoundingClientRect();
     staffStatusPanelDragOffsetRef.current = {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
     };
+    staffStatusPanelDragStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    staffStatusPanelLastPointerRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
     staffStatusPanelDragActiveRef.current = true;
+    setIsStaffStatusPanelDismissed(false);
     setStaffStatusPanelPosition(clampStaffStatusPanelPosition(rect.left, rect.top));
     document.body.style.cursor = 'grabbing';
     document.body.style.userSelect = 'none';
@@ -3688,6 +3764,7 @@ function TaskDetailScreen() {
   };
   useEffect(() => {
     setIsStaffStatusPanelExpanded(true);
+    setIsStaffStatusPanelDismissed(false);
     setStaffStatusPanelPosition(null);
   }, [taskState?.id]);
   useEffect(() => {
@@ -3702,16 +3779,26 @@ function TaskDetailScreen() {
 
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       if (!staffStatusPanelDragActiveRef.current) return;
+      staffStatusPanelLastPointerRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+      };
       const nextLeft = event.clientX - staffStatusPanelDragOffsetRef.current.x;
       const nextTop = event.clientY - staffStatusPanelDragOffsetRef.current.y;
       setStaffStatusPanelPosition(clampStaffStatusPanelPosition(nextLeft, nextTop));
     };
 
-    const stopDragging = () => {
+    const stopDragging = (event?: globalThis.MouseEvent) => {
       if (!staffStatusPanelDragActiveRef.current) return;
+      const pointerX = event?.clientX ?? staffStatusPanelLastPointerRef.current.x;
+      const pointerY = event?.clientY ?? staffStatusPanelLastPointerRef.current.y;
       staffStatusPanelDragActiveRef.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      if (shouldDismissStaffStatusPanel(pointerX, pointerY)) {
+        setIsStaffStatusPanelDismissed(true);
+        setStaffStatusPanelPosition(null);
+      }
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -3724,6 +3811,52 @@ function TaskDetailScreen() {
       document.body.style.userSelect = '';
     };
   }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const hasDraggedFiles = (event: DragEvent) =>
+      Array.from(event.dataTransfer?.types ?? []).includes('Files');
+
+    const clearFileDragState = () => {
+      fileDragDepthRef.current = 0;
+      setIsPageFileDragActive(false);
+    };
+
+    const handleDragEnter = (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) return;
+      fileDragDepthRef.current += 1;
+      setIsPageFileDragActive(true);
+    };
+
+    const handleDragOver = (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) return;
+      if (!isPageFileDragActive) {
+        setIsPageFileDragActive(true);
+      }
+    };
+
+    const handleDragLeave = (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) return;
+      fileDragDepthRef.current = Math.max(0, fileDragDepthRef.current - 1);
+      if (fileDragDepthRef.current === 0) {
+        setIsPageFileDragActive(false);
+      }
+    };
+
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', clearFileDragState);
+    window.addEventListener('blur', clearFileDragState);
+
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('drop', clearFileDragState);
+      window.removeEventListener('blur', clearFileDragState);
+    };
+  }, [isPageFileDragActive]);
   useEffect(() => {
     const nextDrafts: Record<string, FinalDeliverableReviewAnnotation> = {};
     activeFinalVersionReviewAnnotations.forEach((annotation, index) => {
@@ -8115,16 +8248,25 @@ function TaskDetailScreen() {
         right: 'auto' as const,
       }
     : undefined;
+  const shouldHideStaffStatusPanel =
+    isStaffStatusPanelDismissed ||
+    isPageFileDragActive ||
+    isFinalUploadDragging ||
+    isWorkingUploadDragging ||
+    isEditAttachmentDragging ||
+    isCommentComposerDragging ||
+    isReplyComposerDragging;
   const floatingStaffStatusPanel =
-    taskRouteState === 'ready' && shouldShowStaffStatusTracker ? (
+    taskRouteState === 'ready' && shouldShowStaffStatusTracker && !shouldHideStaffStatusPanel ? (
       <div
         className="pointer-events-none fixed right-5 top-24 z-[110] hidden lg:block 2xl:right-8"
         style={floatingStaffStatusPanelStyle}
       >
         <div
           ref={staffStatusPanelRef}
+          onMouseDown={handleStaffStatusPanelDragStart}
           className={cn(
-            'status-panel-gradient-border pointer-events-auto relative w-[23rem] select-none overflow-hidden rounded-[32px] border text-white backdrop-blur-xl transition-[max-height,padding,box-shadow,background] duration-300 dark:border-transparent',
+            'status-panel-gradient-border pointer-events-auto relative w-[23rem] cursor-grab select-none overflow-hidden rounded-[32px] border text-white backdrop-blur-xl transition-[max-height,padding,box-shadow,background] duration-300 active:cursor-grabbing dark:border-transparent',
             isStaffStatusPanelExpanded
               ? 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-6 pb-8 pt-5 shadow-[0_28px_60px_-34px_rgba(35,68,170,0.62)] hover:shadow-[0_30px_68px_-32px_rgba(35,68,170,0.72)] max-h-[38rem] dark:shadow-none dark:hover:shadow-none'
               : 'border-[#243660]/88 bg-[linear-gradient(180deg,#4a62b1_0%,#122045_50%,#00103b_100%)] px-5 pb-7 pt-4 shadow-[0_24px_52px_-30px_rgba(35,68,170,0.62)] hover:shadow-[0_26px_56px_-28px_rgba(35,68,170,0.72)] max-h-[13.25rem] dark:shadow-none dark:hover:shadow-none'
@@ -8154,8 +8296,7 @@ function TaskDetailScreen() {
           {isStaffStatusPanelExpanded ? (
           <>
           <div
-            onMouseDown={handleStaffStatusPanelDragStart}
-            className="flex cursor-grab items-start justify-between gap-3 active:cursor-grabbing"
+            className="flex items-start justify-between gap-3"
           >
             <div className="min-w-0">
               <div className="w-fit rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#B7C7EC] shadow-[0_18px_42px_-32px_rgba(3,7,18,0.92)] backdrop-blur-xl">
@@ -8191,8 +8332,7 @@ function TaskDetailScreen() {
           ) : (
           <>
           <div
-            onMouseDown={handleStaffStatusPanelDragStart}
-            className="flex cursor-grab items-start justify-between gap-3 active:cursor-grabbing"
+            className="flex items-start justify-between gap-3"
           >
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#9AA6C7]">
