@@ -20,11 +20,9 @@ const buildTimestampLabel = (() => {
   return `${year}${month}${day}.${hours}${minutes}`;
 })();
 
-const buildIdSource =
-  process.env.APP_BUILD_ID ||
-  process.env.VERCEL_DEPLOYMENT_ID ||
-  process.env.VERCEL_GIT_COMMIT_SHA ||
-  buildTimestampLabel;
+// Keep the visible build label stable across localhost and hosted builds.
+// Deployment-specific ids like Vercel's `dpl_*` make the UI differ in production.
+const buildIdSource = process.env.APP_BUILD_ID || buildTimestampLabel;
 
 const normalizedBuildId = String(buildIdSource || "")
   .trim()
