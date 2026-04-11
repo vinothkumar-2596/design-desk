@@ -246,6 +246,42 @@ const resolveRequesterEmailFromTask = async (task) => {
   return requesterEmail;
 };
 
+function collectRequestCreatedEmailFiles(task) {
+  const directFiles = normalizeTaskFileCollection(Array.isArray(task?.files) ? task.files : []);
+  const collateralFiles = Array.isArray(task?.collaterals)
+    ? task.collaterals.flatMap((collateral) =>
+        normalizeTaskFileCollection(
+          Array.isArray(collateral?.referenceFiles) ? collateral.referenceFiles : []
+        )
+      )
+    : [];
+  const preferredFiles = directFiles.length > 0 ? directFiles : collateralFiles;
+  const seenTransportKeys = new Set();
+  const seenContentKeys = new Set();
+
+  return preferredFiles.filter((file) => {
+    const normalized = normalizeTaskFileLinks(file);
+    const transportKey =
+      String(normalized?.driveId || "").trim() ||
+      String(normalized?.webViewLink || "").trim() ||
+      String(normalized?.webContentLink || "").trim() ||
+      String(normalized?.url || "").trim();
+    const contentKey = `${normalizeFileNameKey(normalized?.name)}:${toFiniteNumber(normalized?.size) ?? ""}`;
+
+    if (!transportKey && !contentKey.replace(":", "")) return false;
+    if (transportKey && seenTransportKeys.has(transportKey)) return false;
+    if (contentKey !== ":" && seenContentKeys.has(contentKey)) return false;
+
+    if (transportKey) {
+      seenTransportKeys.add(transportKey);
+    }
+    if (contentKey !== ":") {
+      seenContentKeys.add(contentKey);
+    }
+    return true;
+  });
+}
+
 const sendTaskLifecycleEmailIfEnabled = async ({
   task,
   userId = "",
@@ -259,6 +295,7 @@ const sendTaskLifecycleEmailIfEnabled = async ({
 }) => {
   const resolvedEmail = String(email || "").trim() || await resolveRequesterEmailFromTask(task);
   const resolvedUserId = String(userId || task?.requesterId || "").trim();
+  const normalizedEmailType = String(emailType || "").trim().toUpperCase();
   const requesterPrefs = await resolveNotificationPreferences({
     userId: resolvedUserId,
     email: resolvedEmail,
@@ -270,10 +307,16 @@ const sendTaskLifecycleEmailIfEnabled = async ({
   }
 
   const taskId = task?.id || task?._id?.toString?.() || "";
+  const emailFiles =
+    Array.isArray(files) && files.length > 0
+      ? normalizeTaskFileCollection(files)
+      : normalizedEmailType === "REQUEST_CREATED"
+        ? collectRequestCreatedEmailFiles(task)
+        : [];
   return sendFinalFilesEmail({
     to: resolvedEmail,
     taskTitle: task?.title,
-    files,
+    files: emailFiles,
     designerName: actorName,
     taskUrl: buildFrontendTaskUrl(taskId),
     submittedAt,
@@ -2635,52 +2678,59 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
     }
 
     const taskUrl = buildFrontendTaskUrl(task.id || task._id);
+    const responsePayload = buildTaskPayloadForViewer(task, req.user);
+    res.status(201).json(responsePayload);
 
-    const requesterPrefs = await resolveNotificationPreferences({
-      userId: task.requesterId,
-      email: task.requesterEmail,
-      fallbackUser: req.user,
-    });
+    void (async () => {
+      try {
+        const requesterPrefs = await resolveNotificationPreferences({
+          userId: task.requesterId,
+          email: task.requesterEmail,
+          fallbackUser: req.user,
+        });
 
-    if (requesterPrefs.emailNotifications) {
-      const emailSent = await sendTaskLifecycleEmailIfEnabled({
-        task,
-        userId: task.requesterId,
-        email: task.requesterEmail,
-        fallbackUser: req.user,
-        emailType: "REQUEST_CREATED",
-        actorName: requesterName || task.requesterName || "Staff",
-        submittedAt: now,
-      });
-      if (!emailSent) {
-        console.warn("Request created email skipped or failed.");
+        if (requesterPrefs.emailNotifications) {
+          const emailSent = await sendTaskLifecycleEmailIfEnabled({
+            task,
+            userId: task.requesterId,
+            email: task.requesterEmail,
+            fallbackUser: req.user,
+            emailType: "REQUEST_CREATED",
+            actorName: requesterName || task.requesterName || "Staff",
+            submittedAt: now,
+          });
+          if (!emailSent) {
+            console.warn("Request created email skipped or failed.");
+          }
+        }
+
+        if (requesterPrefs.whatsappNotifications) {
+          const recipients = [
+            task.requesterPhone,
+            ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
+          ].filter((p) => p && p.trim() !== "");
+
+          if (recipients.length === 0 && process.env.TWILIO_DEFAULT_TO) {
+            recipients.push(process.env.TWILIO_DEFAULT_TO);
+          }
+
+          await Promise.all(
+            recipients.map((to) =>
+              sendTaskCreatedSms({
+                to,
+                taskTitle: task.title,
+                taskUrl,
+                deadline: task.deadline,
+                requesterName: task.requesterName,
+                taskId: task.id || task._id?.toString?.()
+              })
+            )
+          );
+        }
+      } catch (error) {
+        console.error("Background Notification Error (Create Task):", error?.message || error);
       }
-    }
-
-    if (requesterPrefs.whatsappNotifications) {
-      const recipients = [
-        task.requesterPhone,
-        ...(Array.isArray(task.secondaryPhones) ? task.secondaryPhones : [])
-      ].filter((p) => p && p.trim() !== "");
-
-      if (recipients.length === 0 && process.env.TWILIO_DEFAULT_TO) {
-        recipients.push(process.env.TWILIO_DEFAULT_TO);
-      }
-
-      // Non-blocking notification
-      Promise.all(recipients.map(to =>
-        sendTaskCreatedSms({
-          to,
-          taskTitle: task.title,
-          taskUrl,
-          deadline: task.deadline,
-          requesterName: task.requesterName,
-          taskId: task.id || task._id?.toString?.()
-        })
-      )).catch(err => console.error("Background Notification Error (Create Task):", err));
-    }
-
-    res.status(201).json(buildTaskPayloadForViewer(task, req.user));
+    })();
   } catch (error) {
     console.error("Failed to create task:", error);
     res.status(400).json({ error: "Failed to create task." });

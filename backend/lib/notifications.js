@@ -78,6 +78,54 @@ const EMAIL_FONT_IMPORT_BLOCK = `
     @import url('${PROJECT_SANS_FONT_URL}');
   </style>
 `;
+const inferFileNameFromUrl = (value) => {
+  try {
+    const parsed = new URL(String(value || "").trim());
+    return decodeURIComponent(
+      (parsed.pathname || "")
+        .split("/")
+        .filter(Boolean)
+        .pop() || ""
+    ).trim();
+  } catch {
+    return "";
+  }
+};
+
+const buildDriveViewLink = (fileId) => {
+  const normalizedId = String(fileId || "").trim();
+  if (!normalizedId) return "";
+  return `https://drive.google.com/file/d/${encodeURIComponent(normalizedId)}/view?usp=drivesdk`;
+};
+
+const buildDriveDownloadLink = (fileId) => {
+  const normalizedId = String(fileId || "").trim();
+  if (!normalizedId) return "";
+  return `https://drive.google.com/uc?id=${encodeURIComponent(normalizedId)}&export=download`;
+};
+
+const normalizeEmailFileItem = (file, index = 0) => {
+  const driveId = String(file?.driveId || "").trim();
+  const name =
+    String(file?.name || "").trim() ||
+    inferFileNameFromUrl(file?.webContentLink || file?.url || file?.webViewLink || "") ||
+    `Attachment ${index + 1}`;
+  const openUrl = String(
+    file?.webViewLink || file?.url || file?.webContentLink || buildDriveViewLink(driveId)
+  ).trim();
+  const downloadUrl = String(
+    file?.webContentLink || file?.url || file?.webViewLink || buildDriveDownloadLink(driveId)
+  ).trim();
+  const size = Number(file?.size || 0);
+
+  return {
+    name,
+    openUrl,
+    downloadUrl,
+    mime: String(file?.mime || "").trim(),
+    size: Number.isFinite(size) && size > 0 ? size : undefined,
+  };
+};
 
 const buildEmailTaskUrl = ({ baseUrl, taskId, emailType, fallbackUrl }) => {
   const frontendBase = normalizeEnvValue(baseUrl);
@@ -603,12 +651,20 @@ export const sendFinalFilesEmail = async ({
   const displayActor = designerName || taskDetails?.requesterName || assignedByName || "A team member";
   const safeAssignmentMessage = assignmentMessage ? String(assignmentMessage).trim() : "";
   const fileItems = Array.isArray(files) ? files : [];
+  const normalizedFileItems = fileItems.map((file, index) => normalizeEmailFileItem(file, index));
+  const textFileLines =
+    normalizedFileItems.length > 0
+      ? normalizedFileItems.map((file) => {
+          const link = file.openUrl || file.downloadUrl;
+          return `- ${file.name}${link ? ` (${link})` : ""}`;
+        })
+      : ["- (no file names provided)"];
   const isDriveDocumentUrl = (value) =>
     /(^https?:\/\/)?([a-z0-9-]+\.)*(drive|docs)\.google\.com(\/|$)/i.test(String(value || "").trim());
-  const attachmentCandidates = fileItems
+  const attachmentCandidates = normalizedFileItems
     .map((file) => ({
-      name: String(file?.name || "").trim() || "Document",
-      url: String(file?.url || "").trim(),
+      name: file.name || "Document",
+      url: file.openUrl || file.downloadUrl,
     }))
     .filter((file) => file.url);
   const driveAttachmentCandidates = attachmentCandidates.filter((file) =>
@@ -680,13 +736,12 @@ export const sendFinalFilesEmail = async ({
   let subject = `DesignDesk-Official: Final files uploaded for ${safeTitle}`;
   let logLabel = "Final files";
   let showFilesSection = isFinalFilesEmail;
+  let fileSectionHeading = "Files delivered";
   let textIntroLines = [
     `${displayDesigner} uploaded final files for "${safeTitle}".`,
     "",
     "Files:",
-    ...(fileItems.length > 0
-      ? fileItems.map((file) => `- ${file.name}${file.url ? ` (${file.url})` : ""}`)
-      : ["- (no file names provided)"]),
+    ...textFileLines,
   ];
 
   switch (email_type) {
@@ -757,7 +812,8 @@ export const sendFinalFilesEmail = async ({
         "Open the request workspace to track progress, comments, and future updates.";
       subject = `Request submitted: ${safeTitle}`;
       logLabel = "Request created";
-      showFilesSection = false;
+      showFilesSection = fileItems.length > 0;
+      fileSectionHeading = "Uploaded assets";
       textIntroLines = [
         `Request submitted: "${safeTitle}".`,
         `${taskDetails?.requesterName || "The requester"} submitted this request.`,
@@ -888,11 +944,11 @@ export const sendFinalFilesEmail = async ({
   }
 
   const fileRows =
-    fileItems.length > 0
-      ? fileItems
+    normalizedFileItems.length > 0
+      ? normalizedFileItems
         .map((file) => {
-          const link = file.url
-            ? `<a href="${file.url}" style="color:${brandColor};text-decoration:none;">Open file</a>`
+          const link = file.openUrl || file.downloadUrl
+            ? `<a href="${file.openUrl || file.downloadUrl}" style="color:${brandColor};text-decoration:none;">Open file</a>`
             : `<span style="color:#6b7280;">Link pending</span>`;
           return `
               <tr>
@@ -1117,7 +1173,7 @@ export const sendFinalFilesEmail = async ({
                     <td style="padding:0 32px 24px;">
                       <div style="background:${brandSoft};border-radius:16px;padding:20px;text-align:left;">
                         <div style="font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
-                          Files delivered
+                          ${fileSectionHeading}
                         </div>
                         <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:12px;">
                           ${fileRows}
@@ -1164,6 +1220,16 @@ export const sendFinalFilesEmail = async ({
         ? [normalizeEnvValue(cc)]
         : [];
 
+    const inlineLogoAttachments = hasLocalLogo
+      ? [
+          {
+            filename: "logo.png",
+            path: localLogoPath,
+            cid: logoCid,
+          },
+        ]
+      : [];
+
     const info = await transporter.sendMail({
       from,
       to,
@@ -1171,15 +1237,7 @@ export const sendFinalFilesEmail = async ({
       subject,
       text: lines.join("\n"),
       html,
-      attachments: hasLocalLogo
-        ? [
-          {
-            filename: "logo.png",
-            path: localLogoPath,
-            cid: logoCid,
-          },
-        ]
-        : [],
+      attachments: inlineLogoAttachments,
     });
     console.log(
       `${logLabel} email sent:`,
