@@ -475,8 +475,8 @@ export default function Login() {
   return (
     <>
       <div className="min-h-screen flex bg-background">
-        {/* Left Panel - Branding */}
-        <div className="hidden lg:flex lg:w-1/2 bg-sidebar relative overflow-hidden items-center justify-center">
+          {/* Left Panel - Branding */}
+          <div className="hidden lg:flex lg:w-1/2 bg-sidebar relative overflow-hidden items-center justify-center">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.22),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.18),_transparent_60%)]" />
           <div className="absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)]">
             <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(148,163,184,0.18)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,0.18)_1px,transparent_1px)] bg-[size:20px_20px] opacity-35" />
@@ -521,7 +521,7 @@ export default function Login() {
           <div className="pointer-events-none absolute inset-x-0 bottom-10 z-10">
             <div className="mx-auto max-w-xl px-12">
               <div className="max-w-md">
-                <div className="login-microcopy-pill pointer-events-auto relative inline-flex select-none overflow-hidden rounded-full bg-[linear-gradient(135deg,rgba(125,211,252,0.3),rgba(129,140,248,0.22),rgba(251,191,204,0.2))] p-[1px] shadow-[0_16px_40px_-32px_rgba(56,189,248,0.5)]">
+                <div className="login-microcopy-pill login-microcopy-pill--dark pointer-events-auto relative inline-flex select-none overflow-hidden rounded-full bg-[linear-gradient(135deg,rgba(125,211,252,0.3),rgba(129,140,248,0.22),rgba(251,191,204,0.2))] p-[1px] shadow-[0_16px_40px_-32px_rgba(56,189,248,0.5)]">
                   <span
                     aria-hidden="true"
                     className="login-microcopy-flare login-microcopy-flare--surface pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_80%_22%,rgba(255,255,255,0.34),transparent_12%),radial-gradient(circle_at_73%_28%,rgba(125,211,252,0.22),transparent_24%),radial-gradient(circle_at_88%_68%,rgba(244,114,182,0.12),transparent_20%)] opacity-95"
