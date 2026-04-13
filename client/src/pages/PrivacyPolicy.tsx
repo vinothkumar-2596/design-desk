@@ -7,6 +7,7 @@ import {
   Bell,
   Database,
   FileText,
+  LifeBuoy,
   Lock,
   Mail,
   ShieldCheck,
@@ -183,26 +184,45 @@ const PrivacyPolicy = () => {
             })}
           </div>
 
-          <section className={legalPageStyles.contactSection}>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-2xl">
-                <h2 className={legalPageStyles.contactTitle}>
-                  Contact
-                </h2>
-                <p className={legalPageStyles.contactBody}>
-                  For technical issues, support requests, or concerns regarding
-                  DesignDesk, please contact the project team.
-                </p>
-              </div>
-              <div className={legalPageStyles.contactCard}>
-                <div className="flex items-center gap-2 font-semibold text-[#1E2A5A] dark:text-foreground">
-                  <Mail className="h-4 w-4" />
-                  designlead@smvec.ac.in
+          <section
+            className={legalPageStyles.contactSection}
+            aria-labelledby="privacy-contact-title"
+          >
+            <div className={legalPageStyles.contactLayout}>
+              <div className={legalPageStyles.contactLead}>
+                <div className={legalPageStyles.contactIcon}>
+                  <LifeBuoy className="h-4 w-4" />
                 </div>
-                <p className={legalPageStyles.contactMeta}>
-                  DesignDesk technical support contact
-                </p>
+                <div className="min-w-0">
+                  <h2
+                    id="privacy-contact-title"
+                    className={legalPageStyles.contactTitle}
+                  >
+                    Contact
+                  </h2>
+                  <p className={legalPageStyles.contactBody}>
+                    For technical issues, support requests, or concerns regarding
+                    DesignDesk, please contact the project team.
+                  </p>
+                </div>
               </div>
+              <a
+                href="mailto:designlead@smvec.ac.in"
+                className={legalPageStyles.contactCard}
+                aria-label="Email designlead@smvec.ac.in for DesignDesk technical support contact"
+              >
+                <span className={legalPageStyles.contactCardIcon} aria-hidden="true">
+                  <Mail className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className={legalPageStyles.contactEmail}>
+                    designlead@smvec.ac.in
+                  </span>
+                  <span className={legalPageStyles.contactMeta}>
+                    DesignDesk technical support contact
+                  </span>
+                </span>
+              </a>
             </div>
           </section>
         </div>

@@ -483,9 +483,9 @@ export default function Login() {
           </div>
           <div className="relative z-10 w-full max-w-xl px-12 text-sidebar-foreground">
             <div className="animate-slide-in-left text-left">
-              <div className="flex items-center gap-3 mb-8">
+              <div className="mb-8 flex items-center gap-3">
                 <div
-                  className="h-12 w-12 rounded-xl flex items-center justify-center p-1"
+                  className="flex h-12 w-12 items-center justify-center rounded-xl p-1"
                   style={{ backgroundColor: 'rgb(21, 30, 60)' }}
                 >
                   <img src="/favicon.png" alt="DesignDesk" className="h-full w-full object-contain" />
@@ -496,7 +496,7 @@ export default function Login() {
                 </div>
               </div>
 
-              <h2 className="text-5xl font-bold mb-4 leading-tight">
+              <h2 className="mb-4 text-5xl font-bold leading-tight">
                 <span className="block whitespace-nowrap text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-slate-300 to-slate-100">
                   Design workflows,
                 </span>
@@ -512,10 +512,48 @@ export default function Login() {
                   </span>
                 </span>
               </h2>
-              <p className="text-lg text-sidebar-foreground/80 mb-8 max-w-md">
+              <p className="mb-8 max-w-md text-lg text-sidebar-foreground/80">
                 A single platform to request,<br />track, and collaborate.
               </p>
+            </div>
+          </div>
 
+          <div className="pointer-events-none absolute inset-x-0 bottom-10 z-10">
+            <div className="mx-auto max-w-xl px-12">
+              <div className="max-w-md">
+                <div className="relative inline-flex overflow-hidden rounded-full bg-[linear-gradient(135deg,rgba(125,211,252,0.3),rgba(129,140,248,0.22),rgba(251,191,204,0.2))] p-[1px] shadow-[0_16px_40px_-32px_rgba(56,189,248,0.5)]">
+                  <span
+                    aria-hidden="true"
+                    className="login-microcopy-flare login-microcopy-flare--surface pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_80%_22%,rgba(255,255,255,0.34),transparent_12%),radial-gradient(circle_at_73%_28%,rgba(125,211,252,0.22),transparent_24%),radial-gradient(circle_at_88%_68%,rgba(244,114,182,0.12),transparent_20%)] opacity-95"
+                  />
+                  <div className="relative inline-flex items-center overflow-hidden rounded-full bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.14),transparent_42%),linear-gradient(135deg,rgba(5,11,28,0.96),rgba(9,17,39,0.92)_55%,rgba(13,20,44,0.94))] px-3 py-1.5 backdrop-blur-md">
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 rounded-full"
+                    >
+                      <span className="login-microcopy-flare login-microcopy-flare--line absolute left-4 top-1 h-px w-20 bg-gradient-to-r from-transparent via-white/24 to-transparent" />
+                      <span className="absolute right-7 top-0.5 h-6.5 w-16 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.22)_0%,rgba(191,219,254,0.14)_34%,transparent_72%)] blur-md" />
+                      <span className="absolute inset-y-[22%] left-[18%] w-12 bg-gradient-to-r from-sky-300/0 via-sky-300/6 to-sky-300/0 blur-md" />
+                      <span className="login-microcopy-flare login-microcopy-flare--sweep absolute -left-2 top-[-35%] h-[165%] w-11 rotate-[22deg] bg-gradient-to-r from-transparent via-white/10 to-transparent blur-md" />
+                      <span className="login-microcopy-flare login-microcopy-flare--orb absolute right-8 top-[20%] h-[58%] w-5.5 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.26)_0%,rgba(147,197,253,0.12)_42%,transparent_78%)] blur-lg" />
+                    </span>
+                    <span className="relative z-10 whitespace-nowrap text-[9.5px] leading-none uppercase tracking-[0.14em]">
+                      <span className="bg-gradient-to-r from-sky-100 via-slate-100 to-sky-200 bg-clip-text font-semibold text-transparent">
+                        Crafted with purpose
+                      </span>{' '}
+                      <span className="bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text font-semibold text-transparent">
+                        by the Design Team
+                      </span>{' '}
+                      <span
+                        className="login-microcopy-heart inline-flex translate-y-[-0.02em] text-[0.82rem] leading-none"
+                        aria-hidden="true"
+                      >
+                        ❤️
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 

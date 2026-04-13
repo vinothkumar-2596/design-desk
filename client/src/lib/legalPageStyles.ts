@@ -32,10 +32,20 @@ export const legalPageStyles = {
   sectionListText: 'min-w-0 leading-6',
   sectionDot: 'mt-[0.6rem] h-2 w-2 rounded-full bg-[#5F7CFF] dark:bg-[#9EB2FF]',
   contactSection:
-    'mt-6 rounded-[26px] border border-[#D7E0F8] bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(239,244,255,0.92))] p-6 dark:border-border dark:bg-background/45 dark:bg-none',
+    'mt-6 rounded-[20px] border border-[#E2E8F0] bg-white px-5 py-4 dark:border-border dark:bg-card',
+  contactLayout:
+    'flex flex-col gap-3.5 md:flex-row md:items-center md:justify-between md:gap-6',
+  contactLead: 'flex min-w-0 flex-1 items-start gap-3 md:items-center',
+  contactIcon:
+    'flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-[#E2E8F0] bg-[#F8FAFC] text-[#334155] dark:border-border dark:bg-muted/50 dark:text-foreground',
   contactCard:
-    'rounded-2xl border border-[#D7E0F8] bg-white/85 px-4 py-3 text-sm dark:border-border dark:bg-card/78',
-  contactTitle: 'text-lg font-semibold text-[#1E2A5A] dark:text-foreground',
-  contactBody: 'mt-2 text-sm leading-6 text-[#5C6E95] dark:text-muted-foreground',
-  contactMeta: 'mt-1 text-[#6B7A99] dark:text-muted-foreground',
+    'flex w-full items-center gap-3 rounded-[14px] border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 py-3 text-left transition-colors hover:bg-[#F3F6FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#CBD5E1] focus-visible:ring-offset-2 dark:border-border dark:bg-muted/35 dark:hover:bg-muted/45 dark:focus-visible:ring-slate-600 md:w-auto md:min-w-[19rem] md:max-w-[20rem]',
+  contactCardIcon:
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[#E2E8F0] bg-white text-[#475569] dark:border-border dark:bg-background dark:text-foreground',
+  contactTitle:
+    'text-[15px] font-semibold tracking-[-0.01em] text-[#0F172A] dark:text-foreground',
+  contactBody:
+    'mt-1.5 max-w-[44rem] text-sm leading-6 text-[#64748B] dark:text-muted-foreground',
+  contactEmail: 'block truncate text-sm font-semibold text-[#0F172A] dark:text-foreground',
+  contactMeta: 'mt-0.5 block text-xs leading-5 text-[#64748B] dark:text-muted-foreground',
 } as const;
