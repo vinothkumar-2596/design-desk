@@ -722,10 +722,73 @@
     text-transform: none;
   }
 
+  .login-microcopy-pill {
+    transition: box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: box-shadow;
+  }
+
+  .login-microcopy-pill:hover {
+    box-shadow:
+      0 18px 36px -28px rgba(56, 189, 248, 0.32),
+      0 0 0 1px rgba(255, 255, 255, 0.03);
+  }
+
+  .login-microcopy-pixels {
+    opacity: 0.58;
+    mix-blend-mode: screen;
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      black 10%,
+      black 90%,
+      transparent 100%
+    );
+    transition: opacity 220ms ease;
+  }
+
+  .login-microcopy-pill:hover .login-microcopy-pixels {
+    opacity: 0.9;
+  }
+
+  .login-microcopy-text-soft,
+  .login-microcopy-text-strong {
+    transition:
+      opacity 220ms ease,
+      filter 220ms ease;
+    will-change: opacity, filter;
+  }
+
+  .login-microcopy-text-soft {
+    opacity: 0.84;
+  }
+
+  .login-microcopy-text-strong {
+    opacity: 0.92;
+  }
+
+  .login-microcopy-pill:hover .login-microcopy-text-soft {
+    filter: brightness(1.06);
+    opacity: 0.92;
+  }
+
+  .login-microcopy-pill:hover .login-microcopy-text-strong {
+    filter: brightness(1.04);
+    opacity: 0.98;
+  }
+
   .login-microcopy-heart {
     transform-origin: center;
-    animation: loginMicrocopyHeartPulse 2.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    opacity: 0.88;
+    transition:
+      opacity 220ms ease,
+      filter 220ms ease;
     will-change: transform, filter, opacity;
+  }
+
+  .login-microcopy-pill:hover .login-microcopy-heart {
+    animation: loginMicrocopyHeartPulse 940ms cubic-bezier(0.22, 1, 0.36, 1) 1;
+    filter: drop-shadow(0 0 8px rgba(251, 113, 133, 0.18));
+    opacity: 0.96;
   }
 
   .login-microcopy-flare--surface {
@@ -734,17 +797,19 @@
   }
 
   .login-microcopy-flare--line {
-    animation: loginMicrocopyLineShimmer 5.8s ease-in-out infinite;
-    will-change: opacity, transform;
-  }
-
-  .login-microcopy-flare--sweep {
-    animation: loginMicrocopyLensSweep 6.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    opacity: 0.18;
+    transform: translateX(-12%);
+    transition:
+      opacity 260ms ease,
+      transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
     will-change: opacity, transform;
   }
 
   .login-microcopy-flare--orb {
     animation: loginMicrocopyOrbPulse 4.8s ease-in-out infinite;
+    transition:
+      opacity 260ms ease,
+      filter 260ms ease;
     will-change: opacity, transform, filter;
   }
 
@@ -2164,25 +2229,6 @@
   }
 }
 
-@keyframes loginMicrocopyLensSweep {
-  0% {
-    opacity: 0;
-    transform: translateX(-28%) rotate(22deg);
-  }
-  14% {
-    opacity: 0.16;
-  }
-  38% {
-    opacity: 0.38;
-    transform: translateX(118%) rotate(22deg);
-  }
-  52%,
-  100% {
-    opacity: 0;
-    transform: translateX(146%) rotate(22deg);
-  }
-}
-
 @keyframes loginMicrocopyOrbPulse {
   0%,
   100% {
@@ -2204,22 +2250,22 @@
     filter: drop-shadow(0 0 0 rgba(251, 191, 204, 0));
     opacity: 0.92;
   }
-  18% {
-    transform: translateY(-0.08em) scale(1.14);
-    filter: drop-shadow(0 0 10px rgba(251, 191, 204, 0.28));
-    opacity: 1;
-  }
-  30% {
-    transform: translateY(-0.02em) scale(1.02);
-    filter: drop-shadow(0 0 4px rgba(251, 191, 204, 0.16));
-    opacity: 0.96;
-  }
-  44% {
-    transform: translateY(-0.06em) scale(1.1);
-    filter: drop-shadow(0 0 8px rgba(251, 191, 204, 0.22));
+  16% {
+    transform: translateY(-0.05em) scale(1.06);
+    filter: drop-shadow(0 0 6px rgba(251, 191, 204, 0.16));
     opacity: 0.98;
   }
-  58% {
+  28% {
+    transform: translateY(-0.02em) scale(1.02);
+    filter: drop-shadow(0 0 3px rgba(251, 191, 204, 0.12));
+    opacity: 0.96;
+  }
+  42% {
+    transform: translateY(-0.04em) scale(1.04);
+    filter: drop-shadow(0 0 5px rgba(251, 191, 204, 0.14));
+    opacity: 0.98;
+  }
+  56% {
     transform: translateY(-0.02em) scale(1);
     filter: drop-shadow(0 0 0 rgba(251, 191, 204, 0));
     opacity: 0.92;
@@ -2231,11 +2277,18 @@
     transition: none;
   }
 
+  .login-microcopy-pill,
+  .login-microcopy-pixels,
+  .login-microcopy-text-soft,
+  .login-microcopy-text-strong {
+    transition: none !important;
+  }
+
   .brief-avatar-float,
   .brief-avatar-float--alt,
+  .login-microcopy-pill,
   .login-microcopy-flare--surface,
   .login-microcopy-flare--line,
-  .login-microcopy-flare--sweep,
   .login-microcopy-flare--orb,
   .login-microcopy-heart,
   .chat-composer-placeholder-icon,

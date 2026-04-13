@@ -521,12 +521,25 @@ export default function Login() {
           <div className="pointer-events-none absolute inset-x-0 bottom-10 z-10">
             <div className="mx-auto max-w-xl px-12">
               <div className="max-w-md">
-                <div className="relative inline-flex overflow-hidden rounded-full bg-[linear-gradient(135deg,rgba(125,211,252,0.3),rgba(129,140,248,0.22),rgba(251,191,204,0.2))] p-[1px] shadow-[0_16px_40px_-32px_rgba(56,189,248,0.5)]">
+                <div className="login-microcopy-pill pointer-events-auto relative inline-flex select-none overflow-hidden rounded-full bg-[linear-gradient(135deg,rgba(125,211,252,0.3),rgba(129,140,248,0.22),rgba(251,191,204,0.2))] p-[1px] shadow-[0_16px_40px_-32px_rgba(56,189,248,0.5)]">
                   <span
                     aria-hidden="true"
                     className="login-microcopy-flare login-microcopy-flare--surface pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_80%_22%,rgba(255,255,255,0.34),transparent_12%),radial-gradient(circle_at_73%_28%,rgba(125,211,252,0.22),transparent_24%),radial-gradient(circle_at_88%_68%,rgba(244,114,182,0.12),transparent_20%)] opacity-95"
                   />
                   <div className="relative inline-flex items-center overflow-hidden rounded-full bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.14),transparent_42%),linear-gradient(135deg,rgba(5,11,28,0.96),rgba(9,17,39,0.92)_55%,rgba(13,20,44,0.94))] px-3 py-1.5 backdrop-blur-md">
+                    <pixel-canvas
+                      aria-hidden="true"
+                      class="login-microcopy-pixels"
+                      data-colors="#dbeafe, #7dd3fc, #fbcfe8"
+                      data-gap="7"
+                      data-no-focus=""
+                      data-speed="36"
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        borderRadius: "9999px",
+                      }}
+                    />
                     <span
                       aria-hidden="true"
                       className="pointer-events-none absolute inset-0 rounded-full"
@@ -534,14 +547,13 @@ export default function Login() {
                       <span className="login-microcopy-flare login-microcopy-flare--line absolute left-4 top-1 h-px w-20 bg-gradient-to-r from-transparent via-white/24 to-transparent" />
                       <span className="absolute right-7 top-0.5 h-6.5 w-16 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.22)_0%,rgba(191,219,254,0.14)_34%,transparent_72%)] blur-md" />
                       <span className="absolute inset-y-[22%] left-[18%] w-12 bg-gradient-to-r from-sky-300/0 via-sky-300/6 to-sky-300/0 blur-md" />
-                      <span className="login-microcopy-flare login-microcopy-flare--sweep absolute -left-2 top-[-35%] h-[165%] w-11 rotate-[22deg] bg-gradient-to-r from-transparent via-white/10 to-transparent blur-md" />
                       <span className="login-microcopy-flare login-microcopy-flare--orb absolute right-8 top-[20%] h-[58%] w-5.5 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.26)_0%,rgba(147,197,253,0.12)_42%,transparent_78%)] blur-lg" />
                     </span>
                     <span className="relative z-10 whitespace-nowrap text-[9.5px] leading-none uppercase tracking-[0.14em]">
-                      <span className="bg-gradient-to-r from-sky-100 via-slate-100 to-sky-200 bg-clip-text font-semibold text-transparent">
+                      <span className="login-microcopy-text-soft bg-gradient-to-r from-sky-100 via-slate-100 to-sky-200 bg-clip-text font-semibold text-transparent">
                         Crafted with purpose
                       </span>{' '}
-                      <span className="bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text font-semibold text-transparent">
+                      <span className="login-microcopy-text-strong bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text font-semibold text-transparent">
                         by the Design Team
                       </span>{' '}
                       <span
