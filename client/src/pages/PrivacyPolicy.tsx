@@ -190,17 +190,17 @@ const PrivacyPolicy = () => {
                   Contact
                 </h2>
                 <p className={legalPageStyles.contactBody}>
-                  For privacy questions, correction requests, or concerns about how data
-                  is handled in DesignDesk, contact the project team.
+                  For technical issues, support requests, or concerns regarding
+                  DesignDesk, please contact the project team.
                 </p>
               </div>
               <div className={legalPageStyles.contactCard}>
                 <div className="flex items-center gap-2 font-semibold text-[#1E2A5A] dark:text-foreground">
                   <Mail className="h-4 w-4" />
-                  design@smvec.ac.in
+                  designlead@smvec.ac.in
                 </div>
                 <p className={legalPageStyles.contactMeta}>
-                  DesignDesk support contact
+                  DesignDesk technical support contact
                 </p>
               </div>
             </div>

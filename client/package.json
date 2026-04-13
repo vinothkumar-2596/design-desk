@@ -2,6 +2,7 @@
     "name": "@designhub/client",
     "private": true,
     "version": "0.1.0",
+    "author": "Vinothkumar S (Sr. UI/UX Designer)",
     "type": "module",
     "scripts": {
         "dev": "vite",
