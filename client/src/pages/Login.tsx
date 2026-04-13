@@ -556,11 +556,10 @@ export default function Login() {
                       <span className="login-microcopy-text-strong bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text font-semibold text-transparent">
                         by the Design Team
                       </span>{' '}
-                      <span
-                        className="login-microcopy-heart inline-flex translate-y-[-0.02em] text-[0.82rem] leading-none"
-                        aria-hidden="true"
-                      >
-                        ❤️
+                      <span className="login-microcopy-heart-zone" aria-hidden="true">
+                        <span className="login-microcopy-heart inline-flex text-[0.82rem] leading-none">
+                          ❤️
+                        </span>
                       </span>
                     </span>
                   </div>
