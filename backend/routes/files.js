@@ -534,6 +534,18 @@ router.post("/metadata", async (req, res) => {
     });
   } catch (error) {
     console.error("Drive metadata lookup failed:", error?.message || error);
+    if (isDriveAuthFailure(error)) {
+      return res.status(500).json({
+        error:
+          "Google Drive authentication failed. Reconnect Drive and try again.",
+      });
+    }
+    if (isDriveParentPermissionError(error)) {
+      return res.status(500).json({
+        error:
+          "This Drive item is not accessible. Reconnect Drive and ensure the file or folder is shared with the connected account.",
+      });
+    }
     res.status(500).json({ error: "Failed to load file metadata." });
   }
 });
@@ -590,6 +602,18 @@ router.post("/folder-preview", async (req, res) => {
     });
   } catch (error) {
     console.error("Drive folder preview lookup failed:", error?.message || error);
+    if (isDriveAuthFailure(error)) {
+      return res.status(500).json({
+        error:
+          "Google Drive authentication failed. Reconnect Drive and try loading the folder preview again.",
+      });
+    }
+    if (isDriveParentPermissionError(error)) {
+      return res.status(500).json({
+        error:
+          "This folder is not accessible. Reconnect Drive and ensure the folder is shared with the connected account.",
+      });
+    }
     res.status(500).json({ error: "Failed to load folder preview." });
   }
 });
