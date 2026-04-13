@@ -9551,7 +9551,7 @@ function TaskDetailScreen() {
                       className={cn(
                         'relative z-[1] flex h-8 w-8 items-center justify-center rounded-full border transition-all duration-300',
                         isComplete
-                          ? 'border-[#A9E2C8] bg-[#E8FFF3] text-[#169B58] shadow-[0_0_12px_rgba(71,214,154,0.12)]'
+                          ? 'border-[#A9E2C8] bg-[#E8FFF3] text-[#169B58] shadow-[0_0_12px_rgba(71,214,154,0.12)] dark:border-[#4E6FAF]/70 dark:bg-[#12264E]/92 dark:text-[#A9C8FF] dark:shadow-none'
                           : isCurrent
                             ? 'border-[#E2ECFF] bg-[linear-gradient(135deg,#FFFFFF_0%,#F4F9FF_46%,#DDEBFF_100%)] text-[#335BB6] shadow-[0_0_0_4px_rgba(191,214,255,0.2),0_10px_24px_-14px_rgba(120,149,255,0.46)]'
                             : 'border-white/16 bg-[#20397E]/60 text-white/72'
@@ -9560,7 +9560,11 @@ function TaskDetailScreen() {
                       {isCurrent ? (
                         <span className="pointer-events-none absolute inset-[-4px] rounded-full border border-[#C6DBFF]/55" />
                       ) : null}
-                      {isComplete ? <Check className="h-3.5 w-3.5" /> : <span className="text-[10px] font-semibold">{index + 1}</span>}
+                      {isComplete ? (
+                        <Check className="h-3.5 w-3.5 text-[#169B58] dark:text-[#A9C8FF]" />
+                      ) : (
+                        <span className="text-[10px] font-semibold">{index + 1}</span>
+                      )}
                     </span>
                     <span
                       className={cn(
@@ -12885,9 +12889,9 @@ function TaskDetailScreen() {
                       <div className="relative flex justify-center">
                         <span
                           className={cn(
-                            'relative z-[1] mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition-colors',
-                            isPast
-                              ? 'border-[#C9DBFF] bg-[linear-gradient(135deg,#FBFDFF_0%,#EEF5FF_48%,#E1ECFF_100%)] text-[#4D6BC4] dark:border-[#5A79BF]/45 dark:bg-[#1A2B52]/55 dark:text-[#D9E5FF]'
+                        'relative z-[1] mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold transition-colors',
+                        isPast
+                              ? 'border-[#C9DBFF] bg-[linear-gradient(135deg,#FBFDFF_0%,#EEF5FF_48%,#E1ECFF_100%)] text-[#4D6BC4] dark:border-[#5A79BF]/60 dark:bg-[#12264E]/88 dark:text-[#A9C8FF]'
                             : isCurrent
                                 ? 'border-[#3657C9] bg-[#3657C9] text-white shadow-[0_0_0_4px_rgba(54,87,201,0.12)] motion-safe:animate-[trackingNodePulse_1.9s_ease-in-out_infinite] dark:border-[#6C8DFF] dark:bg-[#4E6FE0] dark:shadow-[0_0_0_4px_rgba(108,141,255,0.18)]'
                                 : 'border-[#D7E3FF] bg-white text-[#7A8EBA] dark:border-slate-600/70 dark:bg-slate-900 dark:text-slate-300'
@@ -12899,7 +12903,9 @@ function TaskDetailScreen() {
                           {isCurrent ? (
                             <span className="pointer-events-none absolute inset-[-2px] rounded-full border border-white/40 dark:border-white/20" />
                           ) : null}
-                          <span className="relative z-[1]">{isPast ? <Check className="h-4 w-4" /> : index + 1}</span>
+                          <span className="relative z-[1]">
+                            {isPast ? <Check className="h-4 w-4 text-[#4D6BC4] dark:text-[#A9C8FF]" /> : index + 1}
+                          </span>
                         </span>
                         {index !== TASK_STATUS_STEPS.length - 1 && (
                           <span
