@@ -765,20 +765,6 @@ type FileLinkLike = {
 type UploadBrowserFile = File & {
   webkitRelativePath?: string;
 };
-type DirectoryPickerFileHandle = {
-  kind: 'file';
-  name: string;
-  getFile?: () => Promise<File>;
-};
-type DirectoryPickerHandle = DirectoryPickerFileHandle | DirectoryPickerDirectoryHandle;
-type DirectoryPickerDirectoryHandle = {
-  kind: 'directory';
-  name: string;
-  values?: () => AsyncIterable<DirectoryPickerHandle>;
-};
-type WindowWithDirectoryPicker = Window & {
-  showDirectoryPicker?: () => Promise<DirectoryPickerDirectoryHandle>;
-};
 type DragDropFileSystemEntry = {
   isFile?: boolean;
   isDirectory?: boolean;
@@ -873,6 +859,8 @@ const fileActionButtonClass =
   'icon-action-press inline-flex shrink-0 items-center justify-center h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-sidebar-border/70 dark:bg-sidebar-accent/80 dark:text-sidebar-foreground/85 dark:hover:border-sidebar-border dark:hover:bg-sidebar-accent dark:hover:text-sidebar-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-sidebar-border/70 dark:disabled:bg-sidebar-accent/80 dark:disabled:text-sidebar-foreground/55';
 const fileGlassPillButtonClass =
   'h-8 rounded-lg border border-[#D3E1FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/78 to-[#E8F1FF]/88 px-2.5 text-[#223467] shadow-none transition-all duration-150 ease-out supports-[backdrop-filter]:bg-[#EEF4FF]/62 backdrop-blur-md hover:border-[#D3E1FF] hover:bg-[#EEF4FF]/62 hover:text-[#223467] hover:shadow-none active:translate-y-[1px] active:scale-[0.98] dark:border-slate-600/70 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600/70 dark:hover:bg-slate-900/70 dark:hover:text-slate-100';
+const darkGlassPillButtonClass =
+  'dark:rounded-full dark:border-white/10 dark:bg-white/[0.04] dark:[background-image:none] dark:text-slate-100 dark:shadow-[0_18px_42px_-32px_rgba(3,7,18,0.92)] dark:backdrop-blur-xl dark:hover:border-white/15 dark:hover:bg-white/[0.08] dark:hover:text-white dark:disabled:border-white/10 dark:disabled:bg-white/[0.03] dark:disabled:text-slate-500';
 const fileGlassIconButtonClass =
   'inline-flex shrink-0 items-center justify-center h-8 w-8 rounded-lg border border-[#E1E9FF] bg-[#F5F8FF] text-[#6B7A99] shadow-none transition-colors duration-150 ease-out hover:border-[#C8D7FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] focus-visible:ring-2 focus-visible:ring-primary/25 active:translate-y-[1px] active:scale-[0.94] disabled:opacity-100 disabled:border-[#DCE6FF] disabled:bg-[#F5F8FF] disabled:text-[#A8B5D1] dark:border-border dark:bg-muted dark:text-muted-foreground dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-foreground dark:focus-visible:ring-primary/35 dark:disabled:border-border dark:disabled:bg-muted dark:disabled:text-muted-foreground/65';
 const badgeGlassClass =
@@ -889,7 +877,10 @@ const shouldPromptDriveReconnect = (errorMessage?: string) => {
   return (
     normalized.includes('drive oauth not connected') ||
     normalized.includes('must be set for oauth') ||
-    normalized.includes('missing oauth code')
+    normalized.includes('missing oauth code') ||
+    normalized.includes('google drive authentication failed') ||
+    normalized.includes('invalid credentials') ||
+    normalized.includes('token has been expired or revoked')
   );
 };
 
@@ -913,6 +904,9 @@ type DriveFolderPreviewPayload = {
 };
 
 const driveFolderPreviewCache = new Map<string, DriveFolderPreviewPayload>();
+const driveFolderPreviewPendingCache = new Map<string, Promise<DriveFolderPreviewPayload>>();
+const driveFolderPreviewImageCache = new Map<string, 'ready' | 'error'>();
+const driveFolderPreviewImagePendingCache = new Map<string, Promise<void>>();
 
 const buildDriveFolderLink = (folderId?: string) => {
   const normalizedId = String(folderId || '').trim();
@@ -924,6 +918,16 @@ const buildDriveThumbnailUrl = (fileId?: string, size = 'w320-h320') => {
   const normalizedId = String(fileId || '').trim();
   if (!normalizedId) return '';
   return `https://drive.google.com/thumbnail?id=${encodeURIComponent(normalizedId)}&sz=${size}`;
+};
+
+const normalizeGoogleDriveUrl = (value?: string) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^(?:www\.)?(?:drive|docs)\.google\.com\//i.test(trimmed)) {
+    return `https://${trimmed.replace(/^\/+/, '')}`;
+  }
+  return trimmed;
 };
 
 const attachRelativeUploadPath = (file: File, relativePath?: string) => {
@@ -939,40 +943,6 @@ const attachRelativeUploadPath = (file: File, relativePath?: string) => {
     uploadFile.webkitRelativePath = normalizedPath;
   }
   return uploadFile;
-};
-
-const collectDirectoryPickerFiles = async (
-  directoryHandle: DirectoryPickerDirectoryHandle,
-  parentPath = ''
-): Promise<UploadBrowserFile[]> => {
-  const handleName = String(directoryHandle.name || '').trim();
-  const currentPath = [parentPath, handleName].filter(Boolean).join('/');
-  if (typeof directoryHandle.values !== 'function') return [];
-
-  const collected: UploadBrowserFile[] = [];
-  for await (const handle of directoryHandle.values()) {
-    if (!handle) continue;
-    const childName = String(handle.name || '').trim();
-    if (!childName) continue;
-
-    if (handle.kind === 'file' && typeof handle.getFile === 'function') {
-      try {
-        const file = await handle.getFile();
-        collected.push(
-          attachRelativeUploadPath(file, [currentPath, childName].filter(Boolean).join('/'))
-        );
-      } catch {
-        continue;
-      }
-      continue;
-    }
-
-    if (handle.kind === 'directory') {
-      collected.push(...(await collectDirectoryPickerFiles(handle, currentPath)));
-    }
-  }
-
-  return collected;
 };
 
 const getUploadRelativeFolderPath = (file: File) => {
@@ -1085,14 +1055,212 @@ const formatFolderPreviewFileSize = (bytes?: number) => {
   return `${(normalized / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const getDriveFolderPreviewItemUrl = (item: DriveFolderPreviewItem) =>
+  String(item.thumbnailUrl || '').trim() ||
+  (item.isFolder || !isImageMimeType(item.mimeType) ? '' : buildDriveThumbnailUrl(item.id));
+
+const preloadDriveFolderPreviewImage = (value?: string) => {
+  const url = String(value || '').trim();
+  if (!url) return Promise.resolve();
+
+  const cachedStatus = driveFolderPreviewImageCache.get(url);
+  if (cachedStatus === 'ready') return Promise.resolve();
+  if (cachedStatus === 'error') {
+    return Promise.reject(new Error('Preview image unavailable.'));
+  }
+
+  const pending = driveFolderPreviewImagePendingCache.get(url);
+  if (pending) return pending;
+
+  if (typeof window === 'undefined' || typeof Image === 'undefined') {
+    return Promise.resolve();
+  }
+
+  const request = new Promise<void>((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.referrerPolicy = 'no-referrer';
+    image.onload = () => {
+      driveFolderPreviewImageCache.set(url, 'ready');
+      resolve();
+    };
+    image.onerror = () => {
+      driveFolderPreviewImageCache.set(url, 'error');
+      reject(new Error('Preview image unavailable.'));
+    };
+    image.src = url;
+  }).finally(() => {
+    driveFolderPreviewImagePendingCache.delete(url);
+  });
+
+  driveFolderPreviewImagePendingCache.set(url, request);
+  return request;
+};
+
+function DriveFolderPreviewVisual({
+  item,
+  previewUrl,
+  metaLabel,
+}: {
+  item: DriveFolderPreviewItem;
+  previewUrl: string;
+  metaLabel: string;
+}) {
+  const normalizedPreviewUrl = String(previewUrl || '').trim();
+  const [loadState, setLoadState] = useState<'fallback' | 'loading' | 'ready' | 'error'>(() => {
+    if (!normalizedPreviewUrl) return 'fallback';
+    const cachedStatus = driveFolderPreviewImageCache.get(normalizedPreviewUrl);
+    if (cachedStatus === 'ready') return 'ready';
+    if (cachedStatus === 'error') return 'error';
+    return 'loading';
+  });
+
+  useEffect(() => {
+    if (!normalizedPreviewUrl) {
+      setLoadState('fallback');
+      return;
+    }
+
+    const cachedStatus = driveFolderPreviewImageCache.get(normalizedPreviewUrl);
+    if (cachedStatus === 'ready') {
+      setLoadState('ready');
+      return;
+    }
+    if (cachedStatus === 'error') {
+      setLoadState('error');
+      return;
+    }
+
+    let cancelled = false;
+    setLoadState('loading');
+    preloadDriveFolderPreviewImage(normalizedPreviewUrl)
+      .then(() => {
+        if (!cancelled) {
+          setLoadState('ready');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadState('error');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedPreviewUrl]);
+
+  const showPreview = Boolean(normalizedPreviewUrl) && loadState === 'ready';
+  const showFallback = !showPreview;
+
+  return (
+    <div className="relative aspect-square overflow-hidden rounded-lg border border-[#D9E6FF] bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.55),_transparent_58%),linear-gradient(160deg,_rgba(245,248,255,0.96),_rgba(225,235,255,0.82))] dark:border-border dark:bg-[linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.82))]">
+      {showFallback ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-1 text-center">
+            {item.isFolder ? (
+              <img
+                src="/icons/drive-folder.svg"
+                alt=""
+                aria-hidden="true"
+                className="h-8 w-8 object-contain"
+              />
+            ) : (
+              <img
+                src="/google-drive.ico"
+                alt=""
+                aria-hidden="true"
+                className="h-7 w-7 object-contain opacity-85"
+              />
+            )}
+            <span className="px-2 text-[10px] font-medium text-[#536482] dark:text-slate-200">
+              {metaLabel}
+            </span>
+            {loadState === 'loading' && normalizedPreviewUrl ? (
+              <Loader2 className="h-3 w-3 animate-spin text-[#4C63B7] dark:text-slate-200" />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {showPreview ? (
+        <img
+          src={normalizedPreviewUrl}
+          alt={item.name}
+          className="relative z-10 h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+          loading="eager"
+          fetchPriority="high"
+          referrerPolicy="no-referrer"
+          onError={() => {
+            driveFolderPreviewImageCache.set(normalizedPreviewUrl, 'error');
+            setLoadState('error');
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+const fetchDriveFolderPreview = async (folderId: string, apiUrl?: string) => {
+  const normalizedFolderId = String(folderId || '').trim();
+  if (!normalizedFolderId) {
+    throw new Error('Folder link is missing.');
+  }
+
+  const cached = driveFolderPreviewCache.get(normalizedFolderId);
+  if (cached) return cached;
+
+  if (!apiUrl) {
+    throw new Error('Backend is required for folder preview.');
+  }
+
+  const pending = driveFolderPreviewPendingCache.get(normalizedFolderId);
+  if (pending) return pending;
+
+  const request = authFetch(`${apiUrl}/api/files/folder-preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folderId: normalizedFolderId }),
+  })
+    .then(async (response) => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load folder preview.');
+      }
+      const payload = data as DriveFolderPreviewPayload;
+      driveFolderPreviewCache.set(normalizedFolderId, payload);
+      payload.items.slice(0, 12).forEach((item) => {
+        const previewUrl = getDriveFolderPreviewItemUrl(item);
+        if (previewUrl) {
+          void preloadDriveFolderPreviewImage(previewUrl);
+        }
+      });
+      return payload;
+    })
+    .finally(() => {
+      driveFolderPreviewPendingCache.delete(normalizedFolderId);
+    });
+
+  driveFolderPreviewPendingCache.set(normalizedFolderId, request);
+  return request;
+};
+
+const prefetchDriveFolderPreview = (folderId: string, apiUrl?: string) => {
+  void fetchDriveFolderPreview(folderId, apiUrl).catch(() => {});
+};
+
 function DriveFolderHoverPreview({
   folderId,
   apiUrl,
+  depth = 0,
 }: {
   folderId: string;
   apiUrl?: string;
+  depth?: number;
 }) {
   const normalizedFolderId = String(folderId || '').trim();
+  const isNestedPreview = depth > 0;
+  const previewGridClass = isNestedPreview ? 'grid-cols-2' : 'grid-cols-3';
+  const skeletonCount = isNestedPreview ? 4 : 6;
   const [previewState, setPreviewState] = useState<{
     status: 'idle' | 'loading' | 'ready' | 'error';
     data: DriveFolderPreviewPayload | null;
@@ -1124,21 +1292,9 @@ function DriveFolderHoverPreview({
     let cancelled = false;
     setPreviewState({ status: 'loading', data: null, error: '' });
 
-    authFetch(`${apiUrl}/api/files/folder-preview`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folderId: normalizedFolderId }),
-    })
-      .then(async (response) => {
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(data?.error || 'Failed to load folder preview.');
-        }
-        return data as DriveFolderPreviewPayload;
-      })
+    fetchDriveFolderPreview(normalizedFolderId, apiUrl)
       .then((data) => {
         if (cancelled) return;
-        driveFolderPreviewCache.set(normalizedFolderId, data);
         setPreviewState({ status: 'ready', data, error: '' });
       })
       .catch((error) => {
@@ -1155,6 +1311,24 @@ function DriveFolderHoverPreview({
     };
   }, [apiUrl, normalizedFolderId]);
 
+  useEffect(() => {
+    if (!apiUrl || depth > 0 || previewState.status !== 'ready') return;
+    const folderItems = (previewState.data?.items || [])
+      .filter((item) => item.isFolder && item.id && item.id !== normalizedFolderId)
+      .slice(0, 6);
+    folderItems.forEach((item) => prefetchDriveFolderPreview(item.id, apiUrl));
+  }, [apiUrl, depth, normalizedFolderId, previewState.data, previewState.status]);
+
+  useEffect(() => {
+    if (previewState.status !== 'ready') return;
+    (previewState.data?.items || []).slice(0, 12).forEach((item) => {
+      const previewUrl = getDriveFolderPreviewItemUrl(item);
+      if (previewUrl) {
+        void preloadDriveFolderPreviewImage(previewUrl);
+      }
+    });
+  }, [previewState.data, previewState.status]);
+
   if (previewState.status === 'loading' || previewState.status === 'idle') {
     return (
       <div className="rounded-xl border border-[#D9E6FF] bg-white/70 p-3 dark:border-border dark:bg-muted/20">
@@ -1167,8 +1341,8 @@ function DriveFolderHoverPreview({
           </div>
           <Loader2 className="h-4 w-4 animate-spin text-[#3D5A9E] dark:text-slate-200" />
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {Array.from({ length: 6 }).map((_, index) => (
+        <div className={cn('grid gap-2', previewGridClass)}>
+          {Array.from({ length: skeletonCount }).map((_, index) => (
             <div key={`folder-preview-skeleton-${index}`} className="space-y-2">
               <div className="aspect-square rounded-lg bg-[#EEF4FF] dark:bg-white/10" />
               <div className="h-3 rounded bg-[#EEF4FF] dark:bg-white/10" />
@@ -1180,11 +1354,46 @@ function DriveFolderHoverPreview({
   }
 
   if (previewState.status === 'error') {
+    const folderHref = buildDriveFolderLink(normalizedFolderId);
+    const shouldReconnect = shouldPromptDriveReconnect(previewState.error);
     return (
       <div className="rounded-xl border border-[#F0D4D4] bg-[#FFF7F7] p-4 dark:border-red-500/35 dark:bg-red-950/15">
         <p className="text-sm font-medium text-[#8E3A3A] dark:text-red-200">
           {previewState.error}
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {shouldReconnect ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={async () => {
+                try {
+                  await openDriveReconnectWindow();
+                } catch (error) {
+                  const message =
+                    error instanceof Error && error.message
+                      ? error.message
+                      : 'Failed to get Drive reconnect URL.';
+                  toast.error('Drive reconnect failed', { description: message });
+                }
+              }}
+              className="h-8 rounded-lg border-[#E2B4B4] bg-white px-3 text-xs font-semibold text-[#8E3A3A] hover:bg-[#FFF1F1] dark:border-red-400/40 dark:bg-red-950/20 dark:text-red-100 dark:hover:bg-red-950/30"
+            >
+              Reconnect Drive
+            </Button>
+          ) : null}
+          {folderHref ? (
+            <a
+              href={folderHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#E2B4B4] bg-white px-3 text-xs font-semibold text-[#8E3A3A] transition-colors hover:bg-[#FFF1F1] dark:border-red-400/40 dark:bg-red-950/20 dark:text-red-100 dark:hover:bg-red-950/30"
+            >
+              Open folder
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -1214,65 +1423,75 @@ function DriveFolderHoverPreview({
           </p>
         </div>
       </div>
-      <div className="max-h-[16rem] overflow-y-auto pr-1 scrollbar-thin">
-        <div className="grid grid-cols-3 gap-2">
+      <div className={cn('overflow-y-auto pr-1 scrollbar-thin', isNestedPreview ? 'max-h-[13rem]' : 'max-h-[16rem]')}>
+        <div className={cn('grid gap-2', previewGridClass)}>
           {items.map((item) => {
             const href =
               String(item.webViewLink || '').trim() ||
               (item.isFolder ? buildDriveFolderLink(item.id) : '');
-            const previewUrl = String(item.thumbnailUrl || '').trim()
-              || (item.isFolder || !isImageMimeType(item.mimeType) ? '' : buildDriveThumbnailUrl(item.id));
-            const hasVisualPreview = previewUrl !== '';
+            const previewUrl = getDriveFolderPreviewItemUrl(item);
             const metaLabel = item.isFolder
               ? 'Folder'
               : formatFolderPreviewFileSize(item.size) || 'Drive file';
-
-            return (
-              <a
-                key={item.id}
-                href={href || undefined}
-                target={href ? '_blank' : undefined}
-                rel={href ? 'noreferrer' : undefined}
-                className="group block"
-              >
-                <div className="relative aspect-square overflow-hidden rounded-lg border border-[#D9E6FF] bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.55),_transparent_58%),linear-gradient(160deg,_rgba(245,248,255,0.96),_rgba(225,235,255,0.82))] dark:border-border dark:bg-[linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.82))]">
-                  {!hasVisualPreview && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="flex flex-col items-center gap-1 text-center">
-                        {item.isFolder ? (
-                          <Folder className="h-8 w-8 text-[#D5911C] dark:text-amber-300" />
-                        ) : (
-                          <img
-                            src="/google-drive.ico"
-                            alt=""
-                            aria-hidden="true"
-                            className="h-7 w-7 object-contain opacity-85"
-                          />
-                        )}
-                        <span className="px-2 text-[10px] font-medium text-[#536482] dark:text-slate-200">
-                          {metaLabel}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  {previewUrl && (
-                    <img
-                      src={previewUrl}
-                      alt={item.name}
-                      className="relative z-10 h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-                      loading="lazy"
-                      referrerPolicy="strict-origin-when-cross-origin"
-                      onError={(event) => {
-                        event.currentTarget.style.display = 'none';
-                      }}
-                    />
-                  )}
-                </div>
+            const tile = (
+              <>
+                <DriveFolderPreviewVisual
+                  item={item}
+                  previewUrl={previewUrl}
+                  metaLabel={metaLabel}
+                />
                 <p className="mt-1 truncate text-[10px] font-medium text-foreground">
                   {item.name}
                 </p>
                 <p className="truncate text-[10px] text-muted-foreground">{metaLabel}</p>
-              </a>
+              </>
+            );
+
+            if (!item.isFolder) {
+              return (
+                <a
+                  key={item.id}
+                  href={href || undefined}
+                  target={href ? '_blank' : undefined}
+                  rel={href ? 'noreferrer' : undefined}
+                  className="group block"
+                >
+                  {tile}
+                </a>
+              );
+            }
+
+            return (
+              <HoverCard key={item.id} openDelay={80} closeDelay={100}>
+                <HoverCardTrigger asChild>
+                  <a
+                    href={href || undefined}
+                    target={href ? '_blank' : undefined}
+                    rel={href ? 'noreferrer' : undefined}
+                    className="group block"
+                    onMouseEnter={() => prefetchDriveFolderPreview(item.id, apiUrl)}
+                    onFocus={() => prefetchDriveFolderPreview(item.id, apiUrl)}
+                  >
+                    {tile}
+                  </a>
+                </HoverCardTrigger>
+                <HoverCardContent
+                  side="right"
+                  align="start"
+                  sideOffset={10}
+                  className="w-[20rem] max-w-[calc(100vw-2rem)] border-[#D9E6FF] bg-white/95 p-3 dark:border-border dark:bg-card"
+                >
+                  <div className="space-y-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-foreground">{item.name}</p>
+                      <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                        Subfolder Preview
+                      </p>
+                    </div>
+                    <DriveFolderHoverPreview folderId={item.id} apiUrl={apiUrl} depth={depth + 1} />
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
             );
           })}
         </div>
@@ -1518,6 +1737,7 @@ function TaskDetailScreen() {
   const replyAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const workingUploadInputRef = useRef<HTMLInputElement | null>(null);
   const finalUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const finalFolderUploadInputRef = useRef<HTMLInputElement | null>(null);
   const replaceFinalFileInputRef = useRef<HTMLInputElement | null>(null);
   const commentSearchInputRef = useRef<HTMLInputElement | null>(null);
   const commentComposerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -4673,8 +4893,9 @@ function TaskDetailScreen() {
     return ext ? ext.toUpperCase() : 'FILE';
   };
   const getDriveLinkMeta = (url: string) => {
+    const normalizedUrl = normalizeGoogleDriveUrl(url);
     try {
-      const parsed = new URL(url);
+      const parsed = new URL(normalizedUrl);
       const host = parsed.hostname.toLowerCase();
       const isGoogleDriveHost =
         host === 'drive.google.com' ||
@@ -4685,14 +4906,19 @@ function TaskDetailScreen() {
         return { isGoogleDrive: false as const, itemType: 'external' as const, itemId: '' };
       }
 
-      const path = parsed.pathname;
-      const queryId = parsed.searchParams.get('id');
-      if (queryId) {
-        return { isGoogleDrive: true as const, itemType: 'file' as const, itemId: queryId };
-      }
-      const folderMatch = path.match(/\/(?:drive\/(?:u\/\d+\/)?folders|folders)\/([^/?#]+)/);
+      const path = decodeURIComponent(parsed.pathname || '');
+      const folderMatch = path.match(
+        /\/(?:drive\/(?:u\/\d+\/)?folders|drive\/mobile\/folders|folders|folderview)\/([^/?#]+)/i
+      );
       if (folderMatch?.[1]) {
         return { isGoogleDrive: true as const, itemType: 'folder' as const, itemId: folderMatch[1] };
+      }
+      const queryId = parsed.searchParams.get('id');
+      if (queryId && /\/folderview$/i.test(path)) {
+        return { isGoogleDrive: true as const, itemType: 'folder' as const, itemId: queryId };
+      }
+      if (queryId) {
+        return { isGoogleDrive: true as const, itemType: 'file' as const, itemId: queryId };
       }
       const fileMatch = path.match(/\/file(?:\/u\/\d+)?\/d\/([^/?#]+)/);
       if (fileMatch?.[1]) {
@@ -4720,7 +4946,7 @@ function TaskDetailScreen() {
     }
   };
   const validateFinalGoogleDriveLink = (url: string) => {
-    const trimmedUrl = String(url || '').trim();
+    const trimmedUrl = normalizeGoogleDriveUrl(url);
     if (!trimmedUrl) {
       return {
         valid: false as const,
@@ -4814,7 +5040,7 @@ function TaskDetailScreen() {
     return `${titledBase}.${ext.toLowerCase()}`;
   };
   const getDriveFileId = (value?: string) => {
-    const source = String(value || '').trim();
+    const source = normalizeGoogleDriveUrl(value);
     if (!source) return '';
     if (/^[A-Za-z0-9_-]{10,}$/.test(source)) return source;
 
@@ -4899,7 +5125,7 @@ function TaskDetailScreen() {
     return `https://drive.google.com/uc?id=${encodeURIComponent(normalizedId)}&export=download`;
   };
   const buildDriveHoverEmbedUrl = (url: string) => {
-    const trimmedUrl = String(url || '').trim();
+    const trimmedUrl = normalizeGoogleDriveUrl(url);
     if (!trimmedUrl) return '';
     const driveMeta = getDriveLinkMeta(trimmedUrl);
     const itemId = driveMeta.itemId || getDriveFileId(trimmedUrl);
@@ -4923,11 +5149,11 @@ function TaskDetailScreen() {
     }
   };
   const resolveStoredFileUrl = (file?: FileLinkLike | null) => {
-    const rawUrl = String(file?.url || '').trim();
+    const rawUrl = normalizeGoogleDriveUrl(file?.url);
     if (rawUrl) return rawUrl;
-    const webViewLink = String(file?.webViewLink || '').trim();
+    const webViewLink = normalizeGoogleDriveUrl(file?.webViewLink);
     if (webViewLink) return webViewLink;
-    const webContentLink = String(file?.webContentLink || '').trim();
+    const webContentLink = normalizeGoogleDriveUrl(file?.webContentLink);
     if (webContentLink) return webContentLink;
     const driveId = String(file?.driveId || '').trim();
     if (driveId) return buildDriveViewUrl(driveId);
@@ -7518,25 +7744,19 @@ function TaskDetailScreen() {
     if (isUploadingFinal) return;
     clearFinalUploadMenuCloseTimeout();
     setIsFinalUploadMenuOpen(false);
-
-    const directoryPicker = (window as WindowWithDirectoryPicker).showDirectoryPicker;
-    if (typeof directoryPicker !== 'function') {
-      toast.error('Folder picker is not supported here. Drag a folder into Final Delivery instead.');
-      return;
+    if (finalFolderUploadInputRef.current) {
+      finalFolderUploadInputRef.current.value = '';
     }
+    finalFolderUploadInputRef.current?.click();
+  };
 
+  const handleFinalFolderUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = event.target.files ? Array.from(event.target.files) : [];
     try {
-      const directoryHandle = await directoryPicker.call(window);
-      const selectedFiles = await collectDirectoryPickerFiles(directoryHandle);
-      if (selectedFiles.length === 0) {
-        toast.message('Selected folder is empty.');
-        return;
-      }
+      if (selectedFiles.length === 0) return;
       await uploadFinalFiles(selectedFiles);
-    } catch (error) {
-      const maybeAbortError = error as { name?: string };
-      if (maybeAbortError?.name === 'AbortError') return;
-      toast.error('Folder upload could not start. Drag the folder into Final Delivery and retry.');
+    } finally {
+      event.target.value = '';
     }
   };
 
@@ -7703,7 +7923,7 @@ function TaskDetailScreen() {
 
     for (let index = 0; index < nextDrafts.length; index += 1) {
       const draft = nextDrafts[index];
-      const trimmedUrl = draft.url.trim();
+      const trimmedUrl = normalizeGoogleDriveUrl(draft.url);
       const trimmedName = draft.name.trim();
 
       if (!trimmedUrl && !trimmedName) {
@@ -7773,7 +7993,7 @@ function TaskDetailScreen() {
   };
 
   const getFinalLinkDraftPreviewTarget = (draft: FinalLinkDraft): OutputDisplayFile => {
-    const trimmedUrl = draft.url.trim();
+    const trimmedUrl = normalizeGoogleDriveUrl(draft.url);
     const driveMeta = getDriveLinkMeta(trimmedUrl);
     const driveId = driveMeta.itemId || getDriveFileId(trimmedUrl);
     const sanitizedName = sanitizeLinkDisplayName(draft.name, trimmedUrl || 'Google Drive');
@@ -11583,6 +11803,21 @@ function TaskDetailScreen() {
                   />
                   <input
                     type="file"
+                    multiple
+                    onChange={handleFinalFolderUpload}
+                    ref={(node) => {
+                      finalFolderUploadInputRef.current = node;
+                      if (node) {
+                        node.setAttribute('webkitdirectory', '');
+                        node.setAttribute('directory', '');
+                      }
+                    }}
+                    className="hidden"
+                    id="final-folder-upload"
+                    disabled={isUploadingFinal}
+                  />
+                  <input
+                    type="file"
                     onChange={handleReplaceFinalFileUpload}
                     ref={replaceFinalFileInputRef}
                     className="hidden"
@@ -11985,9 +12220,12 @@ function TaskDetailScreen() {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="ghost"
                             onClick={handleAddFinalLinkDraft}
-                            className="h-9 shrink-0 rounded-[14px] border-[#D0DCFF]/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(243,247,255,0.96))] px-3.5 text-[11.5px] font-semibold leading-none text-[#3D5A9E] shadow-none transition-all duration-150 hover:border-[#C6D5FF]/85 hover:bg-[#EEF3FF] hover:text-[#27427E] dark:border-border/70 dark:bg-muted/45 dark:text-slate-200 dark:hover:border-border dark:hover:bg-muted/80 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-55"
+                            className={cn(
+                              'h-9 shrink-0 rounded-[14px] border border-[#D0DCFF]/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(243,247,255,0.96))] px-3.5 text-[11.5px] font-semibold leading-none text-[#3D5A9E] shadow-none transition-all duration-150 hover:border-[#C6D5FF]/85 hover:bg-[#EEF3FF] hover:text-[#27427E] disabled:cursor-not-allowed disabled:border-[#D8E0F5] disabled:bg-[#F3F6FC] disabled:text-[#A6B2CD] disabled:opacity-100',
+                              darkGlassPillButtonClass
+                            )}
                           >
                             Add another link
                           </Button>
