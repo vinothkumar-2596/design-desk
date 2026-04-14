@@ -1,114 +1,100 @@
 import { useMemo, useState } from 'react';
-import { format, formatDistanceToNowStrict } from 'date-fns';
-import { Link, useNavigate } from 'react-router-dom';
+import {
+  eachDayOfInterval,
+  format,
+  formatDistanceToNowStrict,
+  isSameDay,
+  startOfDay,
+  subDays,
+} from 'date-fns';
+import { Link } from 'react-router-dom';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import type { LucideIcon } from 'lucide-react';
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
-  ChevronDown,
-  Clock,
-  Download,
+  ClipboardList,
   Inbox,
-  MessageSquare,
-  Package,
-  PauseCircle,
-  RotateCcw,
+  Search,
   Send,
-  Shield,
+  Sparkles,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { Input } from '@/components/ui/input';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import type { Task } from '@/types';
 
-type AdminControlCenterProps = {
-  tasks: Task[];
-};
+type AdminControlCenterProps = { tasks: Task[] };
+type QueueKey = 'new_requests' | 'returned_to_staff' | 'ready_to_route';
+type SortKey = 'latest' | 'oldest' | 'requester';
 
-type QueueKey =
-  | 'submitted'
-  | 'need_info'
-  | 'deadline'
-  | 'clarification'
-  | 'delivery';
-
-type QueueItem = {
+type QueueMeta = {
   key: QueueKey;
   title: string;
   subtitle: string;
   href: string;
-  tasks: Task[];
+  actionLabel: string;
+  icon: LucideIcon;
+  iconClassName: string;
 };
 
-type ActionItem = {
-  label: string;
+type ActivityItem = {
+  id: string;
+  title: string;
+  subtitle: string;
+  relativeTime: string;
   href: string;
   icon: LucideIcon;
-  count?: number;
-  primary?: boolean;
+  iconClassName: string;
 };
 
-const sidebarShellClass =
-  'relative overflow-hidden rounded-[22px] border border-[#D5E2FF]/55 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl ring-1 ring-[#E3ECFF]/45 shadow-none dark:border-[#2F4F8F]/45 dark:ring-[#3C5FA0]/20 dark:bg-card dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent';
-const workspaceShellClass =
-  'relative overflow-hidden rounded-[22px] border border-[#D5E2FF]/55 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl ring-1 ring-[#E3ECFF]/45 shadow-none dark:border-[#2F4F8F]/45 dark:ring-[#3C5FA0]/20 dark:bg-card dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent';
-const sidebarItemClass =
-  'relative overflow-hidden rounded-[14px] border border-[#D8E4FF]/82 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(246,249,255,0.88))] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(246,249,255,0.72))] backdrop-blur-md ring-1 ring-white/65 shadow-none dark:border-border dark:bg-card/78 dark:[background-image:none] dark:ring-0';
-const iconBaseClass =
-  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border backdrop-blur-sm ring-1 ring-white/55 shadow-[0_12px_24px_-18px_rgba(59,99,204,0.18)] dark:border-border dark:bg-card/95 dark:[background-image:none] dark:text-foreground/70 dark:shadow-none dark:ring-0';
-const countBadgeClass =
-  'inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-[#D7E4FF]/85 bg-white/78 px-1.5 text-[11px] font-medium leading-none text-[#162955] supports-[backdrop-filter]:bg-white/58 backdrop-blur-md ring-1 ring-white/60 dark:border-border/70 dark:bg-card/85 dark:text-foreground dark:ring-0';
-const tableShellClass =
-  'overflow-hidden rounded-[16px] border border-[#D9E6FF]/82 bg-white/76 supports-[backdrop-filter]:bg-white/56 backdrop-blur-xl ring-1 ring-white/65 shadow-none dark:border-border dark:bg-card/82 dark:[background-image:none] dark:ring-0';
-const eyebrowClass =
-  'text-[11px] font-medium uppercase tracking-[0.08em] text-[#748197] dark:text-muted-foreground';
-const primaryActionClass =
-  'h-8 rounded-md border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 px-3 text-[13px] font-medium text-white shadow-none backdrop-blur-xl hover:bg-primary/85 hover:text-white dark:border-transparent dark:bg-[#2563EB] dark:hover:bg-[#1D4ED8]';
-const secondaryActionClass =
-  'h-8 rounded-md border border-[#D7E3FF]/85 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(242,246,255,0.92))] px-3 text-[13px] font-medium text-[#223067] shadow-[0_12px_24px_-20px_rgba(59,99,204,0.18)] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.76),rgba(242,246,255,0.68))] backdrop-blur-md transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF]/92 hover:text-[#1E2A5A] hover:shadow-[0_16px_32px_-22px_rgba(59,99,204,0.22)] dark:border-border/70 dark:bg-card/95 dark:[background-image:none] dark:text-foreground dark:shadow-none dark:hover:border-border dark:hover:bg-muted dark:hover:text-foreground';
-const utilityButtonClass =
-  'h-8 rounded-md border border-[#D7E3FF]/78 bg-white/72 px-3 text-[13px] font-medium text-[#52637E] shadow-none supports-[backdrop-filter]:bg-white/52 backdrop-blur-md hover:border-[#C7D8FF] hover:bg-white/86 hover:text-[#1E2A5A] dark:border-border/70 dark:bg-card/85 dark:text-muted-foreground dark:hover:bg-card dark:hover:text-foreground';
-const dropdownItemClass =
-  'flex items-center gap-2 rounded-xl px-2.5 py-2 text-[13px] font-medium text-[#223067] focus:bg-white/72 focus:text-[#1E2A5A] data-[highlighted]:bg-white/72 data-[highlighted]:text-[#1E2A5A] dark:text-foreground dark:focus:bg-card dark:data-[highlighted]:bg-card';
+const panelClass =
+  'rounded-[22px] border border-[#DCE6F6] bg-white/96 shadow-none ring-1 ring-white/70 dark:border-border dark:bg-card dark:ring-0';
+const sectionClass =
+  'rounded-[20px] border border-[#E4EBF5] bg-white shadow-none dark:border-border dark:bg-card';
+const badgeBase =
+  'inline-flex items-center rounded-lg border px-2 text-[11px] font-medium';
 
-const queueAppearance: Record<
-  QueueKey,
-  {
-    icon: LucideIcon;
-    iconWrapClass: string;
-    activeClass: string;
-  }
-> = {
-  submitted: {
+const queueMetaMap: Record<QueueKey, QueueMeta> = {
+  new_requests: {
+    key: 'new_requests',
+    title: 'New Staff Requests',
+    subtitle: 'Requests submitted by staff and waiting for admin intake review',
+    href: '/approvals',
+    actionLabel: 'Open approvals',
     icon: Inbox,
-    iconWrapClass: 'border-[#C9D7FF]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(236,243,255,0.86))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(236,243,255,0.6))] text-[#4863B7]',
-    activeClass: 'border-[#BFD2FF]/88 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(237,244,255,0.9),rgba(226,236,255,0.82))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(237,244,255,0.72),rgba(226,236,255,0.62))] ring-1 ring-white/75 dark:border-[#49617E] dark:bg-card/86 dark:[background-image:none] dark:ring-0',
+    iconClassName:
+      'border-[#D6E2FF] bg-[#EEF4FF] text-[#3A63D7] dark:border-[#334A7A] dark:bg-[#1A294D] dark:text-[#A8BEFF]',
   },
-  need_info: {
+  returned_to_staff: {
+    key: 'returned_to_staff',
+    title: 'Returned to Staff',
+    subtitle: 'Requests sent back to staff and waiting for updated details',
+    href: '/approvals',
+    actionLabel: 'Review updates',
     icon: AlertTriangle,
-    iconWrapClass: 'border-[#E6D6C0]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(252,246,238,0.88))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(252,246,238,0.62))] text-[#A0652B]',
-    activeClass: 'border-[#E0C9AF]/88 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(253,248,241,0.9),rgba(249,240,228,0.82))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(253,248,241,0.72),rgba(249,240,228,0.62))] ring-1 ring-white/75 dark:border-[#6E5842] dark:bg-card/86 dark:[background-image:none] dark:ring-0',
+    iconClassName:
+      'border-[#F1DEC6] bg-[#FFF6EB] text-[#AD6A28] dark:border-[#6B563F] dark:bg-[#34281E] dark:text-[#F0C287]',
   },
-  deadline: {
-    icon: Clock,
-    iconWrapClass: 'border-[#D4DBF3]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(240,244,255,0.88))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(240,244,255,0.62))] text-[#55628C]',
-    activeClass: 'border-[#C6D0EE]/88 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(243,246,255,0.9),rgba(233,239,255,0.82))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(243,246,255,0.72),rgba(233,239,255,0.62))] ring-1 ring-white/75 dark:border-[#52627E] dark:bg-card/86 dark:[background-image:none] dark:ring-0',
-  },
-  clarification: {
-    icon: MessageSquare,
-    iconWrapClass: 'border-[#D5E3EF]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(239,247,252,0.88))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(239,247,252,0.62))] text-[#43627E]',
-    activeClass: 'border-[#C5D9E7]/88 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(244,250,253,0.9),rgba(231,243,248,0.82))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(244,250,253,0.72),rgba(231,243,248,0.62))] ring-1 ring-white/75 dark:border-[#4E687D] dark:bg-card/86 dark:[background-image:none] dark:ring-0',
-  },
-  delivery: {
-    icon: Package,
-    iconWrapClass: 'border-[#D3E5D9]/82 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(239,248,242,0.88))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(239,248,242,0.62))] text-[#3F7650]',
-    activeClass: 'border-[#C6DDCD]/88 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(244,251,246,0.9),rgba(233,244,236,0.82))] supports-[backdrop-filter]:bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(244,251,246,0.72),rgba(233,244,236,0.62))] ring-1 ring-white/75 dark:border-[#4C6D57] dark:bg-card/86 dark:[background-image:none] dark:ring-0',
+  ready_to_route: {
+    key: 'ready_to_route',
+    title: 'Ready to Route',
+    subtitle: 'Approved requests that are ready to move into design assignment',
+    href: '/tasks',
+    actionLabel: 'Open routing',
+    icon: Send,
+    iconClassName:
+      'border-[#D8E9DD] bg-[#EFF9F1] text-[#2E7A4F] dark:border-[#44624F] dark:bg-[#1D3126] dark:text-[#9FD2B0]',
   },
 };
 
@@ -119,464 +105,693 @@ const parseDate = (value?: Date | string | null) => {
 };
 
 const getTaskTime = (value?: Date | string | null) => parseDate(value)?.getTime() || 0;
-
-const formatTaskDate = (value?: Date | string | null) => {
-  const parsed = parseDate(value);
-  return parsed ? format(parsed, 'dd MMM') : '--';
-};
-
-const formatRelativeDate = (value?: Date | string | null) => {
-  const parsed = parseDate(value);
-  return parsed ? formatDistanceToNowStrict(parsed, { addSuffix: true }) : 'No activity';
-};
-
-const sortTasks = (
-  source: Task[],
-  field: 'createdAt' | 'updatedAt' | 'deadline' = 'createdAt'
-) => [...source].sort((left, right) => getTaskTime(right[field]) - getTaskTime(left[field]));
-
+const formatTaskDate = (value?: Date | string | null) =>
+  parseDate(value) ? format(parseDate(value) as Date, 'dd MMM') : '--';
+const formatRelativeDate = (value?: Date | string | null) =>
+  parseDate(value)
+    ? formatDistanceToNowStrict(parseDate(value) as Date, { addSuffix: true })
+    : 'No activity';
 const formatCount = (value: number) => value.toLocaleString();
-
 const formatCategory = (value?: string | null) =>
   String(value || '')
     .split('_')
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-
 const formatTaskId = (task: Task) => {
   const value = String(task.id || task._id || '').trim();
-  if (!value) return 'No ID';
-  return `Task ${value.slice(-6).toUpperCase()}`;
+  return value ? `Task ${value.slice(-6).toUpperCase()}` : 'No ID';
 };
 
-const hasDeliveryAssets = (task: Task) => {
-  const hasOutputFiles = (task.files || []).some((file) => file.type === 'output');
-  const hasDeliverableVersions = (task.finalDeliverableVersions || []).some(
-    (version) => (version.files || []).length > 0
+const hasAssignedDesigner = (task: Task) =>
+  Boolean(String(task.assignedToName || task.assignedToId || task.assignedTo || '').trim());
+
+const hasStaffFollowUp = (task: Task) => {
+  const checkpoint = getTaskTime(task.adminReviewedAt || task.updatedAt || task.createdAt);
+  const submittedUpdate =
+    task.adminReviewResponseStatus === 'submitted' &&
+    getTaskTime(task.adminReviewResponseSubmittedAt) > checkpoint;
+  const recentStaffComment = (task.comments || []).some(
+    (comment) => comment.userRole === 'staff' && getTaskTime(comment.createdAt) > checkpoint
   );
-  return hasOutputFiles || hasDeliverableVersions;
+  const recentStaffChange = (task.changeHistory || []).some(
+    (entry) => entry.userRole === 'staff' && getTaskTime(entry.createdAt) > checkpoint
+  );
+
+  return submittedUpdate || recentStaffComment || recentStaffChange;
 };
 
-const getRowState = (queueKey: QueueKey) => {
-  switch (queueKey) {
-    case 'submitted':
-      return 'Review pending';
-    case 'need_info':
-      return 'Waiting on staff';
-    case 'deadline':
-      return 'Lead response pending';
-    case 'clarification':
-      return 'Clarification open';
-    case 'delivery':
-      return 'Delivery pending';
-    default:
-      return 'Pending';
+const isReadyToRouteTask = (task: Task) =>
+  task.adminReviewStatus === 'approved' &&
+  !hasAssignedDesigner(task) &&
+  task.status === 'pending' &&
+  task.deadlineApprovalStatus !== 'pending';
+
+const matchesSearch = (task: Task, term: string) => {
+  const query = term.trim().toLowerCase();
+  if (!query) return true;
+
+  return [
+    task.title,
+    task.description,
+    task.requesterName,
+    task.requesterDepartment,
+    task.requesterEmail,
+    formatCategory(task.category),
+    formatTaskId(task),
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(query));
+};
+
+const sortTasks = (tasks: Task[], sortKey: SortKey) => {
+  const source = [...tasks];
+  if (sortKey === 'oldest') {
+    return source.sort(
+      (left, right) =>
+        getTaskTime(left.updatedAt || left.createdAt) - getTaskTime(right.updatedAt || right.createdAt)
+    );
   }
-};
-
-const getRowStateDetail = (queueKey: QueueKey, task: Task) => {
-  switch (queueKey) {
-    case 'submitted':
-      return task.requesterDepartment || formatCategory(task.category) || 'New request';
-    case 'need_info':
-      return task.description || 'Staff update required';
-    case 'deadline':
-      return task.proposedDeadline
-        ? `Requested ${formatTaskDate(task.proposedDeadline)}`
-        : `Target ${formatTaskDate(task.deadline)}`;
-    case 'clarification':
-      return `${(task.comments || []).length} comment${task.comments?.length === 1 ? '' : 's'}`;
-    case 'delivery':
-      return task.assignedToName || 'Awaiting final handoff';
-    default:
-      return task.urgency === 'urgent' ? 'Urgent' : 'Normal priority';
+  if (sortKey === 'requester') {
+    return source.sort((left, right) =>
+      String(left.requesterName || '').localeCompare(String(right.requesterName || ''))
+    );
   }
+  return source.sort(
+    (left, right) =>
+      getTaskTime(right.updatedAt || right.createdAt) - getTaskTime(left.updatedAt || left.createdAt)
+  );
 };
 
-const getRowDate = (queueKey: QueueKey, task: Task) => {
-  switch (queueKey) {
-    case 'submitted':
-      return formatTaskDate(task.createdAt);
-    case 'deadline':
-      return formatTaskDate(task.proposedDeadline || task.deadline);
-    default:
-      return formatTaskDate(task.updatedAt || task.createdAt);
+const getRequesterMeta = (task: Task) =>
+  task.requesterDepartment || task.requesterEmail || formatCategory(task.category) || 'Requester';
+
+const getNextAction = (queueKey: QueueKey, task: Task) => {
+  if (queueKey === 'new_requests') {
+    return {
+      label: 'Admin next',
+      detail: 'Review the request and decide whether it can move forward.',
+      className:
+        'border-[#D6E2FF] bg-[#EEF4FF] text-[#31519B] dark:border-[#334A7A] dark:bg-[#1A294D] dark:text-[#B6C7FF]',
+    };
   }
-};
-
-const getRowOwnerLine = (task: Task) => {
-  if (task.assignedToName) return `Assigned to ${task.assignedToName}`;
-  if (task.requesterDepartment) return task.requesterDepartment;
-  return formatCategory(task.category) || 'Unassigned';
-};
-
-const buildQueueActions = (
-  queueKey: QueueKey,
-  activeCount: number,
-  readyToRouteCount: number
-): ActionItem[] => {
-  switch (queueKey) {
-    case 'submitted':
-      return [
-        { label: 'Approve Task', href: '/approvals', icon: CheckCircle2, count: activeCount, primary: true },
-        { label: 'Request Info', href: '/approvals', icon: AlertTriangle, count: activeCount },
-        { label: 'Set Deadline', href: '/tasks', icon: Clock },
-      ];
-    case 'need_info':
-      return [
-        { label: 'Follow Up with Staff', href: '/approvals', icon: MessageSquare, count: activeCount, primary: true },
-        { label: 'Mark Updated', href: '/approvals', icon: CheckCircle2, count: activeCount },
-        { label: 'Approve Task', href: '/approvals', icon: CheckCircle2 },
-      ];
-    case 'deadline':
-      return [
-        { label: 'Confirm Deadline', href: '/tasks', icon: CheckCircle2, count: activeCount, primary: true },
-        { label: 'Revise Deadline', href: '/tasks', icon: Clock },
-        { label: 'Route to Lead', href: '/tasks', icon: Send, count: readyToRouteCount },
-      ];
-    case 'clarification':
-      return [
-        { label: 'Reply to Clarification', href: '/tasks', icon: MessageSquare, count: activeCount, primary: true },
-        { label: 'Mark Updated', href: '/tasks', icon: CheckCircle2 },
-      ];
-    case 'delivery':
-      return [
-        { label: 'Deliver', href: '/tasks', icon: Package, count: activeCount, primary: true },
-        { label: 'Add Delivery Note', href: '/tasks', icon: MessageSquare },
-      ];
-    default:
-      return [];
+  if (queueKey === 'returned_to_staff') {
+    return hasStaffFollowUp(task)
+      ? {
+          label: 'Admin next',
+          detail: 'Staff has responded. Review the updated brief or files.',
+          className:
+            'border-[#D6E2FF] bg-[#EEF4FF] text-[#31519B] dark:border-[#334A7A] dark:bg-[#1A294D] dark:text-[#B6C7FF]',
+        }
+      : {
+          label: 'Staff next',
+          detail: 'Waiting for the requested brief, files, or corrections.',
+          className:
+            'border-[#F1DEC6] bg-[#FFF6EB] text-[#8C5C20] dark:border-[#6B563F] dark:bg-[#34281E] dark:text-[#F0C287]',
+        };
   }
+  return {
+    label: 'Admin next',
+    detail: 'Assign this approved request into the design workflow.',
+    className:
+      'border-[#D8E9DD] bg-[#EFF9F1] text-[#2F6D49] dark:border-[#44624F] dark:bg-[#1D3126] dark:text-[#9FD2B0]',
+  };
 };
 
-const moreActions: ActionItem[] = [
-  { label: 'Override Priority', href: '/tasks', icon: AlertTriangle },
-  { label: 'Reopen Task', href: '/tasks', icon: RotateCcw },
-  { label: 'Pause Task', href: '/tasks', icon: PauseCircle },
-  { label: 'Escalate', href: '/tasks', icon: Shield },
-  { label: 'Internal Note', href: '/tasks', icon: MessageSquare },
-  { label: 'Export Files', href: '/tasks', icon: Download },
-];
+const buildActivityItem = (task: Task): ActivityItem => {
+  if (task.adminReviewStatus === 'pending') {
+    return {
+      id: `activity-${task.id}`,
+      title: task.title,
+      subtitle: `New request from ${task.requesterName || 'staff'} awaiting intake review`,
+      relativeTime: formatRelativeDate(task.createdAt),
+      href: `/task/${task.id}`,
+      icon: Inbox,
+      iconClassName: queueMetaMap.new_requests.iconClassName,
+    };
+  }
+  if (task.adminReviewStatus === 'needs_info') {
+    return {
+      id: `activity-${task.id}`,
+      title: task.title,
+      subtitle: hasStaffFollowUp(task)
+        ? 'Staff responded and the request is ready for admin review'
+        : 'Waiting for staff to send the requested update',
+      relativeTime: formatRelativeDate(task.updatedAt || task.createdAt),
+      href: `/task/${task.id}`,
+      icon: AlertTriangle,
+      iconClassName: queueMetaMap.returned_to_staff.iconClassName,
+    };
+  }
+  return {
+    id: `activity-${task.id}`,
+    title: task.title,
+    subtitle: 'Approved request is ready to be assigned into design',
+    relativeTime: formatRelativeDate(task.updatedAt || task.createdAt),
+    href: `/task/${task.id}`,
+    icon: Send,
+    iconClassName: queueMetaMap.ready_to_route.iconClassName,
+  };
+};
 
 export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
-  const navigate = useNavigate();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('latest');
+  const [activeQueue, setActiveQueue] = useState<QueueKey>('new_requests');
 
-  const queueItems = useMemo<QueueItem[]>(() => {
-    const submitted = sortTasks(
-      tasks.filter((task) => task.adminReviewStatus === 'pending'),
-      'createdAt'
-    );
-    const needInfo = sortTasks(
-      tasks.filter((task) => task.adminReviewStatus === 'needs_info'),
-      'updatedAt'
-    );
-    const waitingDeadline = sortTasks(
-      tasks.filter(
-        (task) =>
-          task.adminReviewStatus === 'approved' &&
-          (task.deadlineApprovalStatus === 'pending' ||
-            (Boolean(task.proposedDeadline) && !task.deadlineApprovalStatus))
-      ),
-      'deadline'
-    );
-    const clarification = sortTasks(
-      tasks.filter((task) => task.status === 'clarification_required'),
-      'updatedAt'
-    );
-    const readyForDelivery = sortTasks(
-      tasks.filter((task) => {
-        const leadCleared =
-          task.finalDeliverableReviewStatus === 'approved' ||
-          task.status === 'under_review' ||
-          task.status === 'completed';
-        return leadCleared && hasDeliveryAssets(task);
-      }),
-      'updatedAt'
-    );
+  const queueData = useMemo(() => {
+    const newRequests = tasks.filter((task) => task.adminReviewStatus === 'pending');
+    const returnedToStaff = tasks.filter((task) => task.adminReviewStatus === 'needs_info');
+    const readyToRoute = tasks.filter(isReadyToRouteTask);
 
-    return [
-      {
-        key: 'submitted',
-        title: 'Submitted',
-        subtitle: 'Requests waiting for admin intake review',
-        href: '/approvals',
-        tasks: submitted,
-      },
-      {
-        key: 'need_info',
-        title: 'Need Info',
-        subtitle: 'Requests sent back for missing details',
-        href: '/approvals',
-        tasks: needInfo,
-      },
-      {
-        key: 'deadline',
-        title: 'Deadline Acceptance',
-        subtitle: 'Approved work waiting on lead timeline signoff',
-        href: '/tasks',
-        tasks: waitingDeadline,
-      },
-      {
-        key: 'clarification',
-        title: 'Clarifications',
-        subtitle: 'Open back-and-forth that needs an admin response',
-        href: '/tasks',
-        tasks: clarification,
-      },
-      {
-        key: 'delivery',
-        title: 'Ready for Delivery',
-        subtitle: 'Handoff-ready work with final files available',
-        href: '/tasks',
-        tasks: readyForDelivery,
-      },
-    ];
+    return {
+      new_requests: sortTasks(newRequests, 'latest'),
+      returned_to_staff: sortTasks(returnedToStaff, 'latest'),
+      ready_to_route: sortTasks(readyToRoute, 'latest'),
+    };
   }, [tasks]);
 
-  const [activeQueue, setActiveQueue] = useState<QueueKey>('submitted');
-  const activeQueueItem = queueItems.find((item) => item.key === activeQueue) || queueItems[0];
-  const activeItemCount = activeQueueItem?.tasks.length || 0;
+  const activeQueueMeta = queueMetaMap[activeQueue];
+  const activeQueueTasks = useMemo(
+    () => sortTasks(queueData[activeQueue].filter((task) => matchesSearch(task, searchTerm)), sortKey),
+    [activeQueue, queueData, searchTerm, sortKey]
+  );
 
-  const readyToRouteCount = useMemo(
-    () =>
-      tasks.filter(
+  const totalOpenQueues =
+    queueData.new_requests.length +
+    queueData.returned_to_staff.length +
+    queueData.ready_to_route.length;
+
+  const reviewedThisWeek = useMemo(() => {
+    const sevenDaysAgo = subDays(startOfDay(new Date()), 6);
+    return tasks.filter((task) => {
+      const reviewedAt = parseDate(task.adminReviewedAt);
+      return Boolean(reviewedAt && reviewedAt >= sevenDaysAgo);
+    }).length;
+  }, [tasks]);
+
+  const currentWeekStart = startOfDay(subDays(new Date(), 6));
+  const previousWeekStart = startOfDay(subDays(currentWeekStart, 7));
+  const previousWeekEnd = subDays(currentWeekStart, 1);
+  const countCreatedInRange = (start: Date, end: Date) =>
+    tasks.filter((task) => {
+      const createdAt = parseDate(task.createdAt);
+      return Boolean(createdAt && createdAt >= start && createdAt <= end);
+    }).length;
+
+  const currentWeekSubmitted = countCreatedInRange(currentWeekStart, new Date());
+  const previousWeekSubmitted = countCreatedInRange(previousWeekStart, previousWeekEnd);
+  const submittedDelta = currentWeekSubmitted - previousWeekSubmitted;
+
+  const chartData = useMemo(() => {
+    const today = startOfDay(new Date());
+    return eachDayOfInterval({ start: subDays(today, 6), end: today }).map((date) => ({
+      day: format(date, 'EEE'),
+      submitted: tasks.filter((task) => {
+        const createdAt = parseDate(task.createdAt);
+        return Boolean(createdAt && isSameDay(createdAt, date));
+      }).length,
+      reviewed: tasks.filter((task) => {
+        const reviewedAt = parseDate(task.adminReviewedAt);
+        return Boolean(reviewedAt && isSameDay(reviewedAt, date));
+      }).length,
+    }));
+  }, [tasks]);
+
+  const activityItems = useMemo(() => {
+    const relevant = tasks
+      .filter(
         (task) =>
-          task.adminReviewStatus === 'approved' &&
-          task.deadlineApprovalStatus === 'approved' &&
-          !task.assignedToName &&
-          task.status !== 'completed'
-      ).length,
-    [tasks]
-  );
+          task.adminReviewStatus === 'pending' ||
+          task.adminReviewStatus === 'needs_info' ||
+          isReadyToRouteTask(task)
+      )
+      .filter((task) => matchesSearch(task, searchTerm))
+      .sort(
+        (left, right) =>
+          getTaskTime(right.updatedAt || right.createdAt) - getTaskTime(left.updatedAt || left.createdAt)
+      )
+      .slice(0, 5);
 
-  const contextualActions = useMemo(
-    () => buildQueueActions(activeQueue, activeItemCount, readyToRouteCount),
-    [activeItemCount, activeQueue, readyToRouteCount]
-  );
+    return relevant.map(buildActivityItem);
+  }, [searchTerm, tasks]);
+
+  const alert = queueData.new_requests.length
+    ? {
+        eyebrow: 'Intake review',
+        title: `${queueData.new_requests.length} staff request${queueData.new_requests.length === 1 ? '' : 's'} waiting for review`,
+        subtitle: 'Clear the intake queue first so new requests do not stall before design assignment.',
+        href: '/approvals',
+        actionLabel: 'Open approvals',
+        toneClassName:
+          'border-[#DCE7FF] bg-[linear-gradient(90deg,rgba(238,244,255,0.96),rgba(228,237,255,0.88))] text-[#243C72] dark:border-[#334A7A] dark:bg-[#132346] dark:text-[#D9E4FF]',
+        icon: Inbox,
+      }
+    : queueData.returned_to_staff.length
+      ? {
+          eyebrow: 'Staff follow-up',
+          title: `${queueData.returned_to_staff.length} request${queueData.returned_to_staff.length === 1 ? '' : 's'} still waiting on staff updates`,
+          subtitle: 'Monitor whether staff has replied and move updated requests back into review quickly.',
+          href: '/approvals',
+          actionLabel: 'Review updates',
+          toneClassName:
+            'border-[#F1DEC6] bg-[linear-gradient(90deg,rgba(255,246,235,0.96),rgba(255,241,224,0.88))] text-[#6F4818] dark:border-[#6B563F] dark:bg-[#31261D] dark:text-[#F0C287]',
+          icon: AlertTriangle,
+        }
+      : queueData.ready_to_route.length
+        ? {
+            eyebrow: 'Routing',
+            title: `${queueData.ready_to_route.length} approved request${queueData.ready_to_route.length === 1 ? '' : 's'} ready to move into design`,
+            subtitle: 'These requests are clear for assignment and should be routed to the design team.',
+            href: '/tasks',
+            actionLabel: 'Open routing',
+            toneClassName:
+              'border-[#D8E9DD] bg-[linear-gradient(90deg,rgba(239,249,241,0.96),rgba(231,246,235,0.88))] text-[#24583B] dark:border-[#44624F] dark:bg-[#1D3126] dark:text-[#B6E0C2]',
+            icon: Send,
+          }
+        : {
+            eyebrow: 'Queue status',
+            title: 'Admin intake queues are clear',
+            subtitle: 'No requests are currently waiting for review, follow-up, or routing.',
+            href: '/tasks',
+            actionLabel: 'View all tasks',
+            toneClassName:
+              'border-[#DCE6F6] bg-[linear-gradient(90deg,rgba(247,250,253,0.96),rgba(241,245,250,0.88))] text-[#304766] dark:border-border dark:bg-card dark:text-foreground',
+            icon: Sparkles,
+          };
+
+  const metricCards = [
+    {
+      label: 'Open admin items',
+      value: totalOpenQueues,
+      helper: 'Across intake, follow-up, and routing queues',
+      icon: ClipboardList,
+      iconClassName:
+        'border-[#DCE6F6] bg-[#F5F8FD] text-[#4562A6] dark:border-border dark:bg-muted dark:text-foreground',
+    },
+    {
+      label: 'New requests',
+      value: queueData.new_requests.length,
+      helper: queueData.new_requests.length ? 'Need intake review now' : 'No intake backlog',
+      icon: Inbox,
+      iconClassName: queueMetaMap.new_requests.iconClassName,
+    },
+    {
+      label: 'Waiting on staff',
+      value: queueData.returned_to_staff.length,
+      helper: queueData.returned_to_staff.length ? 'Follow-up requests are still open' : 'No pending staff updates',
+      icon: AlertTriangle,
+      iconClassName: queueMetaMap.returned_to_staff.iconClassName,
+    },
+    {
+      label: 'Reviewed this week',
+      value: reviewedThisWeek,
+      helper: submittedDelta === 0 ? 'Same intake volume as last week' : `${submittedDelta > 0 ? '+' : ''}${submittedDelta} vs last week`,
+      icon: CheckCircle2,
+      iconClassName: queueMetaMap.ready_to_route.iconClassName,
+    },
+  ];
+
+  const emptyStateText =
+    activeQueue === 'new_requests'
+      ? 'No new staff requests are waiting for admin review.'
+      : activeQueue === 'returned_to_staff'
+        ? 'No requests are currently waiting on staff updates.'
+        : 'No approved requests are waiting to be routed into design.';
+
+  const chartConfig = {
+    submitted: { label: 'Submitted', color: '#4F6EF7' },
+    reviewed: { label: 'Reviewed', color: '#9DB2FF' },
+  };
+
+  const AlertIcon = alert.icon;
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[260px,minmax(0,1fr)]">
-      <aside className={cn(sidebarShellClass, 'p-3')}>
-        <div className="pointer-events-none absolute -left-10 -top-10 h-24 w-24 rounded-full bg-[#EAF2FF]/75 blur-3xl dark:bg-[#23458F]/20" />
-        <div className="pointer-events-none absolute inset-0 rounded-[22px] ring-1 ring-white/55 dark:ring-white/5" />
-        <div className="pb-1">
-          <p className={eyebrowClass}>Queues</p>
+    <div className="space-y-4">
+      <section className={cn(panelClass, 'px-5 py-5')}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8090A8] dark:text-muted-foreground">
+              Admin Overview
+            </p>
+            <h1 className="text-[30px] font-semibold tracking-tight text-[#111827] dark:text-foreground">
+              Overview
+            </h1>
+            <p className="max-w-2xl text-[13px] leading-6 text-[#6B7280] dark:text-muted-foreground">
+              Monitor intake review, staff follow-ups, and routing from one page.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative min-w-[240px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+              <Input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search requests"
+                className="h-10 rounded-xl border-[#DCE6F6] bg-white pl-9 pr-3 text-[13px] shadow-none focus-visible:ring-2 focus-visible:ring-[#C7D8FF] dark:border-border dark:bg-card"
+              />
+            </div>
+
+            <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
+              <SelectTrigger className="h-10 w-[150px] rounded-xl border-[#DCE6F6] bg-white text-[13px] shadow-none dark:border-border dark:bg-card">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="latest">Newest first</SelectItem>
+                <SelectItem value="oldest">Oldest first</SelectItem>
+                <SelectItem value="requester">Requester</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </section>
+
+      <section className={cn(panelClass, 'px-4 py-4', alert.toneClassName)}>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-current/10 bg-white/60 dark:bg-white/5">
+              <AlertIcon className="h-4 w-4" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
+                {alert.eyebrow}
+              </p>
+              <p className="text-[15px] font-semibold">{alert.title}</p>
+              <p className="max-w-3xl text-[13px] leading-5 opacity-80">{alert.subtitle}</p>
+            </div>
+          </div>
+
+          <Button
+            asChild
+            variant="outline"
+            className="h-9 rounded-xl border-current/15 bg-white/70 px-3 text-[13px] font-medium text-current shadow-none hover:bg-white/85 dark:bg-white/5 dark:hover:bg-white/10"
+          >
+            <Link to={alert.href} className="inline-flex items-center gap-1.5">
+              <span>{alert.actionLabel}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {metricCards.map((card) => {
+          const Icon = card.icon;
+
+          return (
+            <div key={card.label} className={cn(sectionClass, 'min-h-[124px] px-4 py-4')}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-[12px] font-medium text-[#7B8698] dark:text-muted-foreground">
+                    {card.label}
+                  </p>
+                  <p className="text-[30px] font-semibold tracking-tight text-[#111827] dark:text-foreground">
+                    {card.value}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    'inline-flex h-10 w-10 items-center justify-center rounded-xl border',
+                    card.iconClassName
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                </span>
+              </div>
+              <p className="mt-4 text-[12px] leading-5 text-[#6B7280] dark:text-muted-foreground">
+                {card.helper}
+              </p>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.55fr,1fr]">
+        <div className={cn(sectionClass, 'px-4 py-4')}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8090A8] dark:text-muted-foreground">
+                Request Flow
+              </p>
+              <h2 className="mt-1 text-[20px] font-semibold text-[#111827] dark:text-foreground">
+                Submitted vs reviewed
+              </h2>
+              <p className="mt-1 text-[12.5px] leading-5 text-[#6B7280] dark:text-muted-foreground">
+                Daily request volume across the last 7 days.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-[#E4EBF5] bg-[#F8FAFD] px-3 py-2 text-right dark:border-border dark:bg-muted/50">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8090A8] dark:text-muted-foreground">
+                This week
+              </p>
+              <p className="mt-1 text-[18px] font-semibold text-[#111827] dark:text-foreground">
+                {currentWeekSubmitted}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 h-[270px]">
+            <ChartContainer config={chartConfig} className="h-full w-full">
+              <AreaChart data={chartData} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="submittedFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--color-submitted)" stopOpacity={0.28} />
+                    <stop offset="100%" stopColor="var(--color-submitted)" stopOpacity={0.04} />
+                  </linearGradient>
+                  <linearGradient id="reviewedFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--color-reviewed)" stopOpacity={0.22} />
+                    <stop offset="100%" stopColor="var(--color-reviewed)" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tickMargin={10} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} width={28} />
+                <ChartTooltip
+                  cursor={false}
+                  content={<ChartTooltipContent indicator="line" />}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="reviewed"
+                  stroke="var(--color-reviewed)"
+                  fill="url(#reviewedFill)"
+                  strokeWidth={2}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="submitted"
+                  stroke="var(--color-submitted)"
+                  fill="url(#submittedFill)"
+                  strokeWidth={2.5}
+                />
+              </AreaChart>
+            </ChartContainer>
+          </div>
+        </div>
+        <div className={cn(sectionClass, 'px-4 py-4')}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8090A8] dark:text-muted-foreground">
+                Recent Activity
+              </p>
+              <h2 className="mt-1 text-[20px] font-semibold text-[#111827] dark:text-foreground">
+                Intake updates
+              </h2>
+            </div>
+            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg border border-[#E4EBF5] bg-[#F8FAFD] px-2 text-[11px] font-medium text-[#6B7280] dark:border-border dark:bg-muted/50 dark:text-muted-foreground">
+              {activityItems.length}
+            </span>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {activityItems.length > 0 ? (
+              activityItems.map((item) => {
+                const Icon = item.icon;
+
+                return (
+                  <Link
+                    key={item.id}
+                    to={item.href}
+                    className="flex items-start gap-3 rounded-2xl border border-[#E7EDF7] bg-[#FBFCFE] px-3 py-3 transition-colors hover:bg-[#F5F8FC] dark:border-border dark:bg-muted/30 dark:hover:bg-muted/60"
+                  >
+                    <span
+                      className={cn(
+                        'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border',
+                        item.iconClassName
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold text-[#111827] dark:text-foreground">
+                        {item.title}
+                      </p>
+                      <p className="mt-1 text-[12px] leading-5 text-[#6B7280] dark:text-muted-foreground">
+                        {item.subtitle}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-[#94A3B8] dark:text-muted-foreground">
+                      {item.relativeTime}
+                    </span>
+                  </Link>
+                );
+              })
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[#DCE6F6] bg-[#FBFCFE] px-4 py-8 text-center text-[13px] text-[#6B7280] dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
+                No recent intake activity matches your current search.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className={cn(panelClass, 'px-4 py-4')}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8090A8] dark:text-muted-foreground">
+              Queue Snapshot
+            </p>
+            <h2 className="mt-1 text-[22px] font-semibold text-[#111827] dark:text-foreground">
+              Current admin queues
+            </h2>
+            <p className="mt-1 text-[12.5px] leading-5 text-[#6B7280] dark:text-muted-foreground">
+              Focus on the queue you need to clear next.
+            </p>
+          </div>
+
+          <Button
+            asChild
+            variant="outline"
+            className="h-10 rounded-xl border-[#DCE6F6] bg-white px-3 text-[13px] font-medium shadow-none hover:bg-[#F7FAFD] dark:border-border dark:bg-card dark:hover:bg-muted"
+          >
+            <Link to={activeQueueMeta.href} className="inline-flex items-center gap-1.5">
+              <span>{activeQueueMeta.actionLabel}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
         </div>
 
-        <div className="mt-2 space-y-2">
-          {queueItems.map((item) => {
-            const isActive = item.key === activeQueue;
-            const { icon: Icon, iconWrapClass, activeClass } = queueAppearance[item.key];
+        <div className="mt-4 flex flex-wrap gap-2">
+          {(Object.values(queueMetaMap) as QueueMeta[]).map((queue) => {
+            const isActive = queue.key === activeQueue;
+            const Icon = queue.icon;
+            const count = queueData[queue.key].length;
 
             return (
               <button
-                key={item.key}
+                key={queue.key}
                 type="button"
-                onClick={() => setActiveQueue(item.key)}
+                onClick={() => setActiveQueue(queue.key)}
                 className={cn(
-                  sidebarItemClass,
-                  'w-full p-3 text-left transition-all duration-200 hover:border-[#C9D7FF] hover:bg-white/88 dark:hover:border-border dark:hover:bg-card/85',
-                  isActive && activeClass
+                  'inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors',
+                  isActive
+                    ? 'border-[#C8D8FF] bg-[#EEF4FF] text-[#23418A] dark:border-[#334A7A] dark:bg-[#1A294D] dark:text-[#D6E1FF]'
+                    : 'border-[#E4EBF5] bg-white text-[#475569] hover:bg-[#F8FAFD] dark:border-border dark:bg-card dark:text-muted-foreground dark:hover:bg-muted'
                 )}
               >
-                <div className="flex items-start gap-3">
-                  <span
-                    className={cn(
-                      iconBaseClass,
-                      iconWrapClass
-                    )}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-[14px] font-semibold leading-5 text-[#1F2937] dark:text-foreground">
-                          {item.title}
-                        </p>
-                        <p className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-[#6B7280] dark:text-muted-foreground">
-                          {item.subtitle}
-                        </p>
-                      </div>
-                      <span className={countBadgeClass}>
-                        {formatCount(item.tasks.length)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                <span
+                  className={cn(
+                    'inline-flex h-8 w-8 items-center justify-center rounded-lg border',
+                    queue.iconClassName
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <span className="flex flex-col items-start">
+                  <span className="text-[13px] font-medium">{queue.title}</span>
+                  <span className="text-[11px] text-current/70">{count} item{count === 1 ? '' : 's'}</span>
+                </span>
               </button>
             );
           })}
         </div>
-      </aside>
 
-      <section className={cn(workspaceShellClass, 'overflow-hidden')}>
-        <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-[#E3ECFF]/72 blur-3xl dark:bg-[#2B55B5]/18" />
-        <div className="pointer-events-none absolute -left-16 bottom-0 h-40 w-40 rounded-full bg-[#EEF4FF]/60 blur-3xl dark:bg-[#213E80]/14" />
-        <div className="pointer-events-none absolute inset-0 rounded-[22px] ring-1 ring-white/55 dark:ring-white/5" />
-        <div className="border-b border-[#D9E6FF]/65 px-4 py-4 dark:border-border">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-[23px] font-semibold leading-7 text-[#111827] dark:text-foreground">
-                  {activeQueueItem?.title || 'Queue'}
-                </h1>
-                <span className="inline-flex h-6 items-center rounded-md border border-[#D7E4FF]/85 bg-white/74 px-2 text-[11px] font-medium leading-none text-[#4B5563] supports-[backdrop-filter]:bg-white/54 backdrop-blur-md ring-1 ring-white/60 dark:border-border/70 dark:bg-card/85 dark:text-muted-foreground dark:ring-0">
-                  {formatCount(activeItemCount)} items
-                </span>
-              </div>
-              <p className="mt-1 text-[12.5px] leading-5 text-[#6B7280] dark:text-muted-foreground">
-                {activeQueueItem?.subtitle || 'Admin queue workspace'}
-              </p>
-            </div>
+        <div className="mt-4 overflow-hidden rounded-[18px] border border-[#E4EBF5] bg-white dark:border-border dark:bg-card">
+          <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,1fr)_120px] gap-3 border-b border-[#E7EDF7] bg-[#FAFBFD] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8090A8] dark:border-border dark:bg-muted/30 dark:text-muted-foreground md:grid">
+            <div>Request</div>
+            <div>Submitted by</div>
+            <div>Who acts next</div>
+            <div className="text-right">Updated</div>
           </div>
-        </div>
 
-        <div className="border-b border-[#D9E6FF]/65 px-4 py-3 dark:border-border">
-          <div className="flex flex-wrap items-center gap-2">
-            {contextualActions.map((action) => {
-              const Icon = action.icon;
-              const actionClass = action.primary ? primaryActionClass : secondaryActionClass;
+          <div className="divide-y divide-[#E7EDF7] dark:divide-border">
+            {activeQueueTasks.length > 0 ? (
+              activeQueueTasks.map((task) => {
+                const nextAction = getNextAction(activeQueue, task);
 
-              return (
-                <Button
-                  key={action.label}
-                  asChild
-                  variant={action.primary ? 'default' : 'outline'}
-                  className={actionClass}
-                >
-                  <Link to={action.href} className="inline-flex items-center gap-1.5">
-                    <Icon className="h-3.5 w-3.5" />
-                    <span>{action.label}</span>
-                    {action.count ? (
-                      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-[4px] border border-current/20 px-1 text-[10px] font-semibold leading-none">
-                        {formatCount(action.count)}
-                      </span>
-                    ) : null}
-                  </Link>
-                </Button>
-              );
-            })}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className={utilityButtonClass}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span>More Actions</span>
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="w-52 rounded-2xl border border-[#D9E6FF]/78 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(244,248,255,0.94))] p-1.5 shadow-[0_24px_54px_-30px_rgba(59,99,204,0.24)] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(244,248,255,0.88))] backdrop-blur-[22px] ring-1 ring-white/72 dark:border-border dark:bg-card/95 dark:[background-image:none] dark:ring-0 dark:shadow-[0_24px_60px_-34px_rgba(2,8,23,0.95)]"
-              >
-                {moreActions.map((action) => {
-                  const Icon = action.icon;
-                  return (
-                    <DropdownMenuItem
-                      key={action.label}
-                      onSelect={() => navigate(action.href)}
-                      className={dropdownItemClass}
-                    >
-                      <Icon className="h-3.5 w-3.5 text-[#64748B] dark:text-muted-foreground" />
-                      <span>{action.label}</span>
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
-        <div className="px-3 py-3">
-          <div className={tableShellClass}>
-            <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,0.95fr)_minmax(0,0.95fr)_108px] gap-3 border-b border-[#D9E6FF]/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(244,248,255,0.74))] px-3 py-2 text-[11px] font-medium uppercase tracking-[0.06em] text-[#748197] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.56),rgba(244,248,255,0.6))] backdrop-blur-md dark:border-border dark:bg-card/90 dark:[background-image:none] dark:text-muted-foreground md:grid">
-              <div>Request</div>
-              <div>Owner</div>
-              <div>State</div>
-              <div className="text-right">Timeline</div>
-            </div>
-
-            <div className="divide-y divide-[#D9E6FF]/55 dark:divide-border">
-              {activeItemCount > 0 ? (
-                activeQueueItem.tasks.map((task) => (
+                return (
                   <Link
                     key={task.id}
                     to={`/task/${task.id}`}
-                    className="grid gap-3 px-3 py-2.5 transition-colors hover:bg-white/62 supports-[backdrop-filter]:hover:bg-white/48 dark:hover:bg-card md:grid-cols-[minmax(0,1.5fr)_minmax(0,0.95fr)_minmax(0,0.95fr)_108px]"
+                    className="grid gap-3 px-4 py-3 transition-colors hover:bg-[#FAFBFD] dark:hover:bg-muted/30 md:grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,1fr)_120px]"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-[13px] font-semibold leading-5 text-[#111827] dark:text-foreground">
+                      <p className="truncate text-[13px] font-semibold text-[#111827] dark:text-foreground">
                         {task.title}
                       </p>
-                      <p className="mt-0.5 line-clamp-1 text-[12px] leading-4 text-[#6B7280] dark:text-muted-foreground">
+                      <p className="mt-1 line-clamp-1 text-[12px] leading-5 text-[#6B7280] dark:text-muted-foreground">
                         {task.description || 'No request description provided.'}
                       </p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] leading-4 text-[#7A8699] dark:text-muted-foreground">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[#94A3B8] dark:text-muted-foreground">
                         <span>{formatCategory(task.category) || 'General'}</span>
-                        <span className="h-1 w-1 rounded-full bg-[#C5CED8] dark:bg-muted-foreground/40" />
+                        <span className="h-1 w-1 rounded-full bg-[#CBD5E1] dark:bg-muted-foreground/50" />
                         <span>{formatTaskId(task)}</span>
                       </div>
                     </div>
 
                     <div className="min-w-0">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-[#748197] dark:text-muted-foreground md:hidden">
-                        Owner
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8090A8] dark:text-muted-foreground md:hidden">
+                        Submitted by
                       </p>
-                      <p className="truncate text-[13px] font-medium leading-5 text-[#1F2937] dark:text-foreground">
+                      <p className="truncate text-[13px] font-medium text-[#111827] dark:text-foreground">
                         {task.requesterName || '--'}
                       </p>
-                      <p className="mt-0.5 truncate text-[12px] leading-4 text-[#6B7280] dark:text-muted-foreground">
-                        {getRowOwnerLine(task)}
+                      <p className="mt-1 truncate text-[12px] text-[#6B7280] dark:text-muted-foreground">
+                        {getRequesterMeta(task)}
                       </p>
                     </div>
 
                     <div className="min-w-0">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-[#748197] dark:text-muted-foreground md:hidden">
-                        State
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8090A8] dark:text-muted-foreground md:hidden">
+                        Who acts next
                       </p>
-                      <p className="truncate text-[13px] font-medium leading-5 text-[#1F2937] dark:text-foreground">
-                        {getRowState(activeQueueItem.key)}
-                      </p>
-                      <p className="mt-0.5 truncate text-[12px] leading-4 text-[#6B7280] dark:text-muted-foreground">
-                        {getRowStateDetail(activeQueueItem.key, task)}
+                      <span className={cn(badgeBase, nextAction.className)}>{nextAction.label}</span>
+                      <p className="mt-1 truncate text-[12px] text-[#6B7280] dark:text-muted-foreground">
+                        {nextAction.detail}
                       </p>
                     </div>
 
                     <div className="min-w-0 md:text-right">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-[#748197] dark:text-muted-foreground md:hidden">
-                        Timeline
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8090A8] dark:text-muted-foreground md:hidden">
+                        Updated
                       </p>
-                      <p className="text-[13px] font-medium leading-5 text-[#1F2937] dark:text-foreground">
-                        {getRowDate(activeQueueItem.key, task)}
+                      <p className="text-[13px] font-medium text-[#111827] dark:text-foreground">
+                        {formatTaskDate(task.updatedAt || task.createdAt)}
                       </p>
-                      <p className="mt-0.5 text-[12px] leading-4 text-[#6B7280] dark:text-muted-foreground">
+                      <p className="mt-1 text-[12px] text-[#6B7280] dark:text-muted-foreground">
                         {formatRelativeDate(task.updatedAt || task.createdAt)}
                       </p>
                     </div>
                   </Link>
-                ))
-              ) : (
-                <div className="flex items-center gap-3 px-4 py-6">
-                  <span
-                    className={cn(
-                      'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border backdrop-blur-md ring-1 ring-white/55 shadow-[0_12px_24px_-18px_rgba(59,99,204,0.16)] dark:border-border dark:bg-card/95 dark:[background-image:none] dark:ring-0 dark:shadow-none',
-                      queueAppearance[activeQueue].iconWrapClass
-                    )}
-                  >
-                    {(() => {
-                      const ActiveIcon = queueAppearance[activeQueue].icon;
-                      return <ActiveIcon className="h-4 w-4" />;
-                    })()}
-                  </span>
-                  <p className="text-[13px] leading-5 text-[#6B7280] dark:text-muted-foreground">
-                    No items in this queue.
+                );
+              })
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center">
+                <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#E4EBF5] bg-[#F8FAFD] dark:border-border dark:bg-muted/40">
+                  <activeQueueMeta.icon className="h-4 w-4 text-[#7C8AA5] dark:text-muted-foreground" />
+                </span>
+                <div className="space-y-1">
+                  <p className="text-[14px] font-medium text-[#111827] dark:text-foreground">
+                    {emptyStateText}
+                  </p>
+                  <p className="text-[12px] text-[#6B7280] dark:text-muted-foreground">
+                    Try a different queue or clear the current search filter.
                   </p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </section>

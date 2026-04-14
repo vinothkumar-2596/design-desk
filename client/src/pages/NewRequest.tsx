@@ -42,6 +42,7 @@ import {
   type RequestDraftPayload,
 } from '@/lib/requestDrafts';
 import { loadLocalTaskById, loadLocalTaskList, upsertLocalTask } from '@/lib/taskStorage';
+import { getLatestAdminRequestedUpdatesNote } from '@/lib/adminReview';
 import { hydrateTask, inferTaskRequestType } from '@/lib/taskHydration';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -1718,6 +1719,10 @@ export default function NewRequest() {
     singleRequestCurrentStep === 'files' ? 1 : singleRequestCurrentStep === 'review' ? 2 : 0;
   const isRequestResponseMode =
     isRequestEditMode && user?.role === 'staff' && editTask?.adminReviewStatus === 'needs_info';
+  const latestAdminRequestedUpdatesNote = useMemo(
+    () => getLatestAdminRequestedUpdatesNote(editTask?.changeHistory),
+    [editTask?.changeHistory]
+  );
   const hasSavedRequestDraft =
     isRequestResponseMode && editTask?.adminReviewResponseStatus === 'draft';
   const requestSubmitLabel = !isRequestEditMode
@@ -4375,6 +4380,27 @@ export default function NewRequest() {
             </Button>
           </div>
         </div>
+
+        {isRequestResponseMode && latestAdminRequestedUpdatesNote ? (
+          <section className="rounded-[22px] border border-[#F2D28E]/70 bg-[linear-gradient(180deg,rgba(255,249,236,0.96),rgba(255,244,217,0.82))] px-5 py-4 text-[#5D4A1D] shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-[#6F5420]/65 dark:bg-[linear-gradient(180deg,rgba(73,53,16,0.46),rgba(45,33,10,0.76))] dark:text-[#F5E3B0]">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-full bg-white/75 p-2 text-[#B7791F] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:bg-[#5A4216]/70 dark:text-[#FFD77A]">
+                <AlertTriangle className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#A37A28] dark:text-[#E9C978]">
+                  Requested Updates
+                </p>
+                <p className="mt-1 text-sm font-semibold text-[#3F3214] dark:text-[#FFF0C2]">
+                  Admin asked for these changes before approval
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#5D4A1D] dark:text-[#F5E3B0]">
+                  {latestAdminRequestedUpdatesNote}
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {selectedRequestType === 'campaign_request' ? (
           isCampaignEditMode && isEditTaskLoading && !editTask ? (

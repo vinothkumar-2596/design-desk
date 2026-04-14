@@ -109,6 +109,7 @@ import {
 } from '@/types';
 import { cn } from '@/lib/utils';
 import { loadLocalTaskById, upsertLocalTask } from '@/lib/taskStorage';
+import { getLatestAdminRequestedUpdatesNote } from '@/lib/adminReview';
 import { createSocket } from '@/lib/socket';
 import { pushScheduleNotification } from '@/lib/designerSchedule';
 import { GridBackground } from '@/components/ui/background';
@@ -3848,6 +3849,10 @@ function TaskDetailScreen() {
     changeHistory,
     taskState.comments,
   ]);
+  const latestAdminRequestedUpdatesNote = useMemo(
+    () => getLatestAdminRequestedUpdatesNote(changeHistory),
+    [changeHistory]
+  );
   const isAdminApprovalAwaitingStaffFollowUp =
     adminReviewStatus === 'needs_info' && !latestStaffFollowUpAfterAdminRequest;
   const adminReviewTitle =
@@ -10277,6 +10282,16 @@ function TaskDetailScreen() {
                         ? 'Keep refining the brief if needed. Admin approval stays locked until you submit this updated draft or reply in Internal Chat.'
                         : 'Update the brief or attachments first. Saving keeps it as a draft, and admin approval stays locked until you submit the response.'}
                   </p>
+                  {latestAdminRequestedUpdatesNote ? (
+                    <div className="rounded-xl border border-[#F2D28E]/70 bg-[linear-gradient(180deg,rgba(255,249,236,0.96),rgba(255,244,217,0.82))] px-3.5 py-3 text-[#5D4A1D] dark:border-[#6F5420]/65 dark:bg-[linear-gradient(180deg,rgba(73,53,16,0.46),rgba(45,33,10,0.76))] dark:text-[#F5E3B0]">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#A37A28] dark:text-[#E9C978]">
+                        Requested Updates
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[#5D4A1D] dark:text-[#F5E3B0]">
+                        {latestAdminRequestedUpdatesNote}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
