@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { AlertCircle, LoaderCircle, Palette, Users, Briefcase, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, LoaderCircle, Palette, Users, Briefcase, Eye, EyeOff, Shield } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 
@@ -40,9 +40,10 @@ type RoleOption = {
 };
 
 const roleOptions: RoleOption[] = [
+  { value: 'admin', label: 'Admin', icon: Shield, description: 'Review, validate & route tasks' },
   { value: 'designer', label: 'Designer', icon: Palette, description: 'Manage & complete tasks' },
   { value: 'staff', label: 'Staff', icon: Users, description: 'Submit design requests' },
-  { value: 'treasurer', label: 'Treasurer', icon: Briefcase, description: 'Approve modifications' },
+  { value: 'treasurer', label: 'Treasurer', icon: Briefcase, description: 'Track finance-side requests' },
 ];
 
 const STAFF_EMAIL_DOMAIN = 'smvec.ac.in';
@@ -75,6 +76,10 @@ const DESIGN_LEAD_HINT_EMAILS = new Set([
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAIL),
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAILS),
 ]);
+const ADMIN_ROLE_HINT_EMAILS = new Set([
+  ...parseEmailList(import.meta.env.VITE_ADMIN_EMAIL),
+  ...parseEmailList(import.meta.env.VITE_ADMIN_EMAILS),
+]);
 
 const isDesignLeadEmail = (email: string) => {
   const normalized = normalizeEmail(email);
@@ -96,6 +101,7 @@ const getRoleOption = (role: UserRole, email = ''): RoleOption => {
 const resolveLoginRole = (email: string): UserRole => {
   const normalized = normalizeEmail(email);
   if (!normalized) return 'staff';
+  if (ADMIN_ROLE_HINT_EMAILS.has(normalized)) return 'admin';
   if (DESIGNER_ROLE_HINT_EMAILS.has(normalized)) return 'designer';
   if (normalized === NORMALIZED_TREASURER_LOGIN_EMAIL) return 'treasurer';
   return 'staff';
@@ -171,8 +177,8 @@ export default function Login() {
   const [signupRole, setSignupRole] = useState<UserRole>('staff');
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const inferredLoginRole = resolveLoginRole(email);
-  const inferredLoginRoleOption = getRoleOption(inferredLoginRole, email);
   const selectedRoleOption = getRoleOption(role, email);
+  const loginRoleOptions = roleOptions.map((option) => getRoleOption(option.value, email));
   const { login, signup, loginWithGoogle, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -258,8 +264,12 @@ export default function Login() {
       });
       navigate(safeRedirect);
     } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : 'Please check your credentials and try again.';
       toast.error('Login failed', {
-        description: 'Please check your credentials and try again.',
+        description: message,
       });
     } finally {
       setIsLoading(false);
@@ -652,14 +662,16 @@ export default function Login() {
                     <SelectValue aria-label={selectedRoleOption.label} />
                   </SelectTrigger>
                   <SelectContent className={selectContentClass}>
-                    <SelectItem value={inferredLoginRoleOption.value}>
-                      <div className="flex items-center gap-2">
-                        <inferredLoginRoleOption.icon className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-semibold text-foreground/90">
-                          {inferredLoginRoleOption.label}
-                        </span>
-                      </div>
-                    </SelectItem>
+                    {loginRoleOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        <div className="flex items-center gap-2">
+                          <option.icon className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-semibold text-foreground/90">
+                            {option.label}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

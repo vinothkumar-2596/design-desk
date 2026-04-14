@@ -40,7 +40,6 @@ import {
   SCHEDULE_NOTIFICATIONS_PREFIX,
 } from '@/lib/designerSchedule';
 import { useTasksContext } from '@/contexts/TasksContext';
-import { GeminiBlink } from '@/components/common/GeminiBlink';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
@@ -54,6 +53,10 @@ import {
 } from '@/lib/campaignRequest';
 import { getPreferredDesignerDisplayName, isMainDesigner } from '@/lib/designerAccess';
 import { DESIGN_GOVERNANCE_NOTICE_COMPACT } from '@/lib/designGovernance';
+import {
+  getModificationApprovalActorLabel,
+  isAdminRole,
+} from '@/lib/roleRules';
 import { createSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
 import { GridSmallBackground } from '@/components/ui/background';
@@ -1414,14 +1417,17 @@ export function DashboardLayout({
               entry.userRole === 'designer' &&
               entry.field === 'deadline_request' &&
               entry.newValue === 'Approved';
-            const isTreasurerApproval =
-              entry.userRole === 'treasurer' && entry.field === 'approval_status';
+            const isDesignLeadApproval =
+              entry.userRole === 'designer' && entry.field === 'approval_status';
+            const isAdminReview =
+              entry.userRole === 'admin' && entry.field === 'admin_review_status';
             const isEmergencyApproval =
               entry.userRole === 'designer' && entry.field === 'emergency_approval';
             return (
               isDesignerCompletion ||
               isDesignerDeadlineApproval ||
-              isTreasurerApproval ||
+              isDesignLeadApproval ||
+              isAdminReview ||
               isEmergencyApproval
             );
           })
@@ -1431,7 +1437,7 @@ export function DashboardLayout({
       .slice(0, 3);
   }, [hydratedTasks, user, useServerNotifications]);
 
-  const buildCommentNotifications = (role: 'designer' | 'treasurer') =>
+  const buildCommentNotifications = (role: 'admin' | 'designer' | 'treasurer') =>
     hydratedTasks
       .flatMap((task) => {
         const comments = task.comments || [];
@@ -1471,13 +1477,13 @@ export function DashboardLayout({
     const base = hydratedTasks
       .flatMap((task) => {
         const history = task.changeHistory || [];
-        const treasurerEntries = history.filter(
-          (entry: any) => entry.userRole === 'treasurer' && entry.field === 'approval_status'
+        const adminEntries = history.filter(
+          (entry: any) => entry.userRole === 'admin' && entry.field === 'admin_review_status'
         );
-        if (treasurerEntries.length > 0) {
-          const latestTreasurer = getLatestEntry(treasurerEntries);
-          return latestTreasurer
-            ? [{ ...latestTreasurer, taskId: task.id, taskTitle: task.title, task }]
+        if (adminEntries.length > 0) {
+          const latestAdmin = getLatestEntry(adminEntries);
+          return latestAdmin
+            ? [{ ...latestAdmin, taskId: task.id, taskTitle: task.title, task }]
             : [];
         }
         const staffEntries = history.filter(
@@ -1504,8 +1510,8 @@ export function DashboardLayout({
       .slice(0, 3);
   }, [hydratedTasks, user, useServerNotifications]);
 
-  const treasurerNotifications = useMemo(() => {
-    if (useServerNotifications || !user || user.role !== 'treasurer') return [];
+  const adminNotifications = useMemo(() => {
+    if (useServerNotifications || !user || !isAdminRole(user)) return [];
     const base = hydratedTasks
       .flatMap((task) => {
         const history = task.changeHistory || [];
@@ -1521,7 +1527,7 @@ export function DashboardLayout({
           : [];
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    const comments = buildCommentNotifications('treasurer');
+    const comments = buildCommentNotifications('admin');
     return [...base, ...comments]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 3);
@@ -1532,8 +1538,8 @@ export function DashboardLayout({
       ? staffNotifications
       : user?.role === 'designer'
         ? designerNotifications
-        : user?.role === 'treasurer'
-          ? treasurerNotifications
+        : user?.role === 'admin'
+          ? adminNotifications
           : [];
 
   const activeNotifications = useServerNotifications ? serverNotifications : localNotifications;
@@ -1553,19 +1559,25 @@ export function DashboardLayout({
       return `New request: ${entry.taskTitle}`;
     }
     if (user?.role === 'staff') {
-      if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+      if (entry.userRole === 'designer' && entry.field === 'approval_status') {
         const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
           ? 'rejected'
           : 'approved';
-        return `Treasurer ${decision} ${entry.taskTitle}`;
+        return `${getModificationApprovalActorLabel()} ${decision} ${entry.taskTitle}`;
+      }
+      if (entry.userRole === 'admin' && entry.field === 'admin_review_status') {
+        return `Admin updated ${entry.taskTitle}`;
       }
       return `Designer completed ${entry.taskTitle}`;
     }
-    if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+    if (entry.userRole === 'designer' && entry.field === 'approval_status') {
       const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
         ? 'rejected'
         : 'approved';
-      return `Treasurer ${decision} ${entry.taskTitle}`;
+      return `${getModificationApprovalActorLabel()} ${decision} ${entry.taskTitle}`;
+    }
+    if (entry.userRole === 'admin' && entry.field === 'admin_review_status') {
+      return `Admin updated ${entry.taskTitle}`;
     }
     return `Staff updated ${entry.taskTitle}`;
   };
@@ -1578,19 +1590,25 @@ export function DashboardLayout({
       return entry.note || `Submitted by ${entry.userName}`;
     }
     if (user?.role === 'staff') {
-      if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+      if (entry.userRole === 'designer' && entry.field === 'approval_status') {
         const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
           ? 'rejected'
           : 'approved';
         return entry.note || `Approval ${decision}`;
       }
+      if (entry.userRole === 'admin' && entry.field === 'admin_review_status') {
+        return entry.note || 'Admin review updated';
+      }
       return entry.note || 'Status updated to completed';
     }
-    if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+    if (entry.userRole === 'designer' && entry.field === 'approval_status') {
       const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
         ? 'rejected'
         : 'approved';
       return entry.note || `Approval ${decision}`;
+    }
+    if (entry.userRole === 'admin' && entry.field === 'admin_review_status') {
+      return entry.note || 'Admin review updated';
     }
     return entry.note || `${entry.userName} updated ${entry.field}`;
   };
@@ -2477,6 +2495,7 @@ export function DashboardLayout({
       <>
         <DashboardShell
           userInitial={user?.name?.charAt(0) || 'U'}
+          compactShell={isAdminRole(user)}
           background={background}
           contentScrollRef={contentScrollRef}
           keepHeaderPinned={keepHeaderPinned}
@@ -2492,12 +2511,6 @@ export function DashboardLayout({
           }}
           headerActions={
             <>
-              {location.pathname !== '/new-request' && (
-                <GeminiBlink
-                  onClick={() => navigate('/new-request', { state: { openTaskBuddy: true } })}
-                  className="mr-2"
-                />
-              )}
               <ThemeToggle className="mr-2" />
               {headerPresenceAction}
               {notificationAction}
@@ -2609,6 +2622,7 @@ export function DashboardLayout({
 function DashboardShell({
   children,
   userInitial,
+  compactShell = false,
   headerActions,
   onContentScroll,
   background,
@@ -2620,6 +2634,7 @@ function DashboardShell({
 }: {
   children: ReactNode;
   userInitial: string;
+  compactShell?: boolean;
   headerActions?: ReactNode;
   onContentScroll?: () => void;
   background?: ReactNode;
@@ -2957,12 +2972,20 @@ function DashboardShell({
   return (
     <GridSmallBackground
       hideGrid={hideGrid}
-      className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] dark:bg-background p-4 md:p-6"
+      className={cn(
+        'min-h-screen w-full bg-[radial-gradient(circle_at_top,_rgba(145,167,255,0.35),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(196,218,255,0.45),_transparent_60%)] dark:bg-background',
+        compactShell ? 'p-3 md:p-4' : 'p-4 md:p-6'
+      )}
     >
-      <div className="flex min-h-[calc(100vh-2rem)] gap-4 md:gap-6 relative z-10">
+      <div
+        className={cn(
+          'relative z-10 flex',
+          compactShell ? 'min-h-[calc(100vh-1.5rem)] gap-3 md:gap-4' : 'min-h-[calc(100vh-2rem)] gap-4 md:gap-6'
+        )}
+      >
         <div
           className="relative flex-shrink-0"
-          style={{ width: 'var(--app-sidebar-width, 18rem)' }}
+          style={{ width: compactShell ? 'var(--app-sidebar-width, 13.5rem)' : 'var(--app-sidebar-width, 18rem)' }}
         >
           <div
             aria-hidden="true"
@@ -2974,7 +2997,9 @@ function DashboardShell({
           <div
             ref={shellCardRef}
             className={cn(
-              'w-full max-w-6xl rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-none flex flex-col',
+              compactShell
+                ? 'flex w-full max-w-[1240px] flex-col rounded-[28px] border border-[#D9E6FF] bg-white/85 shadow-none dark:border-border dark:bg-card/85'
+                : 'w-full max-w-6xl rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-none flex flex-col',
               fitContentHeight ? 'h-auto self-start' : 'h-full',
               allowContentOverflow ? "overflow-visible" : "overflow-hidden"
             )}
@@ -2982,9 +3007,11 @@ function DashboardShell({
             <div
               ref={headerRef}
               className={cn(
-                "relative z-30 shrink-0 border-b border-[#D9E6FF] bg-white/75 dark:bg-card/80 dark:border-border backdrop-blur-md px-4 md:px-6 py-3",
+                compactShell
+                  ? 'relative z-30 shrink-0 border-b border-[#D9E6FF] bg-white/75 px-4 py-2.5 backdrop-blur-md dark:border-border dark:bg-card/80 md:px-5'
+                  : 'relative z-30 shrink-0 border-b border-[#D9E6FF] bg-white/75 dark:bg-card/80 dark:border-border backdrop-blur-md px-4 md:px-6 py-3',
                 keepHeaderPinned &&
-                  "fixed z-[60] rounded-t-[30px] shadow-none"
+                  (compactShell ? 'fixed z-[60] rounded-t-[27px] shadow-none' : 'fixed z-[60] rounded-t-[30px] shadow-none')
               )}
               style={keepHeaderPinned ? fixedHeaderStyle : undefined}
             >
@@ -3109,7 +3136,13 @@ function DashboardShell({
             >
               {background}
               <div className="relative z-10">
-                <div className="container py-6 px-4 md:px-8 max-w-6xl mx-auto">
+                <div
+                  className={cn(
+                    compactShell
+                      ? 'mx-auto w-full max-w-[1200px] px-4 py-5 md:px-6'
+                      : 'container py-6 px-4 md:px-8 max-w-6xl mx-auto'
+                  )}
+                >
                   {children}
                 </div>
               </div>
