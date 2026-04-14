@@ -92,8 +92,7 @@ export default function Tasks() {
   const [requestScope, setRequestScope] = useState<'all' | 'mine'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'deadline' | 'priority'>('newest');
   const [page, setPage] = useState(1);
-  const isAdvancedFilterPortal =
-    user?.role === 'admin' || user?.role === 'designer' || user?.role === 'treasurer';
+  const isAdvancedFilterPortal = user?.role === 'designer' || user?.role === 'treasurer';
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {

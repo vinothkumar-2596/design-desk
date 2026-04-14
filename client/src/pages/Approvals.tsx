@@ -5,11 +5,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  AlertTriangle,
   CheckCircle2,
-  Eye,
-  FileCheck,
   XCircle,
+  FileCheck,
+  AlertTriangle,
+  Eye,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -18,13 +18,8 @@ import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { DESIGN_GOVERNANCE_NOTICE_POLICY } from '@/lib/designGovernance';
 import { hydrateTask } from '@/lib/taskHydration';
-import {
-  getModificationApprovalActorLabel,
-  isDesignLeadRole,
-} from '@/lib/roleRules';
-import { API_URL, authFetch } from '@/lib/api';
 
-type ReviewDecision = 'approved' | 'needs_info' | 'rejected';
+import { API_URL, authFetch } from '@/lib/api';
 
 export default function Approvals() {
   const { user } = useAuth();
@@ -33,8 +28,6 @@ export default function Approvals() {
   const [tasks, setTasks] = useState<typeof mockTasks>(API_URL ? [] : mockTasks);
   const [isLoading, setIsLoading] = useState(false);
   const apiUrl = API_URL;
-  const isAdminReviewMode = user?.role === 'admin';
-  const isDesignLeadReviewMode = isDesignLeadRole(user);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -48,7 +41,7 @@ export default function Approvals() {
         const data = await response.json();
         const hydrated = data.map((task: any) => hydrateTask({ ...task, id: task.id || task._id }));
         setTasks(hydrated);
-      } catch {
+      } catch (error) {
         toast.error('Failed to load approvals');
       } finally {
         setIsLoading(false);
@@ -57,17 +50,10 @@ export default function Approvals() {
     loadTasks();
   }, [apiUrl]);
 
+  // Filter to only show requests pending approval
   const pendingApprovals = useMemo(() => {
-    if (isAdminReviewMode) {
-      return tasks.filter(
-        (task) => task.adminReviewStatus === 'pending' || task.adminReviewStatus === 'needs_info'
-      );
-    }
-    if (isDesignLeadReviewMode) {
-      return tasks.filter((task) => task.approvalStatus === 'pending');
-    }
-    return [];
-  }, [isAdminReviewMode, isDesignLeadReviewMode, tasks]);
+    return tasks.filter((task) => task.approvalStatus === 'pending');
+  }, [tasks]);
 
   useEffect(() => {
     setScopeLabel('Approvals');
@@ -96,17 +82,19 @@ export default function Approvals() {
     );
     for (const entry of history) {
       if (entry.userRole !== 'staff') continue;
-      if (
-        entry.field === 'approval_status' ||
-        entry.field === 'admin_review_status' ||
-        entry.field === 'admin_review_response_status'
-      ) {
-        continue;
+      if (entry.field === 'approval_status') continue;
+      if (entry.field === 'staff_note' && entry.newValue) {
+        return entry.newValue;
       }
-      if (entry.field === 'staff_note' && entry.newValue) return entry.newValue;
-      if (entry.field === 'description' && entry.newValue) return entry.newValue;
-      if (entry.note) return entry.note;
-      if (entry.newValue) return entry.newValue;
+      if (entry.field === 'description' && entry.newValue) {
+        return entry.newValue;
+      }
+      if (entry.note) {
+        return entry.note;
+      }
+      if (entry.newValue) {
+        return entry.newValue;
+      }
     }
     return '';
   };
@@ -127,52 +115,31 @@ export default function Approvals() {
     return description;
   };
 
-  const updateReviewStatus = async (taskId: string, decision: ReviewDecision) => {
+  const updateApprovalStatus = async (
+    taskId: string,
+    decision: 'approved' | 'rejected'
+  ) => {
     const currentTask = tasks.find((task) => task.id === taskId);
-    const actorLabel = isAdminReviewMode ? 'Admin' : getModificationApprovalActorLabel();
-    const oldValue = isAdminReviewMode
-      ? currentTask?.adminReviewStatus ?? 'pending'
-      : currentTask?.approvalStatus ?? 'pending';
-    const newValue =
-      decision === 'approved'
-        ? 'Approved'
-        : decision === 'needs_info'
-          ? 'Need Info'
-          : 'Rejected';
-    const reviewNote = isAdminReviewMode
-      ? `Admin review ${decision.replace('_', ' ')} by ${user?.name || actorLabel}`
-      : `Approval ${decision} by ${user?.name || actorLabel}`;
-
+    const oldValue = currentTask?.approvalStatus ?? 'pending';
+    const newValue = decision === 'approved' ? 'Approved' : 'Rejected';
+    const approvalNote = `Approval ${decision} by ${user?.name || 'Treasurer'}`;
     if (apiUrl) {
       const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          updates: isAdminReviewMode
-            ? {
-                adminReviewStatus: decision,
-                adminReviewedBy: user?.name || '',
-                adminReviewedAt: new Date(),
-                ...(decision === 'needs_info'
-                  ? {
-                      adminReviewResponseStatus: 'draft',
-                      adminReviewResponseSubmittedBy: '',
-                      adminReviewResponseSubmittedAt: null,
-                    }
-                  : {}),
-              }
-            : {
-                approvalStatus: decision,
-                approvedBy: user?.name || '',
-                approvalDate: new Date(),
-              },
+          updates: {
+            approvalStatus: decision,
+            approvedBy: user?.name || '',
+            approvalDate: new Date(),
+          },
           changes: [
             {
               type: 'status',
-              field: isAdminReviewMode ? 'admin_review_status' : 'approval_status',
+              field: 'approval_status',
               oldValue,
               newValue,
-              note: reviewNote,
+              note: approvalNote,
             },
           ],
           userId: user?.id || '',
@@ -182,115 +149,91 @@ export default function Approvals() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error || 'Failed to update review');
+        throw new Error(payload?.error || 'Failed to update approval');
       }
     }
-
     setTasks((prev) =>
       prev.map((task) =>
         task.id === taskId
           ? {
-              ...task,
-              ...(isAdminReviewMode
-                ? {
-                    adminReviewStatus: decision,
-                    adminReviewedBy: user?.name || '',
-                    adminReviewedAt: new Date(),
-                    ...(decision === 'needs_info'
-                      ? {
-                          adminReviewResponseStatus: 'draft' as const,
-                          adminReviewResponseSubmittedBy: '',
-                          adminReviewResponseSubmittedAt: undefined,
-                        }
-                      : {}),
-                  }
-                : {
-                    approvalStatus: decision,
-                    approvedBy: user?.name || '',
-                    approvalDate: new Date(),
-                  }),
-              updatedAt: new Date(),
-              changeHistory: [
-                {
-                  id: `ch-${Date.now()}-0`,
-                  type: 'status',
-                  field: isAdminReviewMode ? 'admin_review_status' : 'approval_status',
-                  oldValue,
-                  newValue,
-                  note: reviewNote,
-                  userId: user?.id || '',
-                  userName: user?.name || actorLabel,
-                  userRole: user?.role || (isAdminReviewMode ? 'admin' : 'designer'),
-                  createdAt: new Date(),
-                },
-                ...(task.changeHistory || []),
-              ],
-            }
+            ...task,
+            approvalStatus: decision,
+            approvedBy: user?.name || '',
+            approvalDate: new Date(),
+            updatedAt: new Date(),
+            changeHistory: [
+              {
+                id: `ch-${Date.now()}-0`,
+                type: 'status',
+                field: 'approval_status',
+                oldValue,
+                newValue,
+                note: approvalNote,
+                userId: user?.id || '',
+                userName: user?.name || 'Treasurer',
+                userRole: user?.role || 'treasurer',
+                createdAt: new Date(),
+              },
+              ...(task.changeHistory || []),
+            ],
+          }
           : task
       )
     );
   };
 
-  const handleDecision = async (taskId: string, decision: ReviewDecision) => {
+  const handleApprove = async (taskId: string) => {
     setProcessingId(taskId);
     try {
-      await updateReviewStatus(taskId, decision);
-      toast.success(
-        decision === 'approved'
-          ? isAdminReviewMode
-            ? 'Task approved for design intake'
-            : 'Request approved'
-          : decision === 'needs_info'
-            ? 'Marked for more information'
-            : 'Request rejected',
-        {
-          description: 'The requester has been notified.',
-        }
-      );
+      await updateApprovalStatus(taskId, 'approved');
+      toast.success('Request approved', {
+        description: 'The requester has been notified.',
+      });
     } catch (error) {
       const message =
-        error instanceof Error && error.message
-          ? error.message
-          : 'Failed to update request';
+        error instanceof Error && error.message ? error.message : 'Failed to approve request';
       toast.error(message);
     } finally {
       setProcessingId(null);
     }
   };
 
-  const headerTitle = isAdminReviewMode
-    ? 'Admin Review Queue'
-    : 'Pending Modification Approvals';
-  const headerDescription = isAdminReviewMode
-    ? 'Validate staff submissions before they reach the design team'
-    : `${getModificationApprovalActorLabel()} review for data edit and modification requests`;
+  const handleReject = async (taskId: string) => {
+    setProcessingId(taskId);
+    try {
+      await updateApprovalStatus(taskId, 'rejected');
+      toast.success('Request rejected', {
+        description: 'The requester has been notified.',
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message ? error.message : 'Failed to reject request';
+      toast.error(message);
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {!isAdminReviewMode && !isDesignLeadReviewMode ? (
-          <div className="rounded-xl border border-border bg-card p-8 text-center">
-            <h1 className="text-xl font-semibold text-foreground">Approvals</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Admin reviews staff submissions here, and Design Lead reviews modification requests.
-            </p>
-          </div>
-        ) : null}
-
+        {/* Header */}
         <div className="animate-fade-in">
-          <h1 className="text-2xl font-bold text-foreground premium-headline">{headerTitle}</h1>
-          <p className="text-muted-foreground mt-1 premium-body">{headerDescription}</p>
+          <h1 className="text-2xl font-bold text-foreground premium-headline">Pending Approvals</h1>
+          <p className="text-muted-foreground mt-1 premium-body">
+            Review and approve staff change requests
+          </p>
         </div>
 
+        {/* Info Banner */}
         <div className="rounded-lg border border-border/45 bg-card p-4 shadow-none animate-slide-up">
           <div className="flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
             <div>
               <h3 className="font-semibold text-foreground">Approval Guidelines</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                {isAdminReviewMode
-                  ? 'Review incoming requests for completeness, clarity, files, and realistic deadlines before routing them forward.'
-                  : 'Review incoming modification requests before approving to ensure the requested changes still align with the approved brief.'}
+                Review incoming requests before approving to ensure the scope,
+                timeline, and assets align with brand and budget expectations.
               </p>
               <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">
                 {DESIGN_GOVERNANCE_NOTICE_POLICY}
@@ -299,11 +242,13 @@ export default function Approvals() {
           </div>
         </div>
 
+        {/* Results Count */}
         <p className="text-sm text-muted-foreground">
-          {filteredApprovals.length} pending {isAdminReviewMode ? 'review' : 'approval'}
+          {filteredApprovals.length} pending approval
           {filteredApprovals.length !== 1 ? 's' : ''}
         </p>
 
+        {/* Approval Cards */}
         {isLoading ? (
           <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
             <p className="text-sm text-muted-foreground">Loading approvals...</p>
@@ -321,7 +266,6 @@ export default function Approvals() {
                   .slice(0, 2)
                   .map((part) => part[0]?.toUpperCase() || '')
                   .join('') || 'AP';
-
               return (
                 <div
                   key={task.id}
@@ -355,9 +299,11 @@ export default function Approvals() {
                           variant="pending"
                           className="border border-border bg-card/90 text-muted-foreground"
                         >
-                          {isAdminReviewMode ? 'Awaiting Admin Review' : 'Awaiting Approval'}
+                          Awaiting Approval
                         </Badge>
-                        {task.urgency === 'urgent' ? <Badge variant="urgent">Urgent</Badge> : null}
+                        {task.urgency === 'urgent' && (
+                          <Badge variant="urgent">Urgent</Badge>
+                        )}
                       </div>
                       <h3 className="text-2xl font-semibold leading-tight text-foreground dark:text-slate-100 premium-headline">
                         {headline}
@@ -365,7 +311,7 @@ export default function Approvals() {
                       <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground dark:text-[#A0B4DE] premium-body">
                         {summary}
                       </p>
-                      {staffPreview ? (
+                      {staffPreview && (
                         <div className="mt-3 rounded-xl border border-border/45 bg-card/80 px-3 py-2.5">
                           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                             Staff update
@@ -374,8 +320,9 @@ export default function Approvals() {
                             {staffPreview}
                           </p>
                         </div>
-                      ) : null}
+                      )}
                     </div>
+
                   </div>
 
                   <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#D9E6FF]/45 pt-4 dark:border-[#2F4F8E]/40">
@@ -383,27 +330,16 @@ export default function Approvals() {
                       <Button
                         variant="default"
                         className="h-9 gap-2 rounded-xl px-4 border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-none hover:bg-primary/85 dark:border-transparent"
-                        onClick={() => handleDecision(task.id, 'approved')}
+                        onClick={() => handleApprove(task.id)}
                         disabled={processingId === task.id}
                       >
                         <CheckCircle2 className="h-4 w-4" />
                         {processingId === task.id ? 'Processing...' : 'Approve'}
                       </Button>
-                      {isAdminReviewMode ? (
-                        <Button
-                          variant="outline"
-                          className="h-9 gap-2 rounded-xl border-transparent text-foreground hover:bg-muted/60 dark:border-transparent dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
-                          onClick={() => handleDecision(task.id, 'needs_info')}
-                          disabled={processingId === task.id}
-                        >
-                          <AlertTriangle className="h-4 w-4" />
-                          Need Info
-                        </Button>
-                      ) : null}
                       <Button
                         variant="outline"
                         className="h-9 gap-2 rounded-xl border-transparent text-foreground hover:bg-muted/60 dark:border-transparent dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
-                        onClick={() => handleDecision(task.id, 'rejected')}
+                        onClick={() => handleReject(task.id)}
                         disabled={processingId === task.id}
                       >
                         <XCircle className="h-4 w-4" />
@@ -435,7 +371,7 @@ export default function Approvals() {
             <FileCheck className="h-12 w-12 text-status-completed mx-auto mb-3" />
             <h3 className="font-medium text-foreground">All caught up!</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              No pending {isAdminReviewMode ? 'reviews' : 'approvals'} at the moment
+              No pending approvals at the moment
             </p>
           </div>
         )}

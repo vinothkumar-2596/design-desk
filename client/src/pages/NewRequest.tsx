@@ -41,8 +41,7 @@ import {
   type RequestDraftCollateral,
   type RequestDraftPayload,
 } from '@/lib/requestDrafts';
-import { loadLocalTaskById, loadLocalTaskList, upsertLocalTask } from '@/lib/taskStorage';
-import { hydrateTask, inferTaskRequestType } from '@/lib/taskHydration';
+import { loadLocalTaskList, upsertLocalTask } from '@/lib/taskStorage';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -50,7 +49,7 @@ import {
   getOfficeGovernmentHolidayName,
   isOfficeClosedDate,
 } from '@/lib/officeCalendar';
-import type { CollateralItem, RequestType, Task, TaskCategory, TaskUrgency } from '@/types';
+import type { RequestType, Task, TaskCategory, TaskUrgency } from '@/types';
 import {
   AlertTriangle,
   ArrowRight,
@@ -118,19 +117,6 @@ type SubmitSuccessState = {
 
 type NewRequestNavigationState = {
   restoreDraft?: boolean;
-  editTaskId?: string;
-  editTaskSnapshot?: Task;
-  returnTo?: string;
-};
-
-type QuickTaskEditAction = 'draft' | 'submit';
-
-type TaskChangeDraftInput = {
-  type: 'update' | 'file_added' | 'file_removed' | 'status';
-  field: string;
-  oldValue?: string;
-  newValue?: string;
-  note?: string;
 };
 
 type DeadlineCalendarDayProps = PickersDayProps & {
@@ -526,105 +512,6 @@ const toBuilderAttachmentRecord = (attachments: BuilderAttachment[], uploadedBy?
       thumbnailUrl: attachment.thumbnailUrl,
     }));
 
-const toBuilderAttachmentsFromTaskFiles = (files: Task['files'] = []): BuilderAttachment[] =>
-  files
-    .filter((file) => file.type === 'input')
-    .map((file) => ({
-      id: file.driveId || file.id,
-      name: file.name,
-      size: file.size ?? 0,
-      url: file.url,
-      driveId: file.driveId,
-      webViewLink: file.webViewLink,
-      webContentLink: file.webContentLink,
-      thumbnailUrl: file.thumbnailUrl,
-      uploading: false,
-    }));
-
-const normalizeQuickTaskText = (value?: string | null) => String(value || '').trim();
-
-const normalizeQuickTaskDate = (value?: Date | string | null) => {
-  if (!value) return '';
-  const candidate = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(candidate.getTime())) return '';
-  return format(candidate, 'yyyy-MM-dd');
-};
-
-const buildQuickTaskFileKey = ({
-  id,
-  driveId,
-  url,
-  webViewLink,
-  name,
-}: {
-  id?: string;
-  driveId?: string;
-  url?: string;
-  webViewLink?: string;
-  name?: string;
-}) => [driveId, id, url, webViewLink, name].map((value) => String(value || '').trim()).join('::');
-
-const extractCampaignBriefFromTask = (task: Task) => {
-  const directBrief = String(task.campaign?.brief || '').trim();
-  if (directBrief) return directBrief;
-  const description = String(task.description || '').trim();
-  const [briefSection] = description.split(/\n\s*Collateral Scope\s*\n/i);
-  return briefSection.trim();
-};
-
-const toBuilderCollateralDraft = (collateral: CollateralItem): CollateralDraft => ({
-  ...collateral,
-  deadline: collateral.deadline ? new Date(collateral.deadline) : undefined,
-  referenceFiles: toBuilderAttachmentsFromTaskFiles(collateral.referenceFiles as Task['files']),
-});
-
-const serializeBuilderAttachmentForComparison = (attachment: BuilderAttachment) =>
-  JSON.stringify({
-    name: String(attachment.name || '').trim(),
-    size: Number(attachment.size || 0),
-    key: buildQuickTaskFileKey(attachment),
-  });
-
-const serializeCollateralForComparison = (
-  collateral: CollateralDraft | CollateralItem
-) =>
-  JSON.stringify({
-    title: String(collateral.title || '').trim(),
-    collateralType: String(collateral.collateralType || '').trim(),
-    presetCategory: String(collateral.presetCategory || '').trim(),
-    presetKey: String(collateral.presetKey || '').trim(),
-    presetLabel: String(collateral.presetLabel || '').trim(),
-    sizeMode: String(collateral.sizeMode || '').trim(),
-    width: Number(collateral.width || 0),
-    height: Number(collateral.height || 0),
-    unit: String(collateral.unit || '').trim(),
-    sizeLabel: String(collateral.sizeLabel || '').trim(),
-    ratioLabel: String(collateral.ratioLabel || '').trim(),
-    customSizeLabel: String(collateral.customSizeLabel || '').trim(),
-    orientation: String(collateral.orientation || '').trim(),
-    platform: String(collateral.platform || '').trim(),
-    usageType: String(collateral.usageType || '').trim(),
-    brief: String(collateral.brief || '').trim(),
-    deadline: normalizeQuickTaskDate(collateral.deadline),
-    priority: String(collateral.priority || '').trim(),
-    status: String(collateral.status || '').trim(),
-    referenceFiles: (collateral.referenceFiles || [])
-      .map((file) =>
-        serializeBuilderAttachmentForComparison({
-          id: file.driveId || file.id,
-          name: file.name,
-          size: file.size ?? 0,
-          url: file.url,
-          driveId: file.driveId,
-          webViewLink: file.webViewLink,
-          webContentLink: file.webContentLink,
-          thumbnailUrl: file.thumbnailUrl,
-          uploading: false,
-        })
-      )
-      .sort(),
-  });
-
 const mapDraftCollateral = (collateral: CollateralDraft): RequestDraftCollateral => ({
   ...collateral,
   deadline: collateral.deadline?.toISOString(),
@@ -889,25 +776,14 @@ export default function NewRequest() {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const navigationState = (location.state as NewRequestNavigationState | null) ?? null;
   const restoreDraftRequested = Boolean(
-    navigationState?.restoreDraft
+    (location.state as NewRequestNavigationState | null)?.restoreDraft
   );
-  const editTaskId = String(navigationState?.editTaskId || '').trim();
   const routeRequestType = useMemo<RequestType | null>(() => {
     if (location.pathname === '/new-request/quick-design') return 'single_task';
     if (location.pathname === '/new-request/campaign-suite') return 'campaign_request';
     return null;
   }, [location.pathname]);
-  const hydratedEditTaskSnapshot = useMemo(() => {
-    if (!navigationState?.editTaskSnapshot || !routeRequestType) return null;
-    const snapshot = hydrateTask(navigationState.editTaskSnapshot);
-    return inferTaskRequestType(snapshot) === routeRequestType ? snapshot : null;
-  }, [navigationState?.editTaskSnapshot, routeRequestType]);
-  const isRequestEditMode = Boolean(routeRequestType && editTaskId);
-  const isQuickTaskEditMode = routeRequestType === 'single_task' && Boolean(editTaskId);
-  const isCampaignEditMode = routeRequestType === 'campaign_request' && Boolean(editTaskId);
-  const editReturnPath = navigationState?.returnTo || (editTaskId ? `/task/${editTaskId}` : '/my-requests');
   const [selectedRequestType, setSelectedRequestType] = useState<RequestType | null>(routeRequestType);
   const [requestTitle, setRequestTitle] = useState('');
   const [department, setDepartment] = useState(user?.department || '');
@@ -932,16 +808,9 @@ export default function NewRequest() {
     Partial<Record<BuilderStepId, boolean>>
   >({});
   const [didRestoreDraft, setDidRestoreDraft] = useState(false);
-  const [editTask, setEditTask] = useState<Task | null>(hydratedEditTaskSnapshot);
-  const [isEditTaskLoading, setIsEditTaskLoading] = useState(
-    Boolean(isRequestEditMode && !hydratedEditTaskSnapshot)
-  );
-  const [editTaskLoadError, setEditTaskLoadError] = useState('');
-  const [didHydrateEditTask, setDidHydrateEditTask] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const [tourSpotlight, setTourSpotlight] = useState<TourSpotlight | null>(null);
-  const [submitAction, setSubmitAction] = useState<QuickTaskEditAction | null>(null);
   const stepTrackerTourRef = useRef<HTMLElement | null>(null);
   const formPanelTourRef = useRef<HTMLElement | null>(null);
   const sidebarTourRef = useRef<HTMLElement | null>(null);
@@ -1122,85 +991,6 @@ export default function NewRequest() {
   }, [user?.department, user?.phone]);
 
   useEffect(() => {
-    if (!isRequestEditMode) {
-      setEditTask(null);
-      setEditTaskLoadError('');
-      setIsEditTaskLoading(false);
-      setDidHydrateEditTask(false);
-      return;
-    }
-
-    setDidHydrateEditTask(false);
-    if (hydratedEditTaskSnapshot) {
-      setEditTask(hydratedEditTaskSnapshot);
-      setEditTaskLoadError('');
-      setIsEditTaskLoading(false);
-      return;
-    }
-
-    const localTask = loadLocalTaskById(editTaskId);
-    if (localTask && inferTaskRequestType(localTask) === 'single_task') {
-      setEditTask(localTask);
-      setEditTaskLoadError('');
-      setIsEditTaskLoading(false);
-      return;
-    }
-
-    if (!API_URL) {
-      setEditTask(null);
-      setEditTaskLoadError('Quick request edit is unavailable right now.');
-      setIsEditTaskLoading(false);
-      return;
-    }
-
-    let isActive = true;
-    setEditTask(null);
-    setEditTaskLoadError('');
-    setIsEditTaskLoading(true);
-
-    void authFetch(`${API_URL}/api/tasks/${editTaskId}`)
-      .then(async (response) => {
-        const data = await response.json().catch(() => null);
-        if (!response.ok) {
-          throw new Error(
-            data && typeof data.error === 'string' && data.error.trim()
-              ? data.error.trim()
-              : 'Failed to load this quick request.'
-          );
-        }
-        if (!isActive) return;
-        const hydrated = hydrateTask(data as Task);
-        if (inferTaskRequestType(hydrated) !== routeRequestType) {
-          throw new Error(
-            routeRequestType === 'campaign_request'
-              ? 'Only campaign requests can be edited in this flow.'
-              : 'Only quick design requests can be edited in this flow.'
-          );
-        }
-        setEditTask(hydrated);
-        setEditTaskLoadError('');
-      })
-      .catch((error) => {
-        if (!isActive) return;
-        const message =
-          error instanceof Error && error.message
-            ? error.message
-            : 'Failed to load this quick request.';
-        setEditTask(null);
-        setEditTaskLoadError(message);
-      })
-      .finally(() => {
-        if (isActive) {
-          setIsEditTaskLoading(false);
-        }
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [editTaskId, hydratedEditTaskSnapshot, isRequestEditMode, routeRequestType]);
-
-  useEffect(() => {
     if (!routeRequestType) return;
     setSelectedRequestType(routeRequestType);
     if (routeRequestType === 'campaign_request') {
@@ -1209,70 +999,7 @@ export default function NewRequest() {
   }, [routeRequestType]);
 
   useEffect(() => {
-    if (!isRequestEditMode || !editTask || didHydrateEditTask) return;
-
-    setSelectedRequestType(routeRequestType);
-    setRequestTitle(editTask.title || '');
-    setDepartment(editTask.requesterDepartment || user?.department || '');
-    setRequesterPhone(formatIndianPhoneInput(editTask.requesterPhone || user?.phone));
-    setMasterAttachments(toBuilderAttachmentsFromTaskFiles(editTask.files));
-
-    if (routeRequestType === 'single_task') {
-      setOverallBrief(editTask.description || '');
-      setSingleCategory(editTask.category || '');
-      setSingleUrgency(editTask.urgency || 'normal');
-      setSingleDeadline(
-        editTask.deadline
-          ? getNextAvailableDeadline(new Date(editTask.deadline))
-          : defaultDeadlineDate
-      );
-      setDeadlineMode('common');
-      setCommonDeadline(defaultDeadlineDate);
-      setCollaterals([]);
-      setCurrentStep('campaign');
-    } else {
-      const nextDeadlineMode = editTask.campaign?.deadlineMode || 'common';
-      const nextCommonDeadline =
-        nextDeadlineMode === 'common' && editTask.campaign?.commonDeadline
-          ? getNextAvailableDeadline(new Date(editTask.campaign.commonDeadline))
-          : defaultDeadlineDate;
-      const nextCollaterals = (editTask.collaterals || []).map(toBuilderCollateralDraft);
-      const extractedBrief = extractCampaignBriefFromTask(editTask);
-
-      setOverallBrief(extractedBrief);
-      setDeadlineMode(nextDeadlineMode);
-      setCommonDeadline(nextCommonDeadline);
-      setCollaterals(nextCollaterals);
-      setSingleCategory('');
-      setSingleUrgency('normal');
-      setSingleDeadline(defaultDeadlineDate);
-      setCurrentStep(
-        resolveWizardStep({
-          title: editTask.title || '',
-          department: editTask.requesterDepartment || user?.department || '',
-          requesterPhone: editTask.requesterPhone || formatIndianPhoneInput(user?.phone),
-          brief: extractedBrief,
-          deadlineMode: nextDeadlineMode,
-          commonDeadline: nextCommonDeadline,
-          collaterals: nextCollaterals,
-          masterAttachments: toBuilderAttachmentsFromTaskFiles(editTask.files),
-        })
-      );
-    }
-
-    setShouldRevealSingleValidation(false);
-    setDidHydrateEditTask(true);
-  }, [
-    didHydrateEditTask,
-    editTask,
-    isRequestEditMode,
-    routeRequestType,
-    user?.department,
-    user?.phone,
-  ]);
-
-  useEffect(() => {
-    if (!restoreDraftRequested || isRequestEditMode) return;
+    if (!restoreDraftRequested) return;
     const draft = loadRequestDraft(user);
     if (!draft) return;
     setDidRestoreDraft(true);
@@ -1350,15 +1077,7 @@ export default function NewRequest() {
     }
 
     toast.message('Draft restored.');
-  }, [
-    isRequestEditMode,
-    restoreDraftRequested,
-    routeRequestType,
-    user?.department,
-    user?.email,
-    user?.id,
-    user?.phone,
-  ]);
+  }, [restoreDraftRequested, routeRequestType, user?.department, user?.email, user?.id, user?.phone]);
 
   useEffect(() => {
     if (!expandedCollateralId || collaterals.length === 0) return;
@@ -1716,22 +1435,6 @@ export default function NewRequest() {
   );
   const singleRequestCurrentStepIndex =
     singleRequestCurrentStep === 'files' ? 1 : singleRequestCurrentStep === 'review' ? 2 : 0;
-  const isRequestResponseMode =
-    isRequestEditMode && user?.role === 'staff' && editTask?.adminReviewStatus === 'needs_info';
-  const hasSavedRequestDraft =
-    isRequestResponseMode && editTask?.adminReviewResponseStatus === 'draft';
-  const requestSubmitLabel = !isRequestEditMode
-    ? 'Submit Request'
-    : isRequestResponseMode
-      ? 'Submit Response'
-      : 'Update Request';
-  const requestSubmitBusyLabel = !isRequestEditMode
-    ? 'Submitting...'
-    : isRequestResponseMode
-      ? 'Submitting response...'
-      : 'Updating...';
-  const requestDraftLabel = 'Save Draft';
-  const requestDraftBusyLabel = 'Saving draft...';
 
   const validationMessages: Record<BuilderStepId, string> = {
     campaign: campaignValidationMessage,
@@ -1752,570 +1455,7 @@ export default function NewRequest() {
         ? 2
         : 3;
 
-  const applyQuickTaskEdit = async (action: QuickTaskEditAction) => {
-    if (!isQuickTaskEditMode || !editTask) return false;
-
-    const validationMessage = validateSingleRequest({
-      title: requestTitle,
-      department,
-      requesterPhone,
-      brief: overallBrief,
-      category: singleCategory,
-      deadline: singleDeadline,
-      attachments: masterAttachments,
-    });
-
-    if (validationMessage) {
-      setShouldRevealSingleValidation(true);
-      return false;
-    }
-
-    const trimmedTitle = requestTitle.trim();
-    const trimmedDepartment = department.trim();
-    const trimmedBrief = overallBrief.trim();
-    const normalizedPhone = normalizeIndianPhone(requesterPhone);
-    const nextDeadline = singleDeadline ? getNextAvailableDeadline(singleDeadline) : undefined;
-    const actorName = user?.name || 'Staff';
-    const updates: Record<string, unknown> = {};
-    const changes: TaskChangeDraftInput[] = [];
-
-    if (normalizeQuickTaskText(editTask.title) !== trimmedTitle) {
-      updates.title = trimmedTitle;
-      changes.push({
-        type: 'update',
-        field: 'title',
-        oldValue: editTask.title,
-        newValue: trimmedTitle,
-        note: `${actorName} updated the quick request title.`,
-      });
-    }
-
-    if (normalizeQuickTaskText(editTask.requesterDepartment) !== trimmedDepartment) {
-      updates.requesterDepartment = trimmedDepartment;
-      changes.push({
-        type: 'update',
-        field: 'requesterDepartment',
-        oldValue: editTask.requesterDepartment || '',
-        newValue: trimmedDepartment,
-        note: `${actorName} updated the requester details.`,
-      });
-    }
-
-    if (normalizeIndianPhone(editTask.requesterPhone) !== normalizedPhone) {
-      updates.requesterPhone = normalizedPhone;
-      changes.push({
-        type: 'update',
-        field: 'requesterPhone',
-        oldValue: editTask.requesterPhone || '',
-        newValue: normalizedPhone,
-        note: `${actorName} updated the contact number.`,
-      });
-    }
-
-    if (normalizeQuickTaskText(editTask.description) !== trimmedBrief) {
-      updates.description = trimmedBrief;
-      changes.push({
-        type: 'update',
-        field: 'description',
-        oldValue: editTask.description,
-        newValue: trimmedBrief,
-        note: `${actorName} updated the creative brief.`,
-      });
-    }
-
-    if ((editTask.category || '') !== singleCategory) {
-      updates.category = singleCategory;
-      changes.push({
-        type: 'update',
-        field: 'category',
-        oldValue: editTask.category,
-        newValue: singleCategory,
-        note: `${actorName} updated the request category.`,
-      });
-    }
-
-    if ((editTask.urgency || 'normal') !== singleUrgency) {
-      updates.urgency = singleUrgency;
-      changes.push({
-        type: 'update',
-        field: 'urgency',
-        oldValue: editTask.urgency || 'normal',
-        newValue: singleUrgency,
-        note: `${actorName} updated the request priority.`,
-      });
-    }
-
-    if (normalizeQuickTaskDate(editTask.deadline) !== normalizeQuickTaskDate(nextDeadline)) {
-      updates.deadline = nextDeadline;
-      changes.push({
-        type: 'update',
-        field: 'deadline',
-        oldValue: editTask.deadline ? format(editTask.deadline, 'yyyy-MM-dd') : '',
-        newValue: nextDeadline ? format(nextDeadline, 'yyyy-MM-dd') : '',
-        note: `${actorName} updated the deadline.`,
-      });
-    }
-
-    const existingInputFiles = (editTask.files || []).filter((file) => file.type === 'input');
-    const retainedNonInputFiles = (editTask.files || []).filter((file) => file.type !== 'input');
-    const nextInputFiles = toBuilderAttachmentRecord(masterAttachments, user?.id);
-    const existingFileMap = new Map(
-      existingInputFiles.map((file) => [buildQuickTaskFileKey(file), file])
-    );
-    const nextFileMap = new Map(nextInputFiles.map((file) => [buildQuickTaskFileKey(file), file]));
-    const filesChanged =
-      existingInputFiles.length !== nextInputFiles.length ||
-      Array.from(existingFileMap.keys()).some((key) => !nextFileMap.has(key)) ||
-      Array.from(nextFileMap.keys()).some((key) => !existingFileMap.has(key));
-
-    if (filesChanged) {
-      updates.files = [...retainedNonInputFiles, ...nextInputFiles];
-
-      existingInputFiles.forEach((file) => {
-        const key = buildQuickTaskFileKey(file);
-        if (nextFileMap.has(key)) return;
-        changes.push({
-          type: 'file_removed',
-          field: 'files',
-          oldValue: file.name,
-          newValue: '',
-          note: `${actorName} removed a supporting file.`,
-        });
-      });
-
-      nextInputFiles.forEach((file) => {
-        const key = buildQuickTaskFileKey(file);
-        if (existingFileMap.has(key)) return;
-        changes.push({
-          type: 'file_added',
-          field: 'files',
-          oldValue: '',
-          newValue: file.name,
-          note: `${actorName} added a supporting file.`,
-        });
-      });
-    }
-
-    if (isRequestResponseMode) {
-      if (action === 'draft') {
-        if (changes.length === 0) {
-          toast.message('No updates to save.');
-          return false;
-        }
-        updates.adminReviewResponseStatus = 'draft';
-        updates.adminReviewResponseSubmittedBy = '';
-        updates.adminReviewResponseSubmittedAt = null;
-      } else {
-        if (changes.length === 0 && !hasSavedRequestDraft) {
-          toast.message('Update the brief or attachments before submitting.');
-          return false;
-        }
-        changes.push({
-          type: 'status',
-          field: 'admin_review_response_status',
-          oldValue:
-            editTask.adminReviewResponseStatus === 'submitted'
-              ? 'Submitted'
-              : editTask.adminReviewResponseStatus === 'draft'
-                ? 'Draft'
-                : '',
-          newValue: 'Submitted',
-          note: `Updated brief submitted by ${actorName}`,
-        });
-        updates.adminReviewResponseStatus = 'submitted';
-        updates.adminReviewResponseSubmittedBy = actorName;
-        updates.adminReviewResponseSubmittedAt = new Date();
-      }
-    } else if (changes.length === 0) {
-      toast.message('No updates to save.');
-      return false;
-    }
-
-    if (!API_URL) {
-      toast.error('Quick request edit is unavailable right now.');
-      return false;
-    }
-
-    setIsSubmitting(true);
-    setSubmitAction(action);
-    try {
-      const response = await authFetch(`${API_URL}/api/tasks/${editTask.id}/changes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          updates,
-          changes,
-          userId: user?.id || '',
-          userName: user?.name || '',
-          userRole: user?.role || '',
-        }),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(
-          data && typeof data.error === 'string' && data.error.trim()
-            ? data.error.trim()
-            : 'Failed to update quick request.'
-        );
-      }
-
-      const hydrated = hydrateTask(data as Task);
-      setEditTask(hydrated);
-      upsertLocalTask(hydrated);
-
-      if (action === 'draft') {
-        toast.success('Draft saved.');
-        return true;
-      }
-
-      toast.success(
-        isRequestResponseMode
-          ? 'Updated brief submitted for admin review.'
-          : 'Quick request updated.'
-      );
-      navigate(editReturnPath);
-      return true;
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : 'Failed to update quick request.';
-      toast.error(message);
-      return false;
-    } finally {
-      setIsSubmitting(false);
-      setSubmitAction(null);
-    }
-  };
-
-  const applyCampaignRequestEdit = async (action: QuickTaskEditAction) => {
-    if (!isCampaignEditMode || !editTask) return false;
-
-    if (action === 'submit') {
-      const validationMessage = validateBuilder({
-        title: requestTitle,
-        department,
-        requesterPhone,
-        brief: overallBrief,
-        deadlineMode,
-        commonDeadline,
-        collaterals,
-        masterAttachments,
-      });
-
-      if (validationMessage) {
-        const blockingStep = resolveWizardStep({
-          title: requestTitle,
-          department,
-          requesterPhone,
-          brief: overallBrief,
-          deadlineMode,
-          commonDeadline,
-          collaterals,
-          masterAttachments,
-        });
-        setCurrentStep(blockingStep);
-        setRevealedValidationSteps((previous) => ({
-          ...previous,
-          [blockingStep]: true,
-        }));
-        return false;
-      }
-    }
-
-    const normalizedPhone = normalizeIndianPhone(requesterPhone);
-    const actorName = user?.name || 'Staff';
-    const persistedCollaterals = collaterals.map((collateral) => ({
-      ...collateral,
-      deadline: deadlineMode === 'common' ? commonDeadline : collateral.deadline,
-      referenceFiles: toBuilderAttachmentRecord(collateral.referenceFiles, user?.id),
-    }));
-    const nextCampaign = {
-      requestName: requestTitle.trim(),
-      brief: overallBrief.trim(),
-      deadlineMode,
-      commonDeadline: deadlineMode === 'common' ? commonDeadline : undefined,
-    };
-    const nextDescription = buildCampaignDescription(nextCampaign, persistedCollaterals as any);
-    const nextCategory = deriveTaskCategoryFromCollaterals(persistedCollaterals as any);
-    const nextUrgency = deriveTaskUrgencyFromCollaterals(persistedCollaterals as any);
-    const nextDeadline =
-      deriveEffectiveDeadline(persistedCollaterals, nextCampaign) || editTask.deadline;
-    const nextMasterFiles = toBuilderAttachmentRecord(masterAttachments, user?.id);
-
-    const updates: Record<string, unknown> = {};
-    const changes: TaskChangeDraftInput[] = [];
-
-    if (normalizeQuickTaskText(editTask.title) !== nextCampaign.requestName) {
-      updates.title = nextCampaign.requestName;
-      changes.push({
-        type: 'update',
-        field: 'title',
-        oldValue: editTask.title,
-        newValue: nextCampaign.requestName,
-        note: `${actorName} updated the campaign title.`,
-      });
-    }
-
-    if (normalizeQuickTaskText(editTask.requesterDepartment) !== department.trim()) {
-      updates.requesterDepartment = department.trim();
-      changes.push({
-        type: 'update',
-        field: 'requesterDepartment',
-        oldValue: editTask.requesterDepartment || '',
-        newValue: department.trim(),
-        note: `${actorName} updated the requester details.`,
-      });
-    }
-
-    if (normalizeIndianPhone(editTask.requesterPhone) !== normalizedPhone) {
-      updates.requesterPhone = normalizedPhone;
-      changes.push({
-        type: 'update',
-        field: 'requesterPhone',
-        oldValue: editTask.requesterPhone || '',
-        newValue: normalizedPhone,
-        note: `${actorName} updated the contact number.`,
-      });
-    }
-
-    if (normalizeQuickTaskText(editTask.description) !== nextDescription) {
-      updates.description = nextDescription;
-      changes.push({
-        type: 'update',
-        field: 'description',
-        oldValue: editTask.description,
-        newValue: nextDescription,
-        note: `${actorName} updated the campaign brief.`,
-      });
-    }
-
-    if ((editTask.category || '') !== nextCategory) {
-      updates.category = nextCategory;
-      changes.push({
-        type: 'update',
-        field: 'category',
-        oldValue: editTask.category,
-        newValue: nextCategory,
-        note: `${actorName} updated the campaign category.`,
-      });
-    }
-
-    if ((editTask.urgency || 'normal') !== nextUrgency) {
-      updates.urgency = nextUrgency;
-      changes.push({
-        type: 'update',
-        field: 'urgency',
-        oldValue: editTask.urgency || 'normal',
-        newValue: nextUrgency,
-        note: `${actorName} updated the campaign priority.`,
-      });
-    }
-
-    if (normalizeQuickTaskDate(editTask.deadline) !== normalizeQuickTaskDate(nextDeadline)) {
-      updates.deadline = nextDeadline;
-      changes.push({
-        type: 'update',
-        field: 'deadline',
-        oldValue: editTask.deadline ? format(editTask.deadline, 'yyyy-MM-dd') : '',
-        newValue: nextDeadline ? format(nextDeadline, 'yyyy-MM-dd') : '',
-        note: `${actorName} updated the campaign deadline.`,
-      });
-    }
-
-    const existingMasterFiles = toBuilderAttachmentsFromTaskFiles(editTask.files);
-    const existingMasterFileMap = new Map(
-      existingMasterFiles.map((file) => [buildQuickTaskFileKey(file), file])
-    );
-    const nextMasterFileMap = new Map(
-      nextMasterFiles.map((file) => [buildQuickTaskFileKey(file), file])
-    );
-    const masterFilesChanged =
-      existingMasterFiles.length !== nextMasterFiles.length ||
-      Array.from(existingMasterFileMap.keys()).some((key) => !nextMasterFileMap.has(key)) ||
-      Array.from(nextMasterFileMap.keys()).some((key) => !existingMasterFileMap.has(key));
-
-    if (masterFilesChanged) {
-      const retainedNonInputFiles = (editTask.files || []).filter((file) => file.type !== 'input');
-      updates.files = [...retainedNonInputFiles, ...nextMasterFiles];
-
-      existingMasterFiles.forEach((file) => {
-        const key = buildQuickTaskFileKey(file);
-        if (nextMasterFileMap.has(key)) return;
-        changes.push({
-          type: 'file_removed',
-          field: 'files',
-          oldValue: file.name,
-          newValue: '',
-          note: `${actorName} removed a campaign reference file.`,
-        });
-      });
-
-      nextMasterFiles.forEach((file) => {
-        const key = buildQuickTaskFileKey(file);
-        if (existingMasterFileMap.has(key)) return;
-        changes.push({
-          type: 'file_added',
-          field: 'files',
-          oldValue: '',
-          newValue: file.name,
-          note: `${actorName} added a campaign reference file.`,
-        });
-      });
-    }
-
-    const currentCampaign = {
-      requestName: String(editTask.campaign?.requestName || editTask.title || '').trim(),
-      brief: extractCampaignBriefFromTask(editTask),
-      deadlineMode: editTask.campaign?.deadlineMode || 'common',
-      commonDeadline:
-        editTask.campaign?.deadlineMode === 'common' && editTask.campaign?.commonDeadline
-          ? normalizeQuickTaskDate(editTask.campaign.commonDeadline)
-          : '',
-    };
-    const nextCampaignComparable = {
-      requestName: nextCampaign.requestName,
-      brief: nextCampaign.brief,
-      deadlineMode: nextCampaign.deadlineMode,
-      commonDeadline:
-        nextCampaign.deadlineMode === 'common' && nextCampaign.commonDeadline
-          ? normalizeQuickTaskDate(nextCampaign.commonDeadline)
-          : '',
-    };
-
-    if (JSON.stringify(currentCampaign) !== JSON.stringify(nextCampaignComparable)) {
-      updates.campaign = nextCampaign;
-      changes.push({
-        type: 'update',
-        field: 'campaign',
-        oldValue: currentCampaign.requestName,
-        newValue: nextCampaign.requestName,
-        note: `${actorName} updated the campaign details.`,
-      });
-    }
-
-    const currentCollateralsComparable = (editTask.collaterals || [])
-      .map(serializeCollateralForComparison)
-      .sort();
-    const nextCollateralsComparable = persistedCollaterals
-      .map((collateral) =>
-        serializeCollateralForComparison(collateral as unknown as CollateralDraft)
-      )
-      .sort();
-
-    if (JSON.stringify(currentCollateralsComparable) !== JSON.stringify(nextCollateralsComparable)) {
-      updates.collaterals = persistedCollaterals;
-      changes.push({
-        type: 'update',
-        field: 'collaterals',
-        oldValue: String(editTask.collaterals?.length || 0),
-        newValue: String(persistedCollaterals.length),
-        note: `${actorName} updated the campaign deliverables.`,
-      });
-    }
-
-    if (isRequestResponseMode) {
-      if (action === 'draft') {
-        if (changes.length === 0) {
-          toast.message('No updates to save.');
-          return false;
-        }
-        updates.adminReviewResponseStatus = 'draft';
-        updates.adminReviewResponseSubmittedBy = '';
-        updates.adminReviewResponseSubmittedAt = null;
-      } else {
-        if (changes.length === 0 && !hasSavedRequestDraft) {
-          toast.message('Update the campaign brief or files before submitting.');
-          return false;
-        }
-        changes.push({
-          type: 'status',
-          field: 'admin_review_response_status',
-          oldValue:
-            editTask.adminReviewResponseStatus === 'submitted'
-              ? 'Submitted'
-              : editTask.adminReviewResponseStatus === 'draft'
-                ? 'Draft'
-                : '',
-          newValue: 'Submitted',
-          note: `Updated brief submitted by ${actorName}`,
-        });
-        updates.adminReviewResponseStatus = 'submitted';
-        updates.adminReviewResponseSubmittedBy = actorName;
-        updates.adminReviewResponseSubmittedAt = new Date();
-      }
-    } else if (changes.length === 0) {
-      toast.message('No updates to save.');
-      return false;
-    }
-
-    if (!API_URL) {
-      toast.error('Campaign edit is unavailable right now.');
-      return false;
-    }
-
-    setIsSubmitting(true);
-    setSubmitAction(action);
-    try {
-      const response = await authFetch(`${API_URL}/api/tasks/${editTask.id}/changes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          updates,
-          changes,
-          userId: user?.id || '',
-          userName: user?.name || '',
-          userRole: user?.role || '',
-        }),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(
-          data && typeof data.error === 'string' && data.error.trim()
-            ? data.error.trim()
-            : 'Failed to update campaign request.'
-        );
-      }
-
-      const hydrated = hydrateTask(data as Task);
-      setEditTask(hydrated);
-      upsertLocalTask(hydrated);
-
-      if (action === 'draft') {
-        toast.success('Draft saved.');
-        return true;
-      }
-
-      toast.success(
-        isRequestResponseMode
-          ? 'Updated brief submitted for admin review.'
-          : 'Campaign request updated.'
-      );
-      navigate(editReturnPath);
-      return true;
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : 'Failed to update campaign request.';
-      toast.error(message);
-      return false;
-    } finally {
-      setIsSubmitting(false);
-      setSubmitAction(null);
-    }
-  };
-
   const saveDraft = () => {
-    if (isQuickTaskEditMode) {
-      void applyQuickTaskEdit('draft');
-      return;
-    }
-    if (isCampaignEditMode) {
-      void applyCampaignRequestEdit('draft');
-      return;
-    }
-
     if (!selectedRequestType) {
       toast.error('Choose a request type first.');
       return;
@@ -2424,15 +1564,6 @@ export default function NewRequest() {
   };
 
   const handleSubmit = async () => {
-    if (isQuickTaskEditMode) {
-      await applyQuickTaskEdit('submit');
-      return;
-    }
-    if (isCampaignEditMode) {
-      await applyCampaignRequestEdit('submit');
-      return;
-    }
-
     if (!selectedRequestType) {
       toast.error('Choose a request type first.');
       return;
@@ -2474,7 +1605,6 @@ export default function NewRequest() {
       };
 
       setIsSubmitting(true);
-      setSubmitAction('submit');
       try {
         if (!API_URL) {
           throw new Error('API unavailable');
@@ -2539,7 +1669,6 @@ export default function NewRequest() {
         openSubmitSuccessModal('single_task', fallbackTask.title, true);
       } finally {
         setIsSubmitting(false);
-        setSubmitAction(null);
       }
 
       return;
@@ -2620,7 +1749,6 @@ export default function NewRequest() {
     };
 
     setIsSubmitting(true);
-    setSubmitAction('submit');
     try {
       if (!API_URL) {
         throw new Error('API unavailable');
@@ -2692,7 +1820,6 @@ export default function NewRequest() {
       openSubmitSuccessModal('campaign_request', fallbackTask.title, true);
     } finally {
       setIsSubmitting(false);
-      setSubmitAction(null);
     }
   };
 
@@ -3919,52 +3046,26 @@ export default function NewRequest() {
         <div className="border-b border-border/70 px-5 py-4 dark:border-border/60">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h2 className="text-[24px] font-semibold text-foreground">
-                {isRequestEditMode
-                  ? isCampaignEditMode
-                    ? 'Update Campaign Suite'
-                    : 'Update Quick Design'
-                  : 'Quick Design'}
-              </h2>
+              <h2 className="text-[24px] font-semibold text-foreground">Quick Design</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {isRequestResponseMode
-                  ? 'Admin asked for more details. Update the brief, add missing files, and submit the response.'
-                  : isRequestEditMode
-                    ? isCampaignEditMode
-                      ? 'Use this builder to revise the existing campaign request.'
-                      : 'Use this builder to revise the existing quick design request.'
-                    : 'Add the details for one design request.'}
+                Add the details for one design request.
               </p>
             </div>
 
-            {!isRequestEditMode ? (
-              <Button
-                type="button"
-                onClick={() => handleRequestTypeSelect('campaign_request')}
-                className="h-11 w-full justify-start gap-3 rounded-[16px] border border-[#D9E6FF] bg-white/88 px-3.5 text-[13px] font-semibold text-[#223067] shadow-none transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-sidebar-border dark:bg-sidebar/60 dark:text-sidebar-foreground dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-accent sm:w-auto"
-              >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200">
-                  <Layers3 className="h-4 w-4" />
-                </span>
-                <span className="truncate">Switch to Campaign Suite</span>
-              </Button>
-            ) : null}
+            <Button
+              type="button"
+              onClick={() => handleRequestTypeSelect('campaign_request')}
+              className="h-11 w-full justify-start gap-3 rounded-[16px] border border-[#D9E6FF] bg-white/88 px-3.5 text-[13px] font-semibold text-[#223067] shadow-none transition-all duration-200 hover:border-[#C7D8FF] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:border-sidebar-border dark:bg-sidebar/60 dark:text-sidebar-foreground dark:hover:border-sidebar-ring/35 dark:hover:bg-sidebar-accent sm:w-auto"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] bg-[#EEF4FF] text-primary dark:bg-sidebar/90 dark:text-slate-200">
+                <Layers3 className="h-4 w-4" />
+              </span>
+              <span className="truncate">Switch to Campaign Suite</span>
+            </Button>
           </div>
         </div>
 
         <div className="px-5 py-4">
-          {isRequestEditMode && isEditTaskLoading && !editTask ? (
-            <div className="rounded-[20px] border border-[#D9E6FF]/80 bg-white/75 px-4 py-6 text-sm text-muted-foreground dark:border-border dark:bg-card/80">
-              Loading the request details...
-            </div>
-          ) : isRequestEditMode && editTaskLoadError && !editTask ? (
-            <div className="space-y-4 rounded-[20px] border border-destructive/30 bg-destructive/5 px-4 py-5">
-              <p className="text-sm font-medium text-foreground">{editTaskLoadError}</p>
-              <Button type="button" variant="outline" onClick={() => navigate(editReturnPath)}>
-                Back to Task
-              </Button>
-            </div>
-          ) : (
           <section className="space-y-5">
             <div className="grid items-start gap-x-5 gap-y-4 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.2fr)_minmax(0,1.2fr)]">
               <div className="space-y-2">
@@ -4139,7 +3240,6 @@ export default function NewRequest() {
               />
             </div>
           </section>
-          )}
         </div>
 
         <div className={builderFooterClass}>
@@ -4159,42 +3259,20 @@ export default function NewRequest() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  if (isRequestEditMode) {
-                    navigate(editReturnPath);
-                    return;
-                  }
-                  resetRequestTypeSelection();
-                }}
+                onClick={resetRequestTypeSelection}
                 className={cn(builderSecondaryActionClass, 'justify-start gap-2.5')}
               >
                 <ChevronLeft className="h-4 w-4" />
-                {isRequestEditMode ? 'Back to Task' : 'Back'}
+                Back
               </Button>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-              {!isRequestEditMode || isRequestResponseMode ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={saveDraft}
-                  disabled={isSubmitting || (isRequestEditMode && (!editTask || isEditTaskLoading))}
-                  className={builderSecondaryActionClass}
-                >
-                  {isSubmitting && submitAction === 'draft'
-                    ? requestDraftBusyLabel
-                    : requestDraftLabel}
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isSubmitting || (isRequestEditMode && (!editTask || isEditTaskLoading))}
-              >
-                {isSubmitting && submitAction === 'submit'
-                  ? requestSubmitBusyLabel
-                  : requestSubmitLabel}
+              <Button type="button" variant="outline" onClick={saveDraft} className={builderSecondaryActionClass}>
+                Save Draft
+              </Button>
+              <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting...' : 'Submit Request'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
@@ -4263,29 +3341,13 @@ export default function NewRequest() {
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            {!isRequestEditMode || isRequestResponseMode ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={saveDraft}
-                disabled={isSubmitting || (isRequestEditMode && (!editTask || isEditTaskLoading))}
-                className={builderSecondaryActionClass}
-              >
-                {isSubmitting && submitAction === 'draft'
-                  ? requestDraftBusyLabel
-                  : requestDraftLabel}
-              </Button>
-            ) : null}
+            <Button type="button" variant="outline" onClick={saveDraft} className={builderSecondaryActionClass}>
+              Save Draft
+            </Button>
 
             {currentStep === 'review' ? (
-              <Button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isSubmitting || (isRequestEditMode && (!editTask || isEditTaskLoading))}
-              >
-                {isSubmitting && submitAction === 'submit'
-                  ? requestSubmitBusyLabel
-                  : requestSubmitLabel}
+              <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting...' : 'Submit Request'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
@@ -4308,28 +3370,19 @@ export default function NewRequest() {
         : '';
   const trimmedRequestTitle = requestTitle.trim();
   const fallbackHeaderTitle =
-    isRequestEditMode
-      ? isCampaignEditMode
-        ? 'Update campaign suite'
-        : 'Update quick design request'
-      : selectedRequestType === 'single_task'
+    selectedRequestType === 'single_task'
       ? 'Create a quick design request'
       : selectedRequestType === 'campaign_request'
         ? 'Create a campaign suite'
         : 'Create a New Design Request';
   const headerTitle =
     trimmedRequestTitle ? truncateHeaderTitle(trimmedRequestTitle) : fallbackHeaderTitle;
-  const headerDescription = isRequestResponseMode
-    ? 'Update the brief, attach the missing files, and send the response back for admin review.'
-    : isRequestEditMode
-      ? isCampaignEditMode
-        ? 'Use this flow to revise the existing campaign request.'
-        : 'Use this flow to revise the existing quick design request.'
-      : selectedRequestType === 'single_task'
-        ? 'Use this flow for one design deliverable.'
-        : selectedRequestType === 'campaign_request'
-          ? ''
-          : 'Choose the type of request to get started.';
+  const headerDescription =
+    selectedRequestType === 'single_task'
+      ? 'Use this flow for one design deliverable.'
+      : selectedRequestType === 'campaign_request'
+        ? ''
+        : 'Choose the type of request to get started.';
 
   return (
     <DashboardLayout fitContentHeight>
@@ -4366,29 +3419,13 @@ export default function NewRequest() {
                 Quick tour
               </Button>
             ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate(isRequestEditMode ? editReturnPath : '/my-requests')}
-            >
-              {isRequestEditMode ? 'Back to Task' : 'Cancel'}
+            <Button type="button" variant="outline" onClick={() => navigate('/my-requests')}>
+              Cancel
             </Button>
           </div>
         </div>
 
         {selectedRequestType === 'campaign_request' ? (
-          isCampaignEditMode && isEditTaskLoading && !editTask ? (
-            <section className="rounded-[24px] border border-[#D9E6FF]/78 bg-white/80 px-5 py-6 text-sm text-muted-foreground dark:border-border dark:bg-card/90">
-              Loading the campaign request details...
-            </section>
-          ) : isCampaignEditMode && editTaskLoadError && !editTask ? (
-            <section className="space-y-4 rounded-[24px] border border-destructive/30 bg-destructive/5 px-5 py-6">
-              <p className="text-sm font-medium text-foreground">{editTaskLoadError}</p>
-              <Button type="button" variant="outline" onClick={() => navigate(editReturnPath)}>
-                Back to Task
-              </Button>
-            </section>
-          ) : (
           <>
             <section ref={stepTrackerTourRef} className="relative overflow-hidden rounded-[22px] border border-[#BDD0FF]/65 bg-gradient-to-br from-white/62 via-[#EBF2FF]/54 to-[#DCE8FF]/46 supports-[backdrop-filter]:from-white/42 supports-[backdrop-filter]:via-[#EBF2FF]/36 supports-[backdrop-filter]:to-[#DCE8FF]/30 backdrop-blur-2xl shadow-[inset_0_0_0_1px_rgba(255,255,255,0.62)] dark:border-sidebar-border/60 dark:bg-sidebar-accent dark:[background-image:none] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_15%_0%,rgba(87,118,255,0.10),transparent_48%),radial-gradient(ellipse_at_85%_100%,rgba(56,85,190,0.08),transparent_42%)] dark:bg-[radial-gradient(ellipse_at_15%_0%,rgba(99,124,255,0.12),transparent_45%),radial-gradient(ellipse_at_85%_100%,rgba(67,97,204,0.08),transparent_40%)]" />
@@ -4506,7 +3543,6 @@ export default function NewRequest() {
               </div>
             )}
           </>
-          )
         ) : selectedRequestType === 'single_task' ? (
           <div className="mx-auto w-full max-w-4xl space-y-3">
             <section className="relative overflow-hidden rounded-[22px] border border-[#BDD0FF]/65 bg-gradient-to-br from-white/62 via-[#EBF2FF]/54 to-[#DCE8FF]/46 supports-[backdrop-filter]:from-white/42 supports-[backdrop-filter]:via-[#EBF2FF]/36 supports-[backdrop-filter]:to-[#DCE8FF]/30 backdrop-blur-2xl shadow-[inset_0_0_0_1px_rgba(255,255,255,0.62)] dark:border-sidebar-border/60 dark:bg-sidebar-accent dark:[background-image:none] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">

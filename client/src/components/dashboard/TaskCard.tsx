@@ -10,7 +10,6 @@ import { useEffect, useRef, useState } from 'react';
 import { API_URL, authFetch } from '@/lib/api';
 import { upsertLocalTask } from '@/lib/taskStorage';
 import { toast } from 'sonner';
-import { getAdminReviewLabel } from '@/lib/roleRules';
 
 interface TaskCardProps {
   task: Task;
@@ -263,8 +262,6 @@ export function TaskCard({
         {(task.collaterals?.length || 0) > 0 &&
           renderChip(Layers3, 'Collaterals', task.collaterals?.length || 0)}
         {task.urgency === 'urgent' && renderChip(AlertTriangle, 'Urgent')}
-        {task.adminReviewStatus && task.adminReviewStatus !== 'approved' &&
-          renderChip(Clock, getAdminReviewLabel(task.adminReviewStatus) || 'Awaiting Admin Review')}
         {task.approvalStatus === 'pending' && renderChip(Clock, 'Awaiting Approval')}
         {(task.isEmergency || emergencyStatus) && renderChip(AlertTriangle, emergencyLabel)}
       </div>

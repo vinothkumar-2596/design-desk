@@ -53,8 +53,6 @@ export const hydrateTask = (raw: Task): Task => ({
   updatedAt: new Date(raw.updatedAt),
   proposedDeadline: toDate(raw.proposedDeadline),
   deadlineApprovedAt: toDate(raw.deadlineApprovedAt),
-  adminReviewedAt: toDate(raw.adminReviewedAt),
-  adminReviewResponseSubmittedAt: toDate(raw.adminReviewResponseSubmittedAt),
   approvalDate: toDate(raw.approvalDate),
   emergencyApprovedAt: toDate(raw.emergencyApprovedAt),
   emergencyRequestedAt: toDate(raw.emergencyRequestedAt),

@@ -32,16 +32,16 @@ export const legalPageStyles = {
   sectionListText: 'min-w-0 leading-6',
   sectionDot: 'mt-[0.6rem] h-2 w-2 rounded-full bg-[#5F7CFF] dark:bg-[#9EB2FF]',
   contactSection:
-    'relative mt-6 overflow-hidden rounded-[28px] border border-[#D5E2FF]/70 bg-gradient-to-br from-white/88 via-white/78 to-[#EAF2FF]/74 px-5 py-4 ring-1 ring-white/65 supports-[backdrop-filter]:from-white/72 supports-[backdrop-filter]:via-white/62 supports-[backdrop-filter]:to-[#EAF2FF]/58 backdrop-blur-2xl dark:border-border dark:bg-card/86 dark:bg-none dark:ring-white/10 dark:backdrop-blur-xl sm:px-6 sm:py-5',
+    'mt-6 rounded-[20px] border border-[#E2E8F0] bg-white px-5 py-4 dark:border-border dark:bg-card',
   contactLayout:
     'flex flex-col gap-3.5 md:flex-row md:items-center md:justify-between md:gap-6',
-  contactLead: 'flex min-w-0 flex-1 items-start gap-3.5 md:items-center',
+  contactLead: 'flex min-w-0 flex-1 items-start gap-3 md:items-center',
   contactIcon:
-    'flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-[#D7E4FF]/85 bg-gradient-to-br from-white/95 via-[#F8FBFF]/88 to-[#ECF3FF]/82 text-[#50648F] shadow-none supports-[backdrop-filter]:bg-white/58 backdrop-blur-xl dark:border-border dark:bg-muted/55 dark:bg-none dark:text-foreground',
+    'flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-[#E2E8F0] bg-[#F8FAFC] text-[#334155] dark:border-border dark:bg-muted/50 dark:text-foreground',
   contactCard:
-    'flex w-full items-center gap-3 rounded-[16px] border border-[#D7E4FF]/85 bg-gradient-to-r from-white/90 via-[#F7FAFF]/88 to-[#EDF4FF]/84 px-3.5 py-3.5 text-left shadow-none supports-[backdrop-filter]:bg-[#F7FAFF]/72 backdrop-blur-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C9D7FF] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F3F7FF] dark:border-border dark:bg-muted/45 dark:bg-none dark:focus-visible:ring-slate-600 dark:focus-visible:ring-offset-background md:w-auto md:min-w-[17.5rem] md:max-w-[18rem]',
+    'flex w-full items-center gap-3 rounded-[14px] border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 py-3 text-left transition-colors hover:bg-[#F3F6FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#CBD5E1] focus-visible:ring-offset-2 dark:border-border dark:bg-muted/35 dark:hover:bg-muted/45 dark:focus-visible:ring-slate-600 md:w-auto md:min-w-[19rem] md:max-w-[20rem]',
   contactCardIcon:
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[#D6E2FB]/85 bg-white/82 text-[#50648F] supports-[backdrop-filter]:bg-white/62 backdrop-blur-md dark:border-border dark:bg-background/80 dark:text-foreground',
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[#E2E8F0] bg-white text-[#475569] dark:border-border dark:bg-background dark:text-foreground',
   contactTitle:
     'text-[15px] font-semibold tracking-[-0.01em] text-[#0F172A] dark:text-foreground',
   contactBody:

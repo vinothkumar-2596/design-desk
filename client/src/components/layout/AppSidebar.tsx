@@ -47,7 +47,6 @@ import {
   getRequestDraftStorageKey,
   hasRequestDraft,
 } from '@/lib/requestDrafts';
-import { isDesignLeadRole } from '@/lib/roleRules';
 
 interface NavItem {
   title: string;
@@ -143,19 +142,19 @@ const navItems: NavItem[] = [
     title: 'Dashboard',
     href: '/dashboard',
     icon: Home,
-    roles: ['admin', 'designer', 'staff', 'treasurer'],
+    roles: ['designer', 'staff', 'treasurer'],
   },
   {
     title: 'New Request',
     href: '/new-request',
     icon: PlusCircle,
-    roles: ['admin', 'treasurer'],
+    roles: ['treasurer'],
   },
   {
     title: 'All Tasks',
     href: '/tasks',
     icon: ListTodo,
-    roles: ['admin', 'designer'],
+    roles: ['designer'],
   },
   {
     title: 'Designer Availability',
@@ -173,7 +172,7 @@ const navItems: NavItem[] = [
     title: 'Pending Approvals',
     href: '/approvals',
     icon: CheckSquare,
-    roles: ['admin', 'designer'],
+    roles: ['treasurer'],
   },
 ];
 
@@ -190,20 +189,18 @@ export function AppSidebar() {
   const isDarkTheme = (resolvedTheme || theme) === 'dark';
   const portalQrImageSrc = isDarkTheme ? PORTAL_QR_DARK_IMAGE_SRC : PORTAL_QR_LIGHT_IMAGE_SRC;
 
-  const expandedWidth = user?.role === 'admin' ? '13.5rem' : '14.95rem';
-
   useEffect(() => {
     if (typeof document === 'undefined') return;
     if (!user) {
       document.documentElement.style.removeProperty('--app-sidebar-width');
       return;
     }
-    const width = collapsed ? '4rem' : expandedWidth;
+    const width = collapsed ? '4rem' : '14.95rem';
     document.documentElement.style.setProperty('--app-sidebar-width', width);
     return () => {
       document.documentElement.style.removeProperty('--app-sidebar-width');
     };
-  }, [collapsed, expandedWidth, user]);
+  }, [collapsed, user]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -265,13 +262,7 @@ export function AppSidebar() {
   ];
 
   const filteredNavItems = useMemo(() => {
-    const items = navItems.filter((item) => {
-      if (!item.roles.includes(user.role)) return false;
-      if (item.href === '/approvals' && user.role === 'designer' && !isDesignLeadRole(user)) {
-        return false;
-      }
-      return true;
-    });
+    const items = navItems.filter((item) => item.roles.includes(user.role));
     const shouldShowDraftNav =
       (hasSavedDraft || location.pathname === '/drafts') &&
       (user.role === 'staff' || user.role === 'treasurer');
@@ -317,7 +308,6 @@ export function AppSidebar() {
 
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
-      admin: 'Admin',
       designer: 'Designer',
       staff: 'Staff',
       treasurer: 'Treasurer',
@@ -326,7 +316,7 @@ export function AppSidebar() {
   };
 
   const getRoleIcon = (role: string) => {
-    if (role === 'treasurer' || role === 'admin') {
+    if (role === 'treasurer') {
       return <Shield className="h-3 w-3" />;
     }
     return <User className="h-3 w-3" />;
@@ -443,7 +433,7 @@ export function AppSidebar() {
       <aside
         className={cn(
           'group/sidebar z-[90] flex flex-col rounded-[28px] border border-[#D9E6FF] bg-gradient-to-br from-white via-[#F3F7FF] to-[#E7EFFF] text-[#475569] dark:bg-card/95 dark:bg-none dark:text-foreground dark:border-border shadow-none h-full fixed top-4 md:top-6 left-4 md:left-6 h-auto',
-          collapsed ? 'w-16' : user.role === 'admin' ? 'w-[13.5rem]' : 'w-[14.95rem]'
+          collapsed ? 'w-16' : 'w-[14.95rem]'
         )}
       >
       {/* Header */}
@@ -901,10 +891,7 @@ export function AppSidebar() {
           side="top"
           align="start"
           sideOffset={14}
-          className={cn(
-            'hidden origin-bottom-left border-none bg-transparent p-0 text-[#475569] shadow-none data-[state=open]:duration-300 data-[state=closed]:duration-200 data-[side=top]:slide-in-from-bottom-4 md:block dark:text-foreground',
-            user.role === 'admin' ? 'w-[13.5rem]' : 'w-[14.95rem]'
-          )}
+          className="hidden w-[14.95rem] origin-bottom-left border-none bg-transparent p-0 text-[#475569] shadow-none data-[state=open]:duration-300 data-[state=closed]:duration-200 data-[side=top]:slide-in-from-bottom-4 md:block dark:text-foreground"
         >
           <div className="rounded-[24px] border border-[#D9E6FF] bg-white/86 shadow-[0_18px_40px_-24px_rgba(30,42,90,0.45)] dark:border-border dark:bg-card/95 dark:bg-none dark:p-0 dark:shadow-[0_18px_40px_-24px_rgba(0,0,0,0.7)]">
             <div className="rounded-[23px] bg-white/86 px-2.5 py-2 dark:bg-transparent">

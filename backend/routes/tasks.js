@@ -146,73 +146,6 @@ const getUserIdsByRole = async (roles = []) => {
   return users.map((user) => user._id.toString());
 };
 
-const isTaskAwaitingAdminReview = (task) => {
-  const status = normalizeValue(task?.adminReviewStatus);
-  return status === "pending" || status === "needs_info";
-};
-
-const normalizeAdminReviewStatusValue = (value) =>
-  normalizeValue(value).replace(/\s+/g, "_");
-const normalizeAdminReviewResponseStatusValue = (value) =>
-  normalizeValue(value).replace(/\s+/g, "_");
-
-const getLatestAdminNeedsInfoAt = (task) => {
-  const reviewedAt = task?.adminReviewedAt ? new Date(task.adminReviewedAt).getTime() : 0;
-  const history = Array.isArray(task?.changeHistory) ? task.changeHistory : [];
-  const historyCheckpoint = history.reduce((latest, entry) => {
-    if (normalizeValue(entry?.field) !== "admin_review_status") return latest;
-    if (normalizeAdminReviewStatusValue(entry?.newValue) !== "needs_info") return latest;
-    const createdAt = new Date(entry?.createdAt || 0).getTime();
-    return createdAt > latest ? createdAt : latest;
-  }, 0);
-  return Math.max(reviewedAt, historyCheckpoint);
-};
-
-const hasStaffFollowUpSince = (task, checkpointAt) => {
-  const checkpoint = Number(checkpointAt) || 0;
-  if (!checkpoint) return false;
-
-  const comments = Array.isArray(task?.comments) ? task.comments : [];
-  const hasStaffComment = comments.some((comment) => {
-    if (normalizeValue(comment?.userRole) !== "staff") return false;
-    if (comment?.deletedAt) return false;
-    return new Date(comment?.createdAt || 0).getTime() > checkpoint;
-  });
-  if (hasStaffComment) return true;
-
-  const responseStatus = normalizeAdminReviewResponseStatusValue(task?.adminReviewResponseStatus);
-  if (responseStatus !== "submitted") return false;
-
-  const submittedAt = new Date(task?.adminReviewResponseSubmittedAt || 0).getTime();
-  return submittedAt > checkpoint;
-};
-
-const shouldSkipChangeCount = (entry) =>
-  normalizeValue(entry?.field) === "admin_review_response_status";
-
-const COMMENT_RECEIVER_RULES = {
-  staff: ["admin"],
-  designer: ["admin"],
-  treasurer: ["admin"],
-  admin: ["staff", "designer", "treasurer"],
-};
-
-const getAllowedCommentReceiverRoles = (senderRole = "") => {
-  if (!senderRole) return [];
-  return Array.isArray(COMMENT_RECEIVER_RULES[senderRole])
-    ? COMMENT_RECEIVER_RULES[senderRole]
-    : [];
-};
-
-const resolveCommentReceiverRoles = (senderRole = "", requestedRoles = []) => {
-  const allowedRoles = getAllowedCommentReceiverRoles(senderRole);
-  if (allowedRoles.length === 0) return [];
-  const filteredRoles = Array.isArray(requestedRoles)
-    ? requestedRoles.filter((role) => allowedRoles.includes(role))
-    : [];
-  return filteredRoles.length > 0 ? filteredRoles : allowedRoles;
-};
-
 const getActiveDesignerUsers = async () => {
   const designers = await User.find({
     role: "designer",
@@ -1754,22 +1687,12 @@ const resolveTaskAccessContext = async (task, user) => {
       effectiveAssignedId = "";
     }
   }
-  if (userRole === "admin") {
-    return {
-      mode: "full",
-      assignedDesignerEmail,
-      ccEmails
-    };
-  }
-  if (userRole === "treasurer" || userRole === "manager") {
+  if (isManagerRole(userRole)) {
     return {
       mode: "view_only",
       assignedDesignerEmail,
       ccEmails
     };
-  }
-  if (userRole === "designer" && isTaskAwaitingAdminReview(task)) {
-    return fallback;
   }
   const hasPrimaryTaskAccess = canAccessTask(task, user);
 
@@ -1905,9 +1828,6 @@ const canAccessTask = (task, user) => {
     return false;
   }
   if (userRole === "designer") {
-    if (isTaskAwaitingAdminReview(task)) {
-      return false;
-    }
     const assignedName = normalizeValue(task?.assignedToName);
     const assignedId = resolveAssignedIdentifier(task);
     const userName = normalizeValue(user.name);
@@ -2545,7 +2465,7 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
   try {
     const now = new Date();
     const actorId = getUserId(req);
-    const actorRole = normalizeTaskRole(req.user?.role || "staff") || "staff";
+    const actorRole = req.user?.role || "staff";
     const requesterName = req.body.requesterName || req.user?.name || "";
     const requesterId = actorRole === "staff" ? actorId : (req.body.requesterId || actorId);
     const requesterEmail = actorRole === "staff" ? (req.user?.email || "") : (req.body.requesterEmail || req.user?.email || "");
@@ -2564,9 +2484,6 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
       ...req.body,
       requesterId,
       requesterEmail,
-      adminReviewStatus: actorRole === "staff" ? "pending" : "approved",
-      adminReviewedBy: actorRole === "staff" ? "" : (req.user?.name || "System"),
-      adminReviewedAt: actorRole === "staff" ? undefined : now,
       files: normalizeTaskFileCollection(req.body?.files),
       changeHistory: [createdEntry, ...(Array.isArray(req.body.changeHistory) ? req.body.changeHistory : [])]
     };
@@ -2669,15 +2586,11 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
     console.log("Request created:", taskId);
     const taskLink = buildTaskLink(taskId);
     const createdEventId = `task:${taskId}:created`;
-    const notifyAdminReviewQueue = payload.adminReviewStatus === "pending";
-    const reviewerRoles = notifyAdminReviewQueue ? ["admin"] : ["treasurer"];
-    getUserIdsByRole(reviewerRoles).then((userIds) => {
+    getUserIdsByRole(["treasurer"]).then((userIds) => {
       if (userIds.length === 0) return;
       return createNotificationsForUsers(userIds, {
         title: `New request: ${task.title}`,
-        message: notifyAdminReviewQueue
-          ? `Submitted by ${requesterName || "Staff"} and waiting for Admin review`
-          : `Submitted by ${requesterName || "Staff"}`,
+        message: `Submitted by ${requesterName || "Staff"}`,
         type: "task",
         link: taskLink,
         taskId,
@@ -2724,18 +2637,17 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
       const targetRoom = task.assignedToId ? String(task.assignedToId) : "designers:queue";
       io.to(targetRoom).emit("request:new", payloadTask);
       console.log(`Emitted request:new to room: ${targetRoom}`);
-      const reviewQueueRoles = notifyAdminReviewQueue ? ["admin"] : ["treasurer"];
-      getUserIdsByRole(reviewQueueRoles).then((userIds) => {
-        userIds.forEach((reviewerId) => {
-          io.to(String(reviewerId)).emit("request:new", payloadTask);
+      getUserIdsByRole(["treasurer"]).then((userIds) => {
+        userIds.forEach((treasurerId) => {
+          io.to(String(treasurerId)).emit("request:new", payloadTask);
         });
         if (userIds.length > 0) {
-          console.log(`Emitted request:new to ${userIds.length} review rooms`);
+          console.log(`Emitted request:new to ${userIds.length} treasurer rooms`);
         }
       }).catch((error) => {
-        console.error("Request emit error (review rooms):", error?.message || error);
+        console.error("Request emit error (treasurer rooms):", error?.message || error);
       });
-      if (!notifyAdminReviewQueue && !task.assignedToId) {
+      if (!task.assignedToId) {
         getQueueDesignerUserIds().then((userIds) => {
           userIds.forEach((designerId) => {
             io.to(String(designerId)).emit("request:new", payloadTask);
@@ -2749,7 +2661,7 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
       }
     }
 
-    if (!notifyAdminReviewQueue && !task.assignedToId) {
+    if (!task.assignedToId) {
       getQueueDesignerUserIds().then((userIds) => {
         if (userIds.length === 0) return;
         return createNotificationsForUsers(userIds, {
@@ -4195,11 +4107,21 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
     const normalizedReceivers = Array.isArray(receiverRoles)
       ? receiverRoles.filter((role) => VALID_COMMENT_ROLES.includes(role))
       : [];
-    const requestedReceivers =
+    const resolvedReceivers =
       normalizedMentions.length > 0
         ? normalizedMentions
-        : normalizedReceivers;
-    const uniqueReceivers = [...new Set(resolveCommentReceiverRoles(senderRole, requestedReceivers))];
+        : normalizedReceivers.length > 0
+          ? normalizedReceivers
+          : senderRole
+            ? VALID_COMMENT_ROLES.filter((role) => role !== senderRole)
+            : VALID_COMMENT_ROLES;
+    const uniqueReceivers = [
+      ...new Set(
+        senderRole
+          ? resolvedReceivers.filter((role) => role !== senderRole)
+          : resolvedReceivers
+      ),
+    ];
 
     const task = await Task.findByIdAndUpdate(
       req.params.id,
@@ -4252,12 +4174,11 @@ router.post("/:id/comments", ensureTaskAccess, async (req, res) => {
             (task.requesterEmail ? await resolveUserIdByEmail(task.requesterEmail) : "");
           const designerUserId = task.assignedToId || "";
           const treasurerUserIds = await getUserIdsByRole(["treasurer"]);
-          const adminUserIds = await getUserIdsByRole(["admin"]);
           const recipientsByRole = {
             staff: requesterUserId ? [requesterUserId] : [],
             designer: designerUserId ? [designerUserId] : [],
             treasurer: treasurerUserIds,
-            admin: adminUserIds,
+            admin: [],
           };
           const finalRecipients = Array.from(
             new Set(
@@ -4375,11 +4296,21 @@ router.patch("/:id/comments/:commentId", ensureTaskAccess, async (req, res) => {
     const normalizedReceivers = Array.isArray(req.body?.receiverRoles)
       ? req.body.receiverRoles.filter((role) => VALID_COMMENT_ROLES.includes(role))
       : [];
-    const requestedReceivers =
+    const resolvedReceivers =
       normalizedMentions.length > 0
         ? normalizedMentions
-        : normalizedReceivers;
-    const uniqueReceivers = [...new Set(resolveCommentReceiverRoles(senderRole, requestedReceivers))];
+        : normalizedReceivers.length > 0
+          ? normalizedReceivers
+          : senderRole
+            ? VALID_COMMENT_ROLES.filter((role) => role !== senderRole)
+            : VALID_COMMENT_ROLES;
+    const uniqueReceivers = [
+      ...new Set(
+        senderRole
+          ? resolvedReceivers.filter((role) => role !== senderRole)
+          : resolvedReceivers
+      ),
+    ];
     const existingAttachments = Array.isArray(comment.attachments) ? comment.attachments : [];
 
     if (!normalizedContent && existingAttachments.length === 0) {
@@ -5072,24 +5003,6 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
     }
 
     const task = req.task;
-    const adminReviewChangeInput = changes.find(
-      (change) => normalizeValue(change?.field) === "admin_review_status"
-    );
-    const nextAdminReviewStatus = normalizeAdminReviewStatusValue(
-      updates?.adminReviewStatus || adminReviewChangeInput?.newValue
-    );
-    if (
-      nextAdminReviewStatus === "approved" &&
-      normalizeAdminReviewStatusValue(task?.adminReviewStatus) === "needs_info"
-    ) {
-      const adminNeedsInfoAt = getLatestAdminNeedsInfoAt(task);
-      if (!hasStaffFollowUpSince(task, adminNeedsInfoAt)) {
-        return res.status(409).json({
-          error:
-            "Staff must reply in Internal Chat or submit the updated brief before admin approval."
-        });
-      }
-    }
 
     const changeEntries = changes.map((change) => ({
       type: change.type || "update",
@@ -5111,8 +5024,7 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
     const sanitizedChanges = hasFileUploadChange
       ? changes.filter((change) => change?.field !== "status")
       : changes;
-    const countableEntries = sanitizedEntries.filter((entry) => !shouldSkipChangeCount(entry));
-    const nextCount = (task.changeCount || 0) + countableEntries.length;
+    const nextCount = (task.changeCount || 0) + sanitizedEntries.length;
     const isFinalFileChange = (change) => {
       if (!change) return false;
       if (change.type !== "file_added" || change.field !== "files") return false;
@@ -5123,15 +5035,11 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
     const finalChangeEntries = sanitizedEntries.filter(isFinalFileChange);
 
     const updateDoc = {
+      $inc: { changeCount: sanitizedEntries.length },
       $push: { changeHistory: { $each: sanitizedEntries } }
     };
 
     const nextSet = { ...(Object.keys(updates).length > 0 ? updates : {}) };
-    if (nextAdminReviewStatus === "needs_info" && userRole === "admin") {
-      nextSet.adminReviewResponseStatus = "draft";
-      nextSet.adminReviewResponseSubmittedBy = "";
-      nextSet.adminReviewResponseSubmittedAt = null;
-    }
     if (Array.isArray(nextSet.files)) {
       nextSet.files = normalizeTaskFileCollection(nextSet.files);
     }
@@ -5150,8 +5058,6 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
     if (Object.keys(nextSet).length > 0) {
       updateDoc.$set = nextSet;
     }
-
-    updateDoc.$inc = { changeCount: countableEntries.length };
 
     if (nextCount >= 3 && task.approvalStatus !== "pending") {
       updateDoc.$set = { ...(updateDoc.$set || {}), approvalStatus: "pending" };
@@ -5450,58 +5356,25 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       }
     }
 
-    const adminReviewEntry = sanitizedEntries.find((entry) => entry.field === "admin_review_status");
-    if (adminReviewEntry && userRole === "admin") {
-      const decision = String(adminReviewEntry.newValue || "").toLowerCase();
-      const payload = {
-        title: `Admin review ${decision}: ${updatedTask.title}`,
-        message: adminReviewEntry.note || `Admin marked this request as ${decision}.`,
-        type: "task",
-        link: taskLink,
-        taskId,
-        eventId: `admin-review:${taskId}:${decision}:${changeStamp}`,
-      };
-      if (requesterUserId) notifyUser(requesterUserId, payload);
-
-      if (decision === "approved" && !updatedTask.assignedToId) {
-        const queueDesignerUserIds = await getQueueDesignerUserIds();
-        if (queueDesignerUserIds.length > 0) {
-          createNotificationsForUsers(queueDesignerUserIds, {
-            title: `Admin approved: ${updatedTask.title}`,
-            message: adminReviewEntry.note || "A reviewed task is ready for Design Lead intake.",
-            type: "task",
-            link: taskLink,
-            taskId,
-            eventId: `admin-approved:${taskId}:${changeStamp}`,
-          })
-            .then(emitNotifications)
-            .catch((error) => {
-              console.error("Notification error (admin approved):", error?.message || error);
-            });
-        }
-      }
-    }
-
     const approvalEntry = sanitizedEntries.find((entry) => entry.field === "approval_status");
-    if (approvalEntry && userRole === "designer" && isMainDesignerUser(req.user)) {
+    if (approvalEntry && userRole === "treasurer") {
       const decision = String(approvalEntry.newValue || "").toLowerCase();
       const payload = {
         title: `Approval ${decision}: ${updatedTask.title}`,
-        message: approvalEntry.note || `Design Lead ${decision} this request.`,
+        message: approvalEntry.note || `Treasurer ${decision} this request.`,
         type: "task",
         link: taskLink,
         taskId,
         eventId: `approval:${taskId}:${decision}:${changeStamp}`,
       };
       if (requesterUserId) notifyUser(requesterUserId, payload);
-      const adminUserIds = await getUserIdsByRole(["admin"]);
-      adminUserIds.forEach((adminUserId) => notifyUser(adminUserId, payload));
+      if (designerUserId) notifyUser(designerUserId, payload);
       if ((decision.includes("approved") || decision.includes("rejected")) && requesterUserId) {
         const emailSent = await sendTaskLifecycleEmailIfEnabled({
           task: updatedTask,
           userId: requesterUserId,
           emailType: decision.includes("approved") ? "APPROVAL_APPROVED" : "APPROVAL_REJECTED",
-          actorName: resolvedUserName || "Design Lead",
+          actorName: resolvedUserName || "Treasurer",
           note: approvalEntry.note || "",
           submittedAt: approvalEntry.createdAt || new Date(changeStamp),
         });
@@ -5576,15 +5449,6 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
         io.to(String(designerUserId)).emit("task:updated", {
           taskId: updatedTaskId,
           task: fullPayload,
-        });
-      }
-      if (adminReviewEntry && userRole === "admin" && String(adminReviewEntry.newValue || "").toLowerCase() === "approved" && !updatedTask.assignedToId) {
-        getQueueDesignerUserIds().then((userIds) => {
-          userIds.forEach((designerId) => {
-            io.to(String(designerId)).emit("request:new", fullPayload);
-          });
-        }).catch((error) => {
-          console.error("Request emit error (admin approved queue):", error?.message || error);
         });
       }
       if (userId) {

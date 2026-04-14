@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'designer' | 'staff' | 'treasurer';
+export type UserRole = 'designer' | 'staff' | 'treasurer';
 
 export type TaskStatus =
   | 'pending'
@@ -34,8 +34,6 @@ export type CollateralOrientation = 'portrait' | 'landscape' | 'square' | 'custo
 export type CollateralUnit = 'px' | 'mm' | 'cm' | 'in' | 'ft';
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
-export type AdminReviewStatus = 'pending' | 'needs_info' | 'approved' | 'rejected';
-export type AdminReviewResponseStatus = 'draft' | 'submitted';
 export type FinalDeliverableReviewStatus =
   | 'not_submitted'
   | 'pending'
@@ -289,12 +287,6 @@ export interface Task {
   deadlineApprovalStatus?: 'pending' | 'approved' | 'rejected';
   deadlineApprovedBy?: string;
   deadlineApprovedAt?: Date;
-  adminReviewStatus?: AdminReviewStatus;
-  adminReviewedBy?: string;
-  adminReviewedAt?: Date;
-  adminReviewResponseStatus?: AdminReviewResponseStatus;
-  adminReviewResponseSubmittedBy?: string;
-  adminReviewResponseSubmittedAt?: Date;
   isModification: boolean;
   approvalStatus?: ApprovalStatus;
   approvedBy?: string;

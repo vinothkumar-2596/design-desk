@@ -264,7 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data?.token && data?.user) {
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-      localStorage.setItem(ROLE_KEY, data.user.role || role);
+      localStorage.setItem(ROLE_KEY, role);
       setUser(data.user);
     }
   };
@@ -289,7 +289,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data?.token && data?.user) {
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-      localStorage.setItem(ROLE_KEY, data.user.role || role);
+      localStorage.setItem(ROLE_KEY, role);
       setUser(data.user);
     }
   };
