@@ -1,5 +1,6 @@
 import type { Task, User } from '@/types';
 import { isMainDesigner } from '@/lib/designerAccess';
+import { isTaskAwaitingAdminReview } from '@/lib/roleRules';
 
 const normalizeValue = (value?: string) => (value ? String(value).trim().toLowerCase() : '');
 const assignmentMetaFields = new Set(['assigned_designer', 'task_status', 'cc_emails']);
@@ -168,6 +169,10 @@ export const isTaskVisibleToUser = (task: Task, user?: User | null) => {
 
   if (userRole === 'treasurer' || userRole === 'admin' || userRole === 'manager') {
     return true;
+  }
+
+  if (userRole === 'designer' && isTaskAwaitingAdminReview(task)) {
+    return false;
   }
 
   if (taskUsesAssignedAccess) {

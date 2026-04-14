@@ -32,6 +32,7 @@ import { isJuniorDesigner } from '@/lib/designerAccess';
 import { cn } from '@/lib/utils';
 import { API_URL, authFetch } from '@/lib/api';
 const roleLabelByValue: Record<string, string> = {
+  admin: 'Admin',
   designer: 'Designer',
   staff: 'Staff',
   treasurer: 'Treasurer',

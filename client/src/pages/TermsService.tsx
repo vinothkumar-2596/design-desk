@@ -163,12 +163,15 @@ const TermsService = () => {
           </div>
 
           <div className="mt-8 grid gap-4 lg:grid-cols-2">
-            {termsSections.map((section) => {
+            {termsSections.map((section, index) => {
               const Icon = section.icon;
+              const shouldSpanFullWidth =
+                termsSections.length % 2 === 1 && index === termsSections.length - 1;
+
               return (
                 <section
                   key={section.title}
-                  className={legalPageStyles.section}
+                  className={`${legalPageStyles.section} ${shouldSpanFullWidth ? 'lg:col-span-2' : ''}`}
                 >
                   <div className="flex items-start gap-4">
                     <div className={legalPageStyles.sectionIcon}>

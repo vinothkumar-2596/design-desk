@@ -1,5 +1,6 @@
 import { KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { AdminControlCenter } from '@/components/dashboard/AdminControlCenter';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { TaskCard } from '@/components/dashboard/TaskCard';
 import { ActivityFeed, type ActivityItem } from '@/components/dashboard/ActivityFeed';
@@ -56,10 +57,16 @@ import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { filterTasksForUser } from '@/lib/taskVisibility';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { getDesignerScopeLabel, isMainDesigner } from '@/lib/designerAccess';
+import {
+  getModificationApprovalActorLabel,
+  isAdminRole,
+} from '@/lib/roleRules';
+import { cn } from '@/lib/utils';
 
 import { API_URL, authFetch } from '@/lib/api';
 
 const roleLabels: Record<string, string> = {
+  admin: 'Admin',
   designer: 'Designer',
   staff: 'Staff',
   treasurer: 'Treasurer',
@@ -283,6 +290,7 @@ export default function Dashboard() {
     );
   }
   const canAssignDesigner = isMainDesigner(user);
+  const isAdminUser = isAdminRole(user);
   const deadlineTimeParts = parseTimeParts(assignmentDeadlineTime);
 
   const resetAssignDesignerModal = () => {
@@ -533,11 +541,13 @@ export default function Dashboard() {
   );
 
   const relevantTasks = useMemo(() => {
-    if (user.role === 'treasurer') {
-      return visibleTasks.filter((t) => t.approvalStatus === 'pending');
+    if (isAdminUser) {
+      return visibleTasks.filter(
+        (task) => task.adminReviewStatus === 'pending' || task.adminReviewStatus === 'needs_info'
+      );
     }
     return visibleTasks;
-  }, [user.role, visibleTasks]);
+  }, [isAdminUser, visibleTasks]);
   const searchFilteredTasks = useMemo(
     () =>
       relevantTasks.filter((task) =>
@@ -569,8 +579,9 @@ export default function Dashboard() {
       .slice(0, 4);
   }, [dateFilteredTasks, query, user.role]);
   const showViewAll = useMemo(() => {
-    if (user.role === 'treasurer') {
+    if (isAdminUser) {
       const total = [...dateFilteredTasks].filter((task) =>
+        (task.adminReviewStatus === 'pending' || task.adminReviewStatus === 'needs_info') &&
         matchesSearch(query, [
           task.title,
           task.description,
@@ -582,7 +593,7 @@ export default function Dashboard() {
       return total > 4;
     }
     return searchFilteredTasks.length > 4;
-  }, [dateFilteredTasks, query, searchFilteredTasks.length, user.role]);
+  }, [dateFilteredTasks, isAdminUser, query, searchFilteredTasks.length]);
   const pendingApprovals = useMemo(() => {
     return hydratedTasks.filter((task) => task.approvalStatus === 'pending');
   }, [hydratedTasks]);
@@ -645,14 +656,17 @@ export default function Dashboard() {
                 entry.userRole === 'designer' &&
                 entry.field === 'deadline_request' &&
                 entry.newValue === 'Approved';
-              const isTreasurerApproval =
-                entry.userRole === 'treasurer' && entry.field === 'approval_status';
+              const isDesignLeadApproval =
+                entry.userRole === 'designer' && entry.field === 'approval_status';
+              const isAdminReview =
+                entry.userRole === 'admin' && entry.field === 'admin_review_status';
               const isEmergencyApproval =
                 entry.userRole === 'designer' && entry.field === 'emergency_approval';
               return (
                 isDesignerCompletion ||
                 isDesignerDeadlineApproval ||
-                isTreasurerApproval ||
+                isDesignLeadApproval ||
+                isAdminReview ||
                 isEmergencyApproval
               );
             }
@@ -667,13 +681,13 @@ export default function Dashboard() {
     return hydratedTasks
       .flatMap((task) => {
         const history = task.changeHistory || [];
-        const treasurerEntries = history.filter(
-          (entry) => entry.userRole === 'treasurer' && entry.field === 'approval_status'
+        const adminEntries = history.filter(
+          (entry) => entry.userRole === 'admin' && entry.field === 'admin_review_status'
         );
-        if (treasurerEntries.length > 0) {
-          const latestTreasurer = getLatestEntry(treasurerEntries);
-          return latestTreasurer
-            ? [{ ...latestTreasurer, taskId: task.id, taskTitle: task.title, task }]
+        if (adminEntries.length > 0) {
+          const latestAdmin = getLatestEntry(adminEntries);
+          return latestAdmin
+            ? [{ ...latestAdmin, taskId: task.id, taskTitle: task.title, task }]
             : [];
         }
         const staffEntries = history.filter(
@@ -696,8 +710,8 @@ export default function Dashboard() {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [hydratedTasks, user.role]);
 
-  const treasurerNotifications = useMemo(() => {
-    if (user.role !== 'treasurer') return [];
+  const adminNotifications = useMemo(() => {
+    if (!isAdminUser) return [];
     return hydratedTasks
       .flatMap((task) => {
         const history = task.changeHistory || [];
@@ -711,15 +725,15 @@ export default function Dashboard() {
           : [];
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [hydratedTasks, user.role]);
+  }, [hydratedTasks, isAdminUser]);
 
   const activeNotifications =
     user.role === 'staff'
       ? staffNotifications
       : user.role === 'designer'
         ? designerNotifications
-        : user.role === 'treasurer'
-          ? treasurerNotifications
+        : user.role === 'admin'
+          ? adminNotifications
           : [];
 
   const getNotificationTitle = (entry: any) => {
@@ -727,19 +741,25 @@ export default function Dashboard() {
       return `New request: ${entry.taskTitle}`;
     }
     if (user.role === 'staff') {
-      if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+      if (entry.userRole === 'designer' && entry.field === 'approval_status') {
         const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
           ? 'rejected'
           : 'approved';
-        return `Treasurer ${decision} ${entry.taskTitle}`;
+        return `${getModificationApprovalActorLabel()} ${decision} ${entry.taskTitle}`;
+      }
+      if (entry.userRole === 'admin' && entry.field === 'admin_review_status') {
+        return `Admin updated ${entry.taskTitle}`;
       }
       return `Designer completed ${entry.taskTitle}`;
     }
-    if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+    if (entry.userRole === 'designer' && entry.field === 'approval_status') {
       const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
         ? 'rejected'
         : 'approved';
-      return `Treasurer ${decision} ${entry.taskTitle}`;
+      return `${getModificationApprovalActorLabel()} ${decision} ${entry.taskTitle}`;
+    }
+    if (entry.userRole === 'admin' && entry.field === 'admin_review_status') {
+      return `Admin updated ${entry.taskTitle}`;
     }
     return `Staff updated ${entry.taskTitle}`;
   };
@@ -749,19 +769,25 @@ export default function Dashboard() {
       return entry.note || `Submitted by ${entry.userName}`;
     }
     if (user.role === 'staff') {
-      if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+      if (entry.userRole === 'designer' && entry.field === 'approval_status') {
         const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
           ? 'rejected'
           : 'approved';
         return entry.note || `Approval ${decision}`;
       }
+      if (entry.userRole === 'admin' && entry.field === 'admin_review_status') {
+        return entry.note || 'Admin review updated';
+      }
       return entry.note || 'Status updated to completed';
     }
-    if (entry.userRole === 'treasurer' && entry.field === 'approval_status') {
+    if (entry.userRole === 'designer' && entry.field === 'approval_status') {
       const decision = `${entry.newValue || ''}`.toLowerCase().includes('reject')
         ? 'rejected'
         : 'approved';
       return entry.note || `Approval ${decision}`;
+    }
+    if (entry.userRole === 'admin' && entry.field === 'admin_review_status') {
+      return entry.note || 'Admin review updated';
     }
     return entry.note || `${entry.userName} updated ${entry.field}`;
   };
@@ -904,8 +930,10 @@ export default function Dashboard() {
         return 'View and complete assigned design tasks';
       case 'staff':
         return 'Submit and track your design requests';
+      case 'admin':
+        return 'Review staff submissions, clarify briefs, and route clean tasks to design';
       case 'treasurer':
-        return 'Review and approve modification requests';
+        return 'Track approved finance-side requests';
       default:
         return 'Welcome to DesignDesk';
     }
@@ -936,252 +964,272 @@ export default function Dashboard() {
     });
   }
 
+  const taskSectionLabel = user.role === 'staff' ? 'Your Requests' : 'Recent Tasks';
+  const taskSectionHref = user.role === 'staff' ? '/my-requests' : '/tasks';
+  const dashboardBackgroundClass = isAdminUser
+    ? 'bg-[linear-gradient(180deg,rgba(249,250,251,0.98),rgba(244,246,248,0.96))] dark:bg-[linear-gradient(180deg,#070C1D_0%,#08122A_100%)]'
+    : 'bg-[radial-gradient(circle_at_top,_rgba(106,140,255,0.22),_transparent_58%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,251,255,0.96))] dark:bg-[linear-gradient(180deg,#070C1D_0%,#08122A_100%)]';
+  const stickyHeaderClass = showStickyHeader
+    ? isAdminUser
+      ? 'bg-[#FAFBFC]/95 supports-[backdrop-filter]:bg-[#FAFBFC]/88 backdrop-blur-md border-[#E4E9EF] dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.94),rgba(8,16,39,0.9))] dark:supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(8,16,39,0.84),rgba(8,16,39,0.8))] dark:border-white/10'
+      : 'bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,251,255,0.94))] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(247,251,255,0.84))] backdrop-blur-xl backdrop-saturate-125 border-white/30 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.94),rgba(8,16,39,0.9))] dark:supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(8,16,39,0.84),rgba(8,16,39,0.8))] dark:border-white/10'
+    : 'bg-transparent border-transparent backdrop-blur-0 shadow-none';
+
   return (
     <DashboardLayout
       background={
-        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[32px]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(106,140,255,0.22),_transparent_58%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,251,255,0.96))] dark:bg-[linear-gradient(180deg,#070C1D_0%,#08122A_100%)]" />
+        <div
+          className={cn(
+            'pointer-events-none absolute inset-0 -z-10 overflow-hidden',
+            isAdminUser ? 'rounded-[28px]' : 'rounded-[32px]'
+          )}
+        >
+          <div className={cn('absolute inset-0', dashboardBackgroundClass)} />
         </div>
       }
     >
-      <div className="space-y-8 relative z-10 pt-2">
-        <div
-          className={`sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-1.5 border-b transition-all duration-200 ${showStickyHeader
-              ? 'bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,251,255,0.94))] supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(247,251,255,0.84))] backdrop-blur-xl backdrop-saturate-125 border-white/30 dark:bg-[linear-gradient(180deg,rgba(8,16,39,0.94),rgba(8,16,39,0.9))] dark:supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(8,16,39,0.84),rgba(8,16,39,0.8))] dark:border-white/10'
-              : 'bg-transparent border-transparent backdrop-blur-0 shadow-none'
-            }`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#647898] dark:text-[#C6D6FF]">
-                Dashboard Overview
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <DateRangeFilter
-                value={dateRange}
-                onChange={setDateRange}
-                startDate={customStart}
-                endDate={customEnd}
-                onStartDateChange={setCustomStart}
-                onEndDateChange={setCustomEnd}
-                showLabel={false}
-                compact
-              />
+      <div className={cn('relative z-10', isAdminUser ? 'space-y-4 pt-0' : 'space-y-8 pt-2')}>
+        {!isAdminUser && (
+          <div
+            className={`sticky top-0 z-30 -mx-4 md:-mx-8 border-b px-4 md:px-8 py-1.5 transition-all duration-200 ${stickyHeaderClass}`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#647898] dark:text-[#C6D6FF]">
+                  Dashboard Overview
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <DateRangeFilter
+                  value={dateRange}
+                  onChange={setDateRange}
+                  startDate={customStart}
+                  endDate={customEnd}
+                  onStartDateChange={setCustomStart}
+                  onEndDateChange={setCustomEnd}
+                  showLabel={false}
+                  compact
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Hero + Notice */}
-        <div className="grid gap-5 lg:grid-cols-[1.6fr,1fr]">
-          <div className="relative overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl ring-1 ring-black/5 shadow-none dark:bg-card dark:border-border dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent p-5 min-h-[242px] lg:min-h-[264px]">
-            <div className="relative z-10 flex h-full flex-col justify-between gap-4">
-              <div className="space-y-2">
-                <span className="inline-flex w-fit items-center rounded-full border border-border/70 bg-secondary/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                  {roleLabels[user.role] || 'Member'}
-                </span>
-                <div>
-                  <h1 className="text-3xl font-semibold text-foreground premium-headline">
-                    Welcome back,{' '}
-                    <span className="login-dynamic-word gradient-name bg-gradient-to-r from-sky-300 via-indigo-400 to-pink-300 dark:from-sky-200 dark:via-indigo-400 dark:to-pink-300 bg-clip-text text-transparent">
-                      {user.name.split(' ')[0]}!
-                    </span>
-                  </h1>
-                  <p className="mt-1.5 max-w-xl text-sm text-muted-foreground premium-body">{getWelcomeMessage()}</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  asChild
-                  size="default"
-                  className="bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200"
-                >
-                  <Link to="/new-request">
-                    <Plus className="h-4 w-4 mr-2" />
-                    New Request
-                  </Link>
-                </Button>
-                <Button
-                  asChild
-                  className="border border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] shadow-none hover:shadow-none hover:bg-[#EEF4FF] transition-all duration-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:ring-white/10 dark:hover:bg-slate-900/80 dark:transition-none"
-                >
-                  <Link to="/tasks">Dashboard Overview</Link>
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white dark:bg-card dark:border-border p-5 min-h-[242px] lg:min-h-[264px]">
-            <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] dark:bg-muted/60 blur-2xl" />
-            <div className="relative flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF3FF] dark:bg-muted text-primary ring-1 ring-[#D9E6FF] dark:ring-border">
-                <AlertTriangle className="h-4 w-4" />
-              </div>
-              <div className="space-y-1.5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                  Important Notice
-                </p>
-                <h3 className="text-base font-semibold text-foreground premium-heading">Submission standards</h3>
-                <p className="text-[12.5px] leading-6 text-muted-foreground premium-body">
-                  All design requests must include complete data and associated files. {DESIGN_GOVERNANCE_NOTICE_MINIMAL}
-                </p>
-              </div>
-            </div>
-            <div className="mt-5 hidden" aria-hidden="true">
-              {summaryItems.map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-[#F9FBFF] dark:bg-card/80 dark:border-border px-4 py-3 opacity-0 pointer-events-none select-none"
-                >
-                  <span className="text-sm text-muted-foreground">{item.label}</span>
-                  <span className="text-lg font-semibold text-foreground">{item.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-flow-col auto-cols-fr gap-4">
-          <StatsCard
-            title="Total Tasks"
-            value={stats.totalTasks}
-            icon={<ListTodo className="h-5 w-5" />}
-            variant="default"
-          />
-          <StatsCard
-            title="Pending"
-            value={stats.pendingTasks}
-            icon={<Clock className="h-5 w-5" />}
-            variant="warning"
-          />
-          <StatsCard
-            title="In Progress"
-            value={stats.inProgressTasks}
-            icon={<Loader2 className="h-5 w-5" />}
-            variant="primary"
-          />
-          <StatsCard
-            title="Completed"
-            value={stats.completedTasks}
-            icon={<CheckCircle2 className="h-5 w-5" />}
-            variant="success"
-          />
-          {user.role === 'treasurer' && (
-            <StatsCard
-              title="Pending Approvals"
-              value={stats.pendingApprovals}
-              icon={<FileCheck className="h-5 w-5" />}
-              variant="urgent"
-            />
-          )}
-          {stats.urgentTasks > 0 && (
-            <StatsCard
-              title="Urgent Tasks"
-              value={stats.urgentTasks}
-              icon={<AlertTriangle className="h-5 w-5" />}
-              variant="urgent"
-            />
-          )}
-        </div>
-
-
-
-        {/* Activity Feed Section */}
-        <div className="mb-8 flex flex-col items-start gap-4 lg:flex-row">
-          <div className="w-full shrink-0 self-start lg:w-[32%] lg:max-w-[26rem]">
-            <ActivityFeed
-              notifications={activeNotifications.map(entry => {
-                let type: 'attachment' | 'message' | 'request' | 'approval' | 'deadline' | 'system' = 'system';
-                const field = String(entry.field || '').toLowerCase();
-                if (field === 'files') type = 'attachment';
-                else if (field === 'comment' || field === 'staff_note') type = 'message';
-                else if (field === 'created') type = 'request';
-                else if (field === 'approval_status' || field === 'emergency_approval') type = 'approval';
-                else if (field === 'deadline_request' || field === 'deadline') type = 'deadline';
-
-                return {
-                  id: entry.id || Math.random().toString(),
-                  title: getNotificationTitle(entry),
-                  subtitle: getNotificationNote(entry),
-                  time: format(new Date(entry.createdAt), 'h:mm a'),
-                  type,
-                  link: `/task/${entry.taskId}`
-                };
-              })}
-            />
-          </div>
-
-          <div className="w-full lg:flex-1">
-            {isLoading ? (
-              <div className="text-center py-12 bg-card rounded-[32px] border border-border shadow-card h-full flex flex-col items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-                <p className="text-sm text-muted-foreground">Loading tasks...</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-2">
+        {isAdminUser ? (
+          <AdminControlCenter tasks={visibleTasks} />
+        ) : (
+          <div className="grid gap-5 lg:grid-cols-[1.6fr,1fr]">
+            <div className="relative overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl ring-1 ring-black/5 shadow-none dark:bg-card dark:border-border dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent p-5 min-h-[242px] lg:min-h-[264px]">
+              <div className="relative z-10 flex h-full flex-col justify-between gap-4">
+                <div className="space-y-2">
+                  <span className="inline-flex w-fit items-center rounded-full border border-border/70 bg-secondary/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                    {roleLabels[user.role] || 'Member'}
+                  </span>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      {user.role === 'staff' ? 'Your Requests' : 'Recent Tasks'}
-                    </p>
+                    <h1 className="text-3xl font-semibold text-foreground premium-headline">
+                      Welcome back,{' '}
+                      <span className="login-dynamic-word gradient-name bg-gradient-to-r from-sky-300 via-indigo-400 to-pink-300 dark:from-sky-200 dark:via-indigo-400 dark:to-pink-300 bg-clip-text text-transparent">
+                        {user.name.split(' ')[0]}!
+                      </span>
+                    </h1>
+                    <p className="mt-1.5 max-w-xl text-sm text-muted-foreground premium-body">{getWelcomeMessage()}</p>
                   </div>
-                  {showViewAll && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      asChild
-                      className="rounded-full hover:bg-slate-100"
-                    >
-                      <Link to={user.role === 'staff' ? '/my-requests' : '/tasks'}>
-                        View All <ArrowRight className="ml-1 h-3 w-3" />
-                      </Link>
-                    </Button>
-                  )}
                 </div>
-
-                {user.role === 'treasurer' ? (
-                  treasurerRecentTasks.length > 0 ? (
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                      {treasurerRecentTasks.map((task, index) => (
-                        <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
-                          <TaskCard
-                            task={task}
-                            showRequester
-                            showAssignee
-                            showAssignDesignerButton={canAssignDesigner}
-                            onAssignDesigner={() => openAssignDesignerModal(task)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <EmptyState />
-                  )
-                ) : (
-                  /* Reusing standard recent tasks logic if not treasurer (e.g. staff/designer/other) */
-                  recentTasks.length > 0 ? (
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                      {recentTasks.map((task, index) => (
-                        <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
-                          <TaskCard
-                            task={task}
-                            showRequester={user.role !== 'staff'}
-                            showAssignee={user.role !== 'designer' || canAssignDesigner}
-                            showAssignDesignerButton={canAssignDesigner}
-                            onAssignDesigner={() => openAssignDesignerModal(task)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <EmptyState />
-                  )
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    asChild
+                    size="default"
+                    className="bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200"
+                  >
+                    <Link to="/new-request">
+                      <Plus className="h-4 w-4 mr-2" />
+                      New Request
+                    </Link>
+                  </Button>
+                  <Button
+                    asChild
+                    className="border border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] shadow-none hover:shadow-none hover:bg-[#EEF4FF] transition-all duration-200 dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:ring-white/10 dark:hover:bg-slate-900/80 dark:transition-none"
+                  >
+                    <Link to="/tasks">Dashboard Overview</Link>
+                  </Button>
+                </div>
               </div>
+            </div>
+
+            <div className="relative overflow-hidden rounded-2xl border border-[#D9E6FF] bg-white dark:bg-card dark:border-border p-5 min-h-[242px] lg:min-h-[264px]">
+              <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#E9F1FF] dark:bg-muted/60 blur-2xl" />
+              <div className="relative flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF3FF] dark:bg-muted text-primary ring-1 ring-[#D9E6FF] dark:ring-border">
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                    Important Notice
+                  </p>
+                  <h3 className="text-base font-semibold text-foreground premium-heading">Submission standards</h3>
+                  <p className="text-[12.5px] leading-6 text-muted-foreground premium-body">
+                    All design requests must include complete data and associated files. {DESIGN_GOVERNANCE_NOTICE_MINIMAL}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 hidden" aria-hidden="true">
+                {summaryItems.map((item) => (
+                  <div
+                    key={item.label}
+                    className="flex items-center justify-between rounded-xl border border-[#D9E6FF] bg-[#F9FBFF] dark:bg-card/80 dark:border-border px-4 py-3 opacity-0 pointer-events-none select-none"
+                  >
+                    <span className="text-sm text-muted-foreground">{item.label}</span>
+                    <span className="text-lg font-semibold text-foreground">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!isAdminUser && (
+          <div className="grid grid-flow-col auto-cols-fr gap-4">
+            <StatsCard
+              title="Total Tasks"
+              value={stats.totalTasks}
+              icon={<ListTodo className="h-5 w-5" />}
+              variant="default"
+            />
+            <StatsCard
+              title="Pending"
+              value={stats.pendingTasks}
+              icon={<Clock className="h-5 w-5" />}
+              variant="warning"
+            />
+            <StatsCard
+              title="In Progress"
+              value={stats.inProgressTasks}
+              icon={<Loader2 className="h-5 w-5" />}
+              variant="primary"
+            />
+            <StatsCard
+              title="Completed"
+              value={stats.completedTasks}
+              icon={<CheckCircle2 className="h-5 w-5" />}
+              variant="success"
+            />
+            {user.role === 'treasurer' && (
+              <StatsCard
+                title="Pending Approvals"
+                value={stats.pendingApprovals}
+                icon={<FileCheck className="h-5 w-5" />}
+                variant="urgent"
+              />
+            )}
+            {stats.urgentTasks > 0 && (
+              <StatsCard
+                title="Urgent Tasks"
+                value={stats.urgentTasks}
+                icon={<AlertTriangle className="h-5 w-5" />}
+                variant="urgent"
+              />
             )}
           </div>
-        </div>
+        )}
+
+
+
+        {!isAdminUser && (
+          <div className="mb-8 flex flex-col items-start gap-4 lg:flex-row">
+            <div className="w-full shrink-0 self-start lg:w-[32%] lg:max-w-[26rem]">
+              <ActivityFeed
+                notifications={activeNotifications.map(entry => {
+                  let type: 'attachment' | 'message' | 'request' | 'approval' | 'deadline' | 'system' = 'system';
+                  const field = String(entry.field || '').toLowerCase();
+                  if (field === 'files') type = 'attachment';
+                  else if (field === 'comment' || field === 'staff_note') type = 'message';
+                  else if (field === 'created') type = 'request';
+                  else if (field === 'approval_status' || field === 'emergency_approval') type = 'approval';
+                  else if (field === 'deadline_request' || field === 'deadline') type = 'deadline';
+
+                  return {
+                    id: entry.id || Math.random().toString(),
+                    title: getNotificationTitle(entry),
+                    subtitle: getNotificationNote(entry),
+                    time: format(new Date(entry.createdAt), 'h:mm a'),
+                    type,
+                    link: `/task/${entry.taskId}`
+                  };
+                })}
+              />
+            </div>
+
+            <div className="w-full lg:flex-1">
+              {isLoading ? (
+                <div className="text-center py-12 bg-card rounded-[32px] border border-border shadow-card h-full flex flex-col items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+                  <p className="text-sm text-muted-foreground">Loading tasks...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        {taskSectionLabel}
+                      </p>
+                    </div>
+                    {showViewAll && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        asChild
+                        className="rounded-full hover:bg-slate-100"
+                      >
+                        <Link to={taskSectionHref}>
+                          View All <ArrowRight className="ml-1 h-3 w-3" />
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+
+                  {user.role === 'treasurer' ? (
+                    treasurerRecentTasks.length > 0 ? (
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        {treasurerRecentTasks.map((task, index) => (
+                          <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
+                            <TaskCard
+                              task={task}
+                              showRequester
+                              showAssignee
+                              showAssignDesignerButton={canAssignDesigner}
+                              onAssignDesigner={() => openAssignDesignerModal(task)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState />
+                    )
+                  ) : (
+                    recentTasks.length > 0 ? (
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        {recentTasks.map((task, index) => (
+                          <div key={task.id} style={{ animationDelay: `${index * 50}ms` }} className="h-full">
+                            <TaskCard
+                              task={task}
+                              showRequester={user.role !== 'staff'}
+                              showAssignee={user.role !== 'designer' || canAssignDesigner}
+                              showAssignDesignerButton={canAssignDesigner}
+                              onAssignDesigner={() => openAssignDesignerModal(task)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState />
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Clean up old sections if needed, but for now just fitting into the layout. 
               The original structure had 'Recent Activity' title then 'Notifications' list then 'Loading/Grid'.

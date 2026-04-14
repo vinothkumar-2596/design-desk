@@ -124,6 +124,15 @@ import {
   DESIGN_GOVERNANCE_EDIT_TASK_PREMIUM_LINES,
   DESIGN_GOVERNANCE_NOTICE_POLICY,
 } from '@/lib/designGovernance';
+import {
+  getAllowedCommentReceiverRoles,
+  getAdminReviewLabel,
+  getMentionTargetLabels,
+  getModificationApprovalActorLabel,
+  isAdminRole,
+  isDesignLeadRole,
+  ROLE_LABELS,
+} from '@/lib/roleRules';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import {
   deriveTaskStatusFromCollaterals,
@@ -459,12 +468,8 @@ const changeFieldLabels: Record<string, string> = {
 };
 
 const formatChangeField = (field: string) => changeFieldLabels[field] || field.replace(/_/g, ' ');
-const roleLabels: Record<UserRole, string> = {
-  staff: 'Staff',
-  treasurer: 'Treasurer',
-  designer: 'Designer',
-};
-const allRoles: UserRole[] = ['staff', 'treasurer', 'designer'];
+const roleLabels: Record<UserRole, string> = ROLE_LABELS;
+const allRoles: UserRole[] = ['admin', 'staff', 'treasurer', 'designer'];
 const quickCommentReactions = [
   '\u{1F44D}',
   '\u{2764}\u{FE0F}',
@@ -677,6 +682,7 @@ const resolveTaskCcEmails = (task?: typeof mockTasks[number]) => {
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 type UploadStatus = 'uploading' | 'done' | 'error';
 type ApprovalDecision = 'approved' | 'rejected';
+type AdminReviewDecision = 'approved' | 'needs_info';
 type TaskUploadChannel = 'attachment' | 'working';
 type UploadItem = {
   id: string;
@@ -821,6 +827,19 @@ const normalizeFinalDeliverableReviewStatus = (
   return fallback;
 };
 const STAFF_EDIT_CHANGE_FIELDS = new Set(['description']);
+const ADMIN_REVIEW_DRAFT_CHANGE_FIELDS = new Set([
+  'title',
+  'description',
+  'files',
+  'requesterDepartment',
+  'requesterPhone',
+  'category',
+  'urgency',
+  'deadline',
+  'campaign',
+  'collaterals',
+]);
+const NON_COUNTED_CHANGE_FIELDS = new Set(['admin_review_response_status']);
 const normalizeTaskChangeEntry = (entry: Partial<TaskChange> & { _id?: string }, index: number): TaskChange => ({
   id:
     String(entry.id || entry._id || '').trim() ||
@@ -1666,6 +1685,7 @@ function TaskDetailScreen() {
     initialTask ? format(initialTask.deadline, 'yyyy-MM-dd') : ''
   );
   const [isEditingTask, setIsEditingTask] = useState(false);
+  const [isSubmittingAdminReviewResponse, setIsSubmittingAdminReviewResponse] = useState(false);
   const [isGovernanceExpanded, setIsGovernanceExpanded] = useState(false);
   const editTaskGovernanceVariant: 'minimal' | 'premium' = 'premium';
   const [deadlineRequest, setDeadlineRequest] = useState(
@@ -1717,6 +1737,9 @@ function TaskDetailScreen() {
   const [isPageFileDragActive, setIsPageFileDragActive] = useState(false);
   const [copiedFileKey, setCopiedFileKey] = useState('');
   const [approvalDecisionInFlight, setApprovalDecisionInFlight] = useState<ApprovalDecision | null>(null);
+  const [adminReviewDecisionInFlight, setAdminReviewDecisionInFlight] =
+    useState<AdminReviewDecision | null>(null);
+  const [isAdminRequestMessagePending, setIsAdminRequestMessagePending] = useState(false);
   const [approvalRequestInFlight, setApprovalRequestInFlight] = useState(false);
   const [finalReviewDecisionInFlight, setFinalReviewDecisionInFlight] =
     useState<ApprovalDecision | null>(null);
@@ -1764,6 +1787,8 @@ function TaskDetailScreen() {
   const workingUploadDismissTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const changeHistoryListRef = useRef<HTMLDivElement | null>(null);
   const changeHistoryPanelRef = useRef<HTMLDivElement | null>(null);
+  const editTaskPanelRef = useRef<HTMLDivElement | null>(null);
+  const internalChatPanelRef = useRef<HTMLDivElement | null>(null);
   const [compareLeftId, setCompareLeftId] = useState('');
   const [compareRightId, setCompareRightId] = useState('');
   const [focusedChangeId, setFocusedChangeId] = useState(highlightChangeId || '');
@@ -1839,7 +1864,7 @@ function TaskDetailScreen() {
   const editsRemainingBeforeTreasurerApproval = Math.max(0, 3 - staffChangeCount);
   useEffect(() => {
     if (!approvalLockedForStaff) return;
-    setIsEditingTask(false);
+    closeTaskEditPanel();
   }, [approvalLockedForStaff]);
   const chronologicalChangeHistory = useMemo(
     () =>
@@ -1901,7 +1926,7 @@ function TaskDetailScreen() {
       return currentStaffCycleChanges;
     }
     if (
-      user?.role === 'treasurer' &&
+      isDesignLeadRole(user) &&
       approvalStatus === 'pending' &&
       treasurerApprovalCycleChanges.length > 0
     ) {
@@ -1915,7 +1940,7 @@ function TaskDetailScreen() {
     treasurerApprovalCycleChanges,
     editTaskChangeHistory,
   ]);
-  const isTreasurerReviewMode = user?.role === 'treasurer' && approvalStatus === 'pending';
+  const isTreasurerReviewMode = isDesignLeadRole(user) && approvalStatus === 'pending';
   const changeHistorySelectOptions = useMemo(
     () =>
       changeHistoryForDisplay.map((entry, index) => ({
@@ -2978,7 +3003,7 @@ function TaskDetailScreen() {
   }, [apiUrl, taskState, user?.email, user?.id]);
 
   const getReceiverRoles = (senderRole?: UserRole) =>
-    senderRole ? allRoles.filter((role) => role !== senderRole) : allRoles;
+    getAllowedCommentReceiverRoles(senderRole);
 
   const resolveCommentReceivers = (comment: (typeof taskState)['comments'][number]) => {
     if (comment.receiverRoles && comment.receiverRoles.length > 0) {
@@ -2988,9 +3013,9 @@ function TaskDetailScreen() {
       return comment.mentions;
     }
     if (comment.userRole) {
-      return allRoles.filter((role) => role !== comment.userRole);
+      return getAllowedCommentReceiverRoles(comment.userRole);
     }
-    return allRoles;
+    return getAllowedCommentReceiverRoles(user?.role);
   };
 
   const hasUnseenForRole = (task: typeof taskState, role?: UserRole, userId?: string) => {
@@ -3031,20 +3056,15 @@ function TaskDetailScreen() {
   const lastSeenFingerprintRef = useRef('');
 
   const mentionRoleMap: Record<string, UserRole> = {
+    admin: 'admin',
     staff: 'staff',
     treasurer: 'treasurer',
     designer: 'designer',
   };
 
-  const mentionTargetsByRole: Record<UserRole, string[]> = {
-    staff: ['Designer', 'Treasurer'],
-    designer: ['Staff', 'Treasurer'],
-    treasurer: ['Designer', 'Staff'],
-  };
-
   const getMentionList = (role?: UserRole) => {
-    if (!role) return ['Designer', 'Treasurer', 'Staff'];
-    return mentionTargetsByRole[role] ?? ['Designer', 'Treasurer', 'Staff'];
+    const targets = getMentionTargetLabels(role);
+    return targets.length > 0 ? targets : ['Admin'];
   };
 
   const getMentionPlaceholder = (role?: UserRole, prefix = 'Message') =>
@@ -3179,7 +3199,7 @@ function TaskDetailScreen() {
   };
 
   const extractMentions = (content: string) => {
-    const matches = content.match(/@(?:Designer|Treasurer|Staff)/gi) ?? [];
+    const matches = content.match(/@(?:Admin|Designer|Treasurer|Staff)/gi) ?? [];
     const roles = matches
       .map((match) => mentionRoleMap[match.replace('@', '').toLowerCase()])
       .filter(Boolean) as UserRole[];
@@ -3192,7 +3212,7 @@ function TaskDetailScreen() {
   };
 
   const renderCommentContent = (content: string) => {
-    const parts = content.split(/(@(?:Designer|Treasurer|Staff))/gi);
+    const parts = content.split(/(@(?:Admin|Designer|Treasurer|Staff))/gi);
     return parts.map((part, index) => {
       const key = part.replace('@', '').toLowerCase();
       if (mentionRoleMap[key as keyof typeof mentionRoleMap]) {
@@ -3724,29 +3744,170 @@ function TaskDetailScreen() {
   const hasFullTaskAccess = hasExplicitAccessMode
     ? backendAccessMode === 'full' && !explicitViewOnlyFlag
     : !isViewOnlyTask;
+  const isAdminUser = isAdminRole(user);
   const canAssignDesigner = isDesignerRole && isMainDesignerUser && hasFullTaskAccess && !isViewOnlyTask;
   const canDesignerActions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canFinalizeTaskActions = canDesignerActions || (isDesignerRole && isMainDesignerUser);
   const isStaffRole = user?.role === 'staff';
-  const canEditTask = user?.role === 'staff' && !isViewOnlyTask;
+  const canEditTask = (user?.role === 'staff' || user?.role === 'admin') && !isViewOnlyTask;
+  const adminReviewStatus = taskState.adminReviewStatus ?? (isAdminUser ? 'pending' : undefined);
+  const adminReviewResponseStatus =
+    taskState.adminReviewResponseStatus ?? (adminReviewStatus === 'needs_info' ? 'draft' : undefined);
+  const adminReviewLabel = getAdminReviewLabel(adminReviewStatus);
+  const adminReviewBadgeVariant =
+    adminReviewStatus === 'approved'
+      ? 'completed'
+      : adminReviewStatus === 'needs_info'
+        ? 'clarification'
+        : adminReviewStatus === 'rejected'
+          ? 'urgent'
+          : 'pending';
+  const adminReviewedAtDate = useMemo(() => {
+    if (!taskState.adminReviewedAt) return undefined;
+    const normalized =
+      taskState.adminReviewedAt instanceof Date
+        ? taskState.adminReviewedAt
+        : new Date(taskState.adminReviewedAt);
+    return Number.isNaN(normalized.getTime()) ? undefined : normalized;
+  }, [taskState.adminReviewedAt]);
+  const adminReviewResponseSubmittedAtDate = useMemo(() => {
+    if (!taskState.adminReviewResponseSubmittedAt) return undefined;
+    const normalized =
+      taskState.adminReviewResponseSubmittedAt instanceof Date
+        ? taskState.adminReviewResponseSubmittedAt
+        : new Date(taskState.adminReviewResponseSubmittedAt);
+    return Number.isNaN(normalized.getTime()) ? undefined : normalized;
+  }, [taskState.adminReviewResponseSubmittedAt]);
+  const hasAdminReviewDraftChanges = useMemo(() => {
+    if (adminReviewStatus !== 'needs_info' || !adminReviewedAtDate) return false;
+    const checkpoint = adminReviewedAtDate.getTime();
+    return changeHistory.some((entry) => {
+      if (entry.userRole !== 'staff') return false;
+      if (!ADMIN_REVIEW_DRAFT_CHANGE_FIELDS.has(String(entry.field || ''))) return false;
+      return entry.createdAt.getTime() > checkpoint;
+    });
+  }, [adminReviewStatus, adminReviewedAtDate, changeHistory]);
+  const latestStaffFollowUpAfterAdminRequest = useMemo(() => {
+    if (adminReviewStatus !== 'needs_info' || !adminReviewedAtDate) return null;
+    const checkpoint = adminReviewedAtDate.getTime();
+    const latestStaffComment = [...(taskState.comments ?? [])]
+      .filter((comment) => {
+        if (comment.deletedAt || comment.userRole !== 'staff') return false;
+        return new Date(comment.createdAt).getTime() > checkpoint;
+      })
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0];
+    const latestDraftChange = [...changeHistory]
+      .filter((entry) => {
+        if (entry.userRole !== 'staff') return false;
+        if (!ADMIN_REVIEW_DRAFT_CHANGE_FIELDS.has(String(entry.field || ''))) return false;
+        return entry.createdAt.getTime() > checkpoint;
+      })
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0];
+    const submittedBriefAt =
+      adminReviewResponseStatus === 'submitted' &&
+      adminReviewResponseSubmittedAtDate &&
+      adminReviewResponseSubmittedAtDate.getTime() > checkpoint
+        ? adminReviewResponseSubmittedAtDate
+        : null;
+
+    let latestQualifiedFollowUp:
+      | {
+          kind: 'comment' | 'submitted';
+          createdAt: Date;
+        }
+      | null = null;
+    if (
+      latestStaffComment &&
+      (!submittedBriefAt || latestStaffComment.createdAt.getTime() >= submittedBriefAt.getTime())
+    ) {
+      latestQualifiedFollowUp = {
+        kind: 'comment' as const,
+        createdAt: latestStaffComment.createdAt,
+      };
+    } else if (submittedBriefAt) {
+      latestQualifiedFollowUp = {
+        kind: 'submitted' as const,
+        createdAt: submittedBriefAt,
+      };
+    }
+
+    if (!latestQualifiedFollowUp) return null;
+    if (
+      latestDraftChange &&
+      latestDraftChange.createdAt.getTime() > latestQualifiedFollowUp.createdAt.getTime()
+    ) {
+      return null;
+    }
+
+    return latestQualifiedFollowUp;
+  }, [
+    adminReviewStatus,
+    adminReviewResponseStatus,
+    adminReviewResponseSubmittedAtDate,
+    adminReviewedAtDate,
+    changeHistory,
+    taskState.comments,
+  ]);
+  const isAdminApprovalAwaitingStaffFollowUp =
+    adminReviewStatus === 'needs_info' && !latestStaffFollowUpAfterAdminRequest;
+  const adminReviewTitle =
+    adminReviewStatus === 'approved'
+      ? 'Approved for design intake'
+      : adminReviewStatus === 'needs_info'
+        ? latestStaffFollowUpAfterAdminRequest
+          ? 'Staff follow-up received'
+          : 'Waiting for staff response'
+        : isAdminRequestMessagePending
+          ? 'Send the staff message to continue'
+          : 'Ready for admin review';
+  const adminReviewSummary =
+    adminReviewStatus === 'approved'
+      ? 'This request is cleared for the design team. You can still open edit mode if the brief needs correction.'
+      : adminReviewStatus === 'needs_info'
+        ? latestStaffFollowUpAfterAdminRequest
+          ? `Staff ${
+              latestStaffFollowUpAfterAdminRequest.kind === 'comment'
+                ? 'replied in chat'
+                : 'submitted the updated brief'
+            } ${formatDistanceToNow(latestStaffFollowUpAfterAdminRequest.createdAt, {
+              addSuffix: true,
+            })}. Review the update and approve when ready.`
+          : 'Approval is locked until staff replies in Internal Chat or submits the updated brief.'
+        : isAdminRequestMessagePending
+          ? 'Post the message to @Staff below. The task will move to Need Info after the message is sent.'
+          : 'Review the brief, approve it if it is ready, or message staff to request changes.';
+  const adminReviewActionLabel = isAdminRequestMessagePending
+    ? 'Send Message Below'
+    : adminReviewStatus === 'needs_info'
+      ? 'Open Staff Chat'
+      : 'Request Changes';
+  useEffect(() => {
+    if (adminReviewStatus === 'needs_info' || adminReviewStatus === 'approved') {
+      setIsAdminRequestMessagePending(false);
+    }
+  }, [adminReviewStatus]);
   const editTaskActionTooltip = approvalLockedForStaff
     ? approvalStatus === 'rejected'
-      ? 'Editing is locked. Treasurer approval is required to re-open this request.'
+      ? `Editing is locked. ${getModificationApprovalActorLabel()} approval is required to re-open this request.`
       : 'Editing is temporarily locked while this request is under approval.'
     : staffChangeLimitReached
-      ? 'You have reached 3 edits. Treasurer approval is required before further updates.'
+      ? `You have reached 3 edits. ${getModificationApprovalActorLabel()} approval is required before further updates.`
     : isEditingTask
-      ? `Close edit mode after reviewing your updates. Treasurer approval is required after 3 edits (${editsRemainingBeforeTreasurerApproval} remaining).`
-      : `Open edit mode to update task details. Treasurer approval is required after 3 edits (${editsRemainingBeforeTreasurerApproval} remaining).`;
+      ? `Close edit mode after reviewing your updates. ${getModificationApprovalActorLabel()} approval is required after 3 edits (${editsRemainingBeforeTreasurerApproval} remaining).`
+      : `Open edit mode to update task details. ${getModificationApprovalActorLabel()} approval is required after 3 edits (${editsRemainingBeforeTreasurerApproval} remaining).`;
   const canApproveDeadline = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canManageVersions = isDesignerRole && hasFullTaskAccess && !isViewOnlyTask;
   const canComment = true;
   const canRemoveFiles = canDesignerActions;
-  const canViewWorkingFiles = user?.role === 'designer' || user?.role === 'treasurer';
+  const canViewWorkingFiles =
+    user?.role === 'admin' || user?.role === 'designer' || user?.role === 'treasurer';
   const canManageWorkingFiles = canDesignerActions || (isDesignerRole && isMainDesignerUser);
   const rawCollateralItems = Array.isArray(taskState.collaterals) ? taskState.collaterals : [];
   const isCampaignRequest =
     taskState.requestType === 'campaign_request' || rawCollateralItems.length > 0;
+  const isQuickTaskRequest =
+    !isCampaignRequest && inferTaskRequestType(taskState) === 'single_task';
+  const canOpenAdminEditTask = isAdminUser && canEditTask && (isQuickTaskRequest || isCampaignRequest);
   const quickDesignOverviewCollaterals = useMemo<CollateralItem[]>(
     () =>
       !isCampaignRequest && taskState.requestType === 'single_task'
@@ -3823,7 +3984,9 @@ function TaskDetailScreen() {
             ? 'text-[#3152BE] dark:text-[#B8CBFF]'
             : 'text-[#A46B1A] dark:text-[#F4C66B]';
   const canUpdateCollateralStatus =
-    (isDesignerRole || user?.role === 'treasurer') && hasFullTaskAccess && !isViewOnlyTask;
+    (isDesignerRole || user?.role === 'treasurer' || user?.role === 'admin') &&
+    hasFullTaskAccess &&
+    !isViewOnlyTask;
   const minDeadlineDate = addWorkingDays(new Date(), 3);
   useEffect(() => {
     setSelectedCampaignCollateralId((previous) => {
@@ -4138,7 +4301,7 @@ function TaskDetailScreen() {
       hasWorkflowAssignee ? `Assigned to ${workflowAssigneeLabel}` : 'Unassigned',
     ];
 
-    if (user?.role === 'treasurer' && approvalStatus === 'pending') {
+    if (isDesignLeadRole(user) && approvalStatus === 'pending') {
       return {
         stepIndex: 3,
         headline: 'Approval required',
@@ -4152,6 +4315,33 @@ function TaskDetailScreen() {
     }
 
     if (isStaffRole) {
+      if (adminReviewStatus === 'needs_info') {
+        return {
+          stepIndex: hasAdminReviewDraftChanges ? 1 : 0,
+          headline:
+            adminReviewResponseStatus === 'submitted'
+              ? 'Response submitted'
+              : hasAdminReviewDraftChanges
+                ? 'Draft response ready'
+                : 'Admin changes requested',
+          summary:
+            adminReviewResponseStatus === 'submitted'
+              ? 'Your updated brief is back with admin for review.'
+              : hasAdminReviewDraftChanges
+                ? 'Save any final tweaks, then submit the updated brief for admin review.'
+                : 'Update the brief or attachments, keep it as a draft, then submit when ready.',
+          supportItems: [
+            compactDeadlineLabel,
+            adminReviewResponseStatus === 'submitted'
+              ? 'Awaiting admin review'
+              : hasAdminReviewDraftChanges
+                ? 'Draft saved'
+                : 'No response submitted yet',
+            hasWorkflowAssignee ? `Assigned to ${workflowAssigneeLabel}` : 'Unassigned',
+          ],
+        };
+      }
+
       if (finalDeliverableReviewStatus === 'pending') {
         return {
           stepIndex: 3,
@@ -4260,12 +4450,15 @@ function TaskDetailScreen() {
       supportItems: defaultSupportItems,
     };
   }, [
+    adminReviewResponseStatus,
+    adminReviewStatus,
     approvalStatus,
     baseStaffTrackerProgressPercent,
     baseStaffTrackerStepIndex,
     compactDeadlineLabel,
     displayedChangeCount,
     finalDeliverableReviewStatus,
+    hasAdminReviewDraftChanges,
     isStaffRole,
     hasWorkflowAssignee,
     isDesignerRole,
@@ -5822,7 +6015,7 @@ function TaskDetailScreen() {
 
   const ensureWritableTask = (options?: { allowManagerApproval?: boolean; allowMainDesignerFinalize?: boolean }) => {
     if (options?.allowManagerApproval) {
-      const isManagerApprovalActor = user?.role === 'treasurer' || user?.role === 'admin';
+      const isManagerApprovalActor = isDesignLeadRole(user);
       if (isManagerApprovalActor) {
         return true;
       }
@@ -5869,9 +6062,33 @@ function TaskDetailScreen() {
       userRole: user?.role || 'staff',
       createdAt: now,
     }));
-    const updatesWithMeta = { ...updates, updatedAt: now };
+    const shouldKeepAdminReviewResponseAsDraft =
+      isStaffUser &&
+      adminReviewStatus === 'needs_info' &&
+      !updates.adminReviewResponseStatus &&
+      entries.some((entry) => ADMIN_REVIEW_DRAFT_CHANGE_FIELDS.has(String(entry.field || '')));
+    const updatesWithMeta = {
+      ...updates,
+      ...(shouldKeepAdminReviewResponseAsDraft
+        ? {
+            adminReviewResponseStatus: 'draft' as const,
+            adminReviewResponseSubmittedBy: '',
+            adminReviewResponseSubmittedAt: undefined,
+          }
+        : {}),
+      updatedAt: now,
+    };
+    const requestUpdates = {
+      ...updatesWithMeta,
+      ...(shouldKeepAdminReviewResponseAsDraft
+        ? { adminReviewResponseSubmittedAt: null }
+        : {}),
+    };
 
-    const nextCount = changeCount + entries.length;
+    const countableEntries = entries.filter(
+      (entry) => !NON_COUNTED_CHANGE_FIELDS.has(String(entry.field || ''))
+    );
+    const nextCount = changeCount + countableEntries.length;
     const overrideApproval = updates.approvalStatus as ApprovalStatus | undefined;
     const nextApproval = overrideApproval ?? (isStaffUser ? approvalStatus : nextCount >= 3 ? 'pending' : approvalStatus);
 
@@ -5901,7 +6118,7 @@ function TaskDetailScreen() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            updates: updatesWithMeta,
+            updates: requestUpdates,
             changes: entries.map((entry) => ({
               type: entry.type,
               field: entry.field,
@@ -5964,7 +6181,7 @@ function TaskDetailScreen() {
       hasStaffTrackedChange &&
       nextStaffTrackedCount >= 3
     ) {
-      toast.message('Treasurer approval required after 3+ changes.');
+      toast.message(`${getModificationApprovalActorLabel()} approval required after 3+ changes.`);
       return true;
     }
 
@@ -6179,14 +6396,14 @@ function TaskDetailScreen() {
     parentId?: string,
     onSuccess?: () => void,
     attachments: TaskFile[] = []
-  ) => {
-    if (!taskState) return;
+  ): Promise<boolean> => {
+    if (!taskState) return false;
     if (!canComment) {
       toast.error('Comments are disabled for this task.');
-      return;
+      return false;
     }
     const trimmed = content.trim();
-    if (!trimmed && attachments.length === 0) return;
+    if (!trimmed && attachments.length === 0) return false;
     const mentions = extractMentions(trimmed);
     const receiverRoles = buildReceiverRoles(trimmed);
 
@@ -6228,11 +6445,11 @@ function TaskDetailScreen() {
         onSuccess?.();
         clearTyping();
         toast.success('Comment added');
-        return;
+        return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to add comment.';
         toast.error('Failed to add comment', { description: message });
-        return;
+        return false;
       }
     }
 
@@ -6261,14 +6478,20 @@ function TaskDetailScreen() {
     onSuccess?.();
     clearTyping();
     toast.success('Comment added');
+    return true;
   };
 
-  const handleAddComment = () => {
-    submitComment(newComment, undefined, () => {
+  const handleAddComment = async () => {
+    const shouldMarkNeedsInfo = isAdminUser && isAdminRequestMessagePending;
+    const sent = await submitComment(newComment, undefined, () => {
       setNewComment('');
       clearComposerAttachments('comment');
       clearMentionContext('comment');
     }, commentAttachments);
+    if (!sent) return;
+    if (!shouldMarkNeedsInfo) return;
+    setIsAdminRequestMessagePending(false);
+    await applyAdminReviewDecision('needs_info', 'Staff notified. Task moved to Need Info.');
   };
 
   const handleReplySubmit = (parentId: string) => {
@@ -7010,10 +7233,193 @@ function TaskDetailScreen() {
       );
       if (!applied) return;
       setIsEditingTask(false);
-      toast.message('Approval request sent to treasurer.');
+      toast.message(`Approval request sent to ${getModificationApprovalActorLabel()}.`);
     } finally {
       setApprovalRequestInFlight(false);
     }
+  };
+
+  const closeTaskEditPanel = () => {
+    setIsEditingTask(false);
+  };
+
+  const openTaskEditPanel = () => {
+    if (isQuickTaskRequest || isCampaignRequest) {
+      navigate(isCampaignRequest ? '/new-request/campaign-suite' : '/new-request/quick-design', {
+        state: {
+          editTaskId: taskState.id,
+          editTaskSnapshot: taskState,
+          returnTo: `${location.pathname}${location.search}`,
+        },
+      });
+      return;
+    }
+    setIsEditingTask(true);
+    window.requestAnimationFrame(() => {
+      editTaskPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const openAdminEditTask = () => {
+    if (!canOpenAdminEditTask) return;
+    openTaskEditPanel();
+  };
+
+  const focusInternalChatComposer = (seedStaffMention = false) => {
+    setIsCommentSearchVisible(false);
+    setReplyToId(null);
+    setReplyText('');
+    setReplyAttachments([]);
+    clearMentionContext('reply');
+    if (seedStaffMention) {
+      setNewComment((current) => {
+        const trimmed = current.trim();
+        if (!trimmed) return '@Staff Please update the brief: ';
+        if (/@staff\b/i.test(trimmed)) return current;
+        return `@Staff ${current}`;
+      });
+    }
+    window.requestAnimationFrame(() => {
+      internalChatPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      commentComposerRef.current?.focus();
+      const nextLength = commentComposerRef.current?.value.length ?? 0;
+      commentComposerRef.current?.setSelectionRange(nextLength, nextLength);
+    });
+  };
+
+  const applyAdminReviewDecision = async (
+    decision: AdminReviewDecision,
+    successMessage?: string
+  ): Promise<boolean> => {
+    const currentTask = taskStateRef.current ?? taskState;
+    if (!currentTask || !isAdminUser) return false;
+    if (adminReviewDecisionInFlight) return false;
+
+    const oldValue = currentTask.adminReviewStatus ?? 'pending';
+    const now = new Date();
+    const actorLabel = user?.name || 'Admin';
+    const newValue = decision === 'approved' ? 'Approved' : 'Need Info';
+    const reviewNote =
+      decision === 'approved'
+        ? `Admin approved by ${actorLabel}`
+        : `Admin requested changes by ${actorLabel}`;
+
+    setAdminReviewDecisionInFlight(decision);
+    try {
+      if (apiUrl) {
+        const response = await authFetch(`${apiUrl}/api/tasks/${currentTask.id}/changes`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            updates: {
+              adminReviewStatus: decision,
+              adminReviewedBy: actorLabel,
+              adminReviewedAt: now,
+              ...(decision === 'needs_info'
+                ? {
+                    adminReviewResponseStatus: 'draft',
+                    adminReviewResponseSubmittedBy: '',
+                    adminReviewResponseSubmittedAt: null,
+                  }
+                : {}),
+            },
+            changes: [
+              {
+                type: 'status',
+                field: 'admin_review_status',
+                oldValue,
+                newValue,
+                note: reviewNote,
+              },
+            ],
+            userId: user?.id || '',
+            userName: actorLabel,
+            userRole: user?.role || 'admin',
+          }),
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload?.error || 'Failed to update admin review.');
+        }
+      }
+
+      const nextHistory: TaskChange[] = [
+        {
+          id: `ch-${Date.now()}-admin-review`,
+          type: 'status',
+          field: 'admin_review_status',
+          oldValue,
+          newValue,
+          note: reviewNote,
+          userId: user?.id || '',
+          userName: actorLabel,
+          userRole: 'admin',
+          createdAt: now,
+        },
+        ...(currentTask.changeHistory || changeHistory),
+      ];
+
+      const nextTask = withAccessMetadata({
+        ...currentTask,
+        adminReviewStatus: decision,
+        adminReviewedBy: actorLabel,
+        adminReviewedAt: now,
+        ...(decision === 'needs_info'
+          ? {
+              adminReviewResponseStatus: 'draft' as const,
+              adminReviewResponseSubmittedBy: '',
+              adminReviewResponseSubmittedAt: undefined,
+            }
+          : {}),
+        updatedAt: now,
+        changeHistory: nextHistory,
+      });
+
+      setTaskState(nextTask);
+      setChangeHistory(nextHistory);
+      persistTask(nextTask, nextHistory);
+      window.dispatchEvent(new CustomEvent('designhub:task:updated', { detail: nextTask }));
+
+      toast.success(
+        successMessage ||
+          (decision === 'approved'
+            ? 'Task approved for design intake.'
+            : 'Changes requested from staff.')
+      );
+      return true;
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to update admin review.';
+      toast.error(message);
+      return false;
+    } finally {
+      setAdminReviewDecisionInFlight(null);
+    }
+  };
+
+  const handleAdminApprove = async () => {
+    if (isAdminApprovalAwaitingStaffFollowUp) {
+      focusInternalChatComposer(false);
+      toast.message('Approval unlocks after staff replies in chat or submits the updated brief.');
+      return;
+    }
+    setIsAdminRequestMessagePending(false);
+    await applyAdminReviewDecision('approved');
+  };
+
+  const handleAdminRequestChanges = () => {
+    if (!isAdminUser) return;
+    if (adminReviewStatus === 'needs_info') {
+      focusInternalChatComposer(!latestStaffFollowUpAfterAdminRequest);
+      return;
+    }
+    setIsAdminRequestMessagePending(true);
+    focusInternalChatComposer(true);
+    toast.message('Send your note to staff. The task will move to Need Info after the message is posted.');
   };
 
   const handleApprovalDecision = async (decision: ApprovalDecision) => {
@@ -7028,7 +7434,7 @@ function TaskDetailScreen() {
             field: 'approval_status',
             oldValue,
             newValue: decision === 'approved' ? 'Approved' : 'Rejected',
-            note: `Approval ${decision} by ${user?.name || 'Treasurer'}`,
+            note: `Approval ${decision} by ${user?.name || getModificationApprovalActorLabel()}`,
           },
         ],
         {
@@ -7172,7 +7578,7 @@ function TaskDetailScreen() {
 
   const handleSaveUpdates = () => {
     if (approvalLockedForStaff) {
-      toast.message('Changes are locked until Treasurer approval.');
+      toast.message(`Changes are locked until ${getModificationApprovalActorLabel()} approval.`);
       return;
     }
     if (staffChangeLimitReached) {
@@ -7218,6 +7624,52 @@ function TaskDetailScreen() {
     }
   };
 
+  const handleSubmitAdminReviewResponse = async () => {
+    if (user?.role !== 'staff' || adminReviewStatus !== 'needs_info') return;
+    if (isSubmittingAdminReviewResponse) return;
+    if (approvalLockedForStaff) {
+      toast.message(`Changes are locked until ${getModificationApprovalActorLabel()} approval.`);
+      return;
+    }
+    if (!hasAdminReviewDraftChanges) {
+      toast.message('Update the brief or attachments before submitting your response.');
+      return;
+    }
+
+    setIsSubmittingAdminReviewResponse(true);
+    try {
+      const submittedAt = new Date();
+      const actorLabel = user?.name || 'Staff';
+      const applied = await recordChanges(
+        [
+          {
+            type: 'status',
+            field: 'admin_review_response_status',
+            oldValue:
+              adminReviewResponseStatus === 'submitted'
+                ? 'Submitted'
+                : adminReviewResponseStatus === 'draft'
+                  ? 'Draft'
+                  : '',
+            newValue: 'Submitted',
+            note: `Updated brief submitted by ${actorLabel}`,
+          },
+        ],
+        {
+          adminReviewResponseStatus: 'submitted',
+          adminReviewResponseSubmittedBy: actorLabel,
+          adminReviewResponseSubmittedAt: submittedAt,
+        },
+        { skipSuccessToast: true }
+      );
+      if (!applied) return;
+      setIsEditingTask(false);
+      toast.success('Updated brief submitted for admin review.');
+    } finally {
+      setIsSubmittingAdminReviewResponse(false);
+    }
+  };
+
   const handleAddFile = () => {
     if (!ensureWritableTask()) return;
     if (isUploadingAttachment) return;
@@ -7238,7 +7690,7 @@ function TaskDetailScreen() {
       return;
     }
     if (approvalLockedForStaff) {
-      toast.message('Changes are locked until Treasurer approval.');
+      toast.message(`Changes are locked until ${getModificationApprovalActorLabel()} approval.`);
       return;
     }
     if (staffChangeLimitReached) {
@@ -8715,7 +9167,7 @@ function TaskDetailScreen() {
 
   const handleRequestDeadline = () => {
     if (approvalLockedForStaff) {
-      toast.message('Changes are locked until Treasurer approval.');
+      toast.message(`Changes are locked until ${getModificationApprovalActorLabel()} approval.`);
       return;
     }
     if (staffChangeLimitReached) {
@@ -9669,7 +10121,15 @@ function TaskDetailScreen() {
                       ? 'Approved'
                       : approvalStatus === 'rejected'
                         ? 'Rejected'
-                        : 'Awaiting Approval'}
+                      : 'Awaiting Approval'}
+                  </Badge>
+                )}
+                {isAdminUser && adminReviewLabel && (
+                  <Badge variant={adminReviewBadgeVariant} className={badgeGlassClass}>
+                    <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                      <ShieldCheck className="h-3 w-3" />
+                    </span>
+                    {adminReviewLabel}
                   </Badge>
                 )}
                 <span className={badgeGlassClass}>
@@ -9704,6 +10164,162 @@ function TaskDetailScreen() {
               </div>
             ) : null}
           </div>
+
+          {isAdminUser && (
+            <div className={cn(glassPanelClass, 'mt-4 px-4 py-3')}>
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="min-w-0 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/90">
+                      Admin Review
+                    </span>
+                    <Badge variant={adminReviewBadgeVariant} className={badgeGlassClass}>
+                      <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                        <ShieldCheck className="h-3 w-3" />
+                      </span>
+                      {adminReviewLabel || 'Awaiting Admin Review'}
+                    </Badge>
+                    {adminReviewedAtDate ? (
+                      <span className="text-xs text-muted-foreground">
+                        Updated {format(adminReviewedAtDate, 'MMM d, yyyy | h:mm a')}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">{adminReviewTitle}</p>
+                  <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{adminReviewSummary}</p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={() => void handleAdminApprove()}
+                    disabled={
+                      adminReviewDecisionInFlight !== null ||
+                      adminReviewStatus === 'approved' ||
+                      isAdminApprovalAwaitingStaffFollowUp
+                    }
+                    className="h-8 gap-2 rounded-lg border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 px-3 text-[13px] font-medium text-white shadow-none hover:bg-primary/85 dark:border-transparent"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    {adminReviewDecisionInFlight === 'approved'
+                      ? 'Approving...'
+                      : adminReviewStatus === 'approved'
+                        ? 'Approved'
+                        : 'Approve'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleAdminRequestChanges}
+                    disabled={adminReviewDecisionInFlight !== null}
+                    className="h-8 gap-2 rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 text-[13px] font-medium text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    {adminReviewActionLabel}
+                  </Button>
+                  {canOpenAdminEditTask ? (
+                    <Button
+                      variant="outline"
+                      onClick={openAdminEditTask}
+                      className="h-8 gap-2 rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 text-[13px] font-medium text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                      {isEditingTask ? 'Editing Open' : 'Edit Brief'}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isStaffRole && adminReviewStatus === 'needs_info' && (
+            <div className={cn(glassPanelClass, 'mt-4 px-4 py-3')}>
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="min-w-0 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/90">
+                      Response Draft
+                    </span>
+                    <Badge
+                      variant={
+                        adminReviewResponseStatus === 'submitted'
+                          ? 'completed'
+                          : hasAdminReviewDraftChanges
+                            ? 'pending'
+                            : 'clarification'
+                      }
+                      className={badgeGlassClass}
+                    >
+                      <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center text-primary">
+                        <Edit3 className="h-3 w-3" />
+                      </span>
+                      {adminReviewResponseStatus === 'submitted'
+                        ? 'Submitted'
+                        : hasAdminReviewDraftChanges
+                          ? 'Draft Ready'
+                          : 'Draft Pending'}
+                    </Badge>
+                    {adminReviewResponseStatus === 'submitted' && adminReviewResponseSubmittedAtDate ? (
+                      <span className="text-xs text-muted-foreground">
+                        Submitted {format(adminReviewResponseSubmittedAtDate, 'MMM d, yyyy | h:mm a')}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {adminReviewResponseStatus === 'submitted'
+                      ? 'Updated brief sent back to admin'
+                      : hasAdminReviewDraftChanges
+                        ? 'Draft is ready to submit'
+                        : 'Admin asked for brief updates'}
+                  </p>
+                  <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                    {adminReviewResponseStatus === 'submitted'
+                      ? 'Your latest brief update is with admin. If you edit the brief again, it will move back to draft until you resubmit.'
+                      : hasAdminReviewDraftChanges
+                        ? 'Keep refining the brief if needed. Admin approval stays locked until you submit this updated draft or reply in Internal Chat.'
+                        : 'Update the brief or attachments first. Saving keeps it as a draft, and admin approval stays locked until you submit the response.'}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={openTaskEditPanel}
+                    className="h-8 gap-2 rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 text-[13px] font-medium text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    {isEditingTask
+                      ? 'Editing Open'
+                      : hasAdminReviewDraftChanges
+                        ? 'Continue Draft'
+                        : 'Start Draft'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => focusInternalChatComposer(false)}
+                    className="h-8 gap-2 rounded-lg border-[#D9E6FF] bg-[#F8FBFF] px-3 text-[13px] font-medium text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80 dark:hover:text-white"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Open Chat
+                  </Button>
+                  <Button
+                    onClick={() => void handleSubmitAdminReviewResponse()}
+                    disabled={
+                      isSubmittingAdminReviewResponse ||
+                      adminReviewResponseStatus === 'submitted' ||
+                      !hasAdminReviewDraftChanges
+                    }
+                    className="h-8 gap-2 rounded-lg border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 px-3 text-[13px] font-medium text-white shadow-none hover:bg-primary/85 dark:border-transparent"
+                  >
+                    <Send className="h-4 w-4" />
+                    {isSubmittingAdminReviewResponse
+                      ? 'Submitting...'
+                      : adminReviewResponseStatus === 'submitted'
+                        ? 'Submitted'
+                        : 'Submit Response'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Main Content Grid */}
@@ -10675,8 +11291,8 @@ function TaskDetailScreen() {
               </div>
             )}
 
-            {canEditTask && !isCampaignRequest && (
-              <div className={`${glassPanelClass} p-4 animate-slide-up`}>
+            {canEditTask && !isCampaignRequest && !isQuickTaskRequest && (
+              <div ref={editTaskPanelRef} className={`${glassPanelClass} p-4 animate-slide-up`}>
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="font-semibold text-foreground">Edit Task</h2>
                   <Tooltip>
@@ -10853,6 +11469,11 @@ function TaskDetailScreen() {
                       {user?.role === 'staff' && (
                         <span className="text-sm font-semibold text-primary/80">{staffChangeLabel}</span>
                       )}
+                      {user?.role === 'staff' && adminReviewStatus === 'needs_info' && (
+                        <span className="text-xs text-muted-foreground">
+                          Saving keeps this update in draft until you use Submit Response.
+                        </span>
+                      )}
                       {!canSendForApproval && (
                         <Button
                           onClick={handleSaveUpdates}
@@ -10868,7 +11489,13 @@ function TaskDetailScreen() {
                               {`Saving... ${attachmentUploadProgress ?? 0}%`}
                             </span>
                           ) : (
-                           `${staffChangeCount < 2 ? 'save updates':'send to treasurer'}`
+                           `${
+                             user?.role === 'staff' && adminReviewStatus === 'needs_info'
+                               ? 'Save Draft'
+                               : staffChangeCount < 2
+                                 ? 'save updates'
+                                 : 'send to treasurer'
+                           }`
                           )}
                         </Button>
                       )}
@@ -10893,7 +11520,7 @@ function TaskDetailScreen() {
                               {`Sending... ${attachmentUploadProgress ?? 0}%`}
                             </span>
                           ) : (
-                            'Send to Treasurer'
+                            `Send to ${getModificationApprovalActorLabel()}`
                           )}
                         </Button>
                       )}
@@ -12273,7 +12900,7 @@ function TaskDetailScreen() {
             </div>
             ) : null}
 
-            {user?.role === 'treasurer' && (
+            {isDesignLeadRole(user) && (
               <>
                 {renderChangeHistoryPanel()}
                 {isTreasurerReviewMode && (
@@ -12301,7 +12928,7 @@ function TaskDetailScreen() {
             )}
 
             {/* Internal Chat */}
-            <div className={`${glassPanelClass} p-4 animate-slide-up`}>
+            <div ref={internalChatPanelRef} className={`${glassPanelClass} p-4 animate-slide-up`}>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="font-semibold text-foreground flex items-center gap-2">
