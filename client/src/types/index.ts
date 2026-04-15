@@ -1,4 +1,4 @@
-export type UserRole = 'designer' | 'staff' | 'treasurer';
+export type UserRole = 'admin' | 'designer' | 'staff' | 'treasurer';
 
 export type TaskStatus =
   | 'pending'

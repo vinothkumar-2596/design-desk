@@ -1,31 +1,399 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { mockTasks } from '@/data/mockTasks';
-import { useAuth } from '@/contexts/AuthContext';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
-  CheckCircle2,
-  XCircle,
-  FileCheck,
-  AlertTriangle,
-  Eye,
-} from 'lucide-react';
+  Avatar,
+  Box,
+  Button,
+  Card,
+  Chip,
+  Container,
+  Grid,
+  Stack,
+  Typography,
+} from '@mui/material';
+import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
+import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
+import RemoveCircleOutlineRoundedIcon from '@mui/icons-material/RemoveCircleOutlineRounded';
+import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import { format } from 'date-fns';
+import { Link as RouterLink } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Link } from 'react-router-dom';
+
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
-import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
+import { mockTasks } from '@/data/mockTasks';
+import { API_URL, authFetch } from '@/lib/api';
 import { DESIGN_GOVERNANCE_NOTICE_POLICY } from '@/lib/designGovernance';
+import { buildSearchItemsFromTasks, matchesSearch } from '@/lib/search';
 import { hydrateTask } from '@/lib/taskHydration';
 
-import { API_URL, authFetch } from '@/lib/api';
+type ApprovalTask = (typeof mockTasks)[number];
+
+type ApprovalCardProps = {
+  onApprove: (taskId: string) => void;
+  onReject: (taskId: string) => void;
+  processing: boolean;
+  requestId: string;
+  staffUpdate: string;
+  summary: string;
+  task: ApprovalTask;
+};
+
+const colors = {
+  pageBg: '#F8FAFC',
+  cardBg: '#FFFFFF',
+  border: '#E5E7EB',
+  title: '#111827',
+  body: '#4B5563',
+  muted: '#6B7280',
+  label: '#94A3B8',
+  subtleBg: '#F8FAFC',
+  subtleBorder: '#EEF2F7',
+  primary: '#4355C6',
+  primaryHover: '#3949AB',
+  reject: '#CC4B4B',
+  rejectHover: '#B42323',
+};
+
+function formatDateLabel(value: Date | string | undefined) {
+  if (!value) return { date: 'Unknown date', time: '' };
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return { date: 'Unknown date', time: '' };
+  }
+  return {
+    date: format(parsed, 'MMM d, yyyy'),
+    time: format(parsed, 'h:mm a'),
+  };
+}
+
+function getRequesterInitials(name?: string) {
+  return (
+    String(name || '')
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || '')
+      .join('') || 'AP'
+  );
+}
+
+function formatRequestId(task: ApprovalTask) {
+  const rawId = String(task.id || (task as { _id?: string })._id || '').trim();
+  if (!rawId) return 'Request ID unavailable';
+  return `Request ID ${rawId}`;
+}
+
+function ApprovalCard({
+  task,
+  summary,
+  requestId,
+  staffUpdate,
+  processing,
+  onApprove,
+  onReject,
+}: ApprovalCardProps) {
+  const submitted = formatDateLabel(task.createdAt);
+  const title =
+    String(task.title || '').replace(/\s+/g, ' ').trim() || 'Untitled request';
+
+  return (
+    <Card
+      elevation={0}
+      sx={{
+        bgcolor: colors.cardBg,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '14px',
+        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.03), 0 8px 24px rgba(15, 23, 42, 0.04)',
+        height: '100%',
+        transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
+        '&:hover': {
+          transform: 'translateY(-2px)',
+          borderColor: '#D1D5DB',
+          boxShadow: '0 6px 20px rgba(15, 23, 42, 0.06)',
+        },
+      }}
+    >
+      <Stack spacing={1.75} sx={{ height: '100%', p: { xs: 2.25, md: 2.5 } }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 1.5,
+          }}
+        >
+          <Chip
+            label="Awaiting Approval"
+            size="small"
+            sx={{
+              height: 28,
+              borderRadius: '999px',
+              bgcolor: '#F8FAFC',
+              border: `1px solid ${colors.border}`,
+              color: '#334155',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              '& .MuiChip-label': {
+                px: 1.5,
+              },
+            }}
+          />
+
+          <Box sx={{ flexShrink: 0, textAlign: 'right', pt: 0.25 }}>
+            <Typography
+              sx={{
+                color: colors.muted,
+                fontSize: 12,
+                fontWeight: 500,
+                lineHeight: 1.3,
+              }}
+            >
+              {submitted.date}
+            </Typography>
+            <Typography
+              sx={{
+                color: colors.label,
+                fontSize: 12,
+                lineHeight: 1.3,
+                mt: 0.25,
+              }}
+            >
+              {submitted.time}
+            </Typography>
+          </Box>
+        </Box>
+
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            sx={{
+              color: colors.title,
+              fontSize: 18,
+              fontWeight: 600,
+              lineHeight: 1.35,
+              letterSpacing: '-0.01em',
+              wordBreak: 'break-word',
+            }}
+          >
+            {title}
+          </Typography>
+
+          <Typography
+            sx={{
+              color: colors.muted,
+              fontSize: 13,
+              lineHeight: 1.55,
+              mt: 0.5,
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
+            }}
+          >
+            {summary}
+          </Typography>
+
+          <Typography
+            sx={{
+              color: colors.label,
+              fontSize: 12,
+              lineHeight: 1.45,
+              mt: 0.75,
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {requestId}
+          </Typography>
+        </Box>
+
+        <Stack
+          direction="row"
+          spacing={1.25}
+          alignItems="center"
+          sx={{
+            minWidth: 0,
+          }}
+        >
+          <Avatar
+            sx={{
+              width: 30,
+              height: 30,
+              bgcolor: '#E5E7EB',
+              color: '#374151',
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            {getRequesterInitials(task.requesterName)}
+          </Avatar>
+
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography
+              sx={{
+                color: colors.title,
+                fontSize: 13,
+                fontWeight: 600,
+                lineHeight: 1.35,
+              }}
+            >
+              {task.requesterName || 'Unknown requester'}
+            </Typography>
+            <Typography
+              sx={{
+                color: colors.muted,
+                fontSize: 12,
+                lineHeight: 1.35,
+                mt: 0.25,
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 0.5,
+              }}
+            >
+              <span>Submitted</span>
+              <span>&bull;</span>
+              <span>{submitted.date}</span>
+              {submitted.time ? (
+                <>
+                  <span>&bull;</span>
+                  <span>{submitted.time}</span>
+                </>
+              ) : null}
+            </Typography>
+          </Box>
+        </Stack>
+
+        <Box
+          sx={{
+            borderRadius: '10px',
+            bgcolor: colors.subtleBg,
+            border: `1px solid ${colors.subtleBorder}`,
+            px: 1.5,
+            py: 1.25,
+          }}
+        >
+          <Typography
+            sx={{
+              color: colors.label,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              lineHeight: 1.2,
+            }}
+          >
+            Staff Update
+          </Typography>
+          <Typography
+            sx={{
+              color: colors.body,
+              fontSize: 13,
+              lineHeight: 1.5,
+              mt: 0.75,
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
+            }}
+          >
+            {staffUpdate || 'No staff update provided for this approval request.'}
+          </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            mt: 'auto',
+            pt: 1.5,
+            borderTop: `1px solid #F3F4F6`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1.5,
+            flexWrap: 'wrap',
+          }}
+        >
+          <Stack direction="row" spacing={0.75} alignItems="center" useFlexGap flexWrap="wrap">
+            <Button
+              variant="contained"
+              disableElevation
+              startIcon={<CheckCircleOutlineRoundedIcon />}
+              onClick={() => onApprove(task.id)}
+              disabled={processing}
+              sx={{
+                minHeight: 36,
+                px: 1.75,
+                borderRadius: '10px',
+                textTransform: 'none',
+                fontSize: 14,
+                fontWeight: 600,
+                bgcolor: colors.primary,
+                '&:hover': {
+                  bgcolor: colors.primaryHover,
+                },
+              }}
+            >
+              {processing ? 'Processing...' : 'Approve'}
+            </Button>
+
+            <Button
+              variant="text"
+              startIcon={<RemoveCircleOutlineRoundedIcon />}
+              onClick={() => onReject(task.id)}
+              disabled={processing}
+              sx={{
+                minHeight: 36,
+                px: 0.5,
+                borderRadius: '10px',
+                textTransform: 'none',
+                fontSize: 14,
+                fontWeight: 600,
+                color: colors.reject,
+                '&:hover': {
+                  bgcolor: '#FEF2F2',
+                  color: colors.rejectHover,
+                },
+              }}
+            >
+              Reject
+            </Button>
+          </Stack>
+
+          <Button
+            variant="outlined"
+            component={RouterLink}
+            to={`/task/${task.id}`}
+            state={{ task, focusSection: 'change-history' }}
+            startIcon={<VisibilityOutlinedIcon />}
+            sx={{
+              minHeight: 36,
+              px: 1.75,
+              borderRadius: '10px',
+              textTransform: 'none',
+              fontSize: 14,
+              fontWeight: 600,
+              color: '#334155',
+              borderColor: '#D1D5DB',
+              '&:hover': {
+                borderColor: '#9CA3AF',
+                bgcolor: '#F8FAFC',
+              },
+            }}
+          >
+            Review Details
+          </Button>
+        </Box>
+      </Stack>
+    </Card>
+  );
+}
 
 export default function Approvals() {
   const { user } = useAuth();
   const { query, setItems, setScopeLabel } = useGlobalSearch();
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [tasks, setTasks] = useState<typeof mockTasks>(API_URL ? [] : mockTasks);
+  const [tasks, setTasks] = useState<ApprovalTask[]>(API_URL ? [] : mockTasks);
   const [isLoading, setIsLoading] = useState(false);
   const apiUrl = API_URL;
 
@@ -39,7 +407,9 @@ export default function Approvals() {
           throw new Error('Failed to load tasks');
         }
         const data = await response.json();
-        const hydrated = data.map((task: any) => hydrateTask({ ...task, id: task.id || task._id }));
+        const hydrated = data.map((task: any) =>
+          hydrateTask({ ...task, id: task.id || task._id })
+        );
         setTasks(hydrated);
       } catch (error) {
         toast.error('Failed to load approvals');
@@ -50,10 +420,10 @@ export default function Approvals() {
     loadTasks();
   }, [apiUrl]);
 
-  // Filter to only show requests pending approval
-  const pendingApprovals = useMemo(() => {
-    return tasks.filter((task) => task.approvalStatus === 'pending');
-  }, [tasks]);
+  const pendingApprovals = useMemo(
+    () => tasks.filter((task) => task.approvalStatus === 'pending'),
+    [tasks]
+  );
 
   useEffect(() => {
     setScopeLabel('Approvals');
@@ -75,7 +445,7 @@ export default function Approvals() {
     [pendingApprovals, query]
   );
 
-  const getStaffUpdatePreview = (task: (typeof tasks)[number]) => {
+  const getStaffUpdatePreview = (task: ApprovalTask) => {
     const history = [...(task.changeHistory || [])].sort(
       (a, b) =>
         new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
@@ -99,13 +469,7 @@ export default function Approvals() {
     return '';
   };
 
-  const formatTaskText = (value?: string) => {
-    const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
-    if (!cleaned) return '';
-    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-  };
-
-  const getRequestSummary = (task: (typeof tasks)[number]) => {
+  const getRequestSummary = (task: ApprovalTask) => {
     const title = String(task.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
     const description = String(task.description || '').replace(/\s+/g, ' ').trim();
     if (!description) return 'No additional request details were provided.';
@@ -123,6 +487,7 @@ export default function Approvals() {
     const oldValue = currentTask?.approvalStatus ?? 'pending';
     const newValue = decision === 'approved' ? 'Approved' : 'Rejected';
     const approvalNote = `Approval ${decision} by ${user?.name || 'Treasurer'}`;
+
     if (apiUrl) {
       const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
         method: 'POST',
@@ -147,36 +512,38 @@ export default function Approvals() {
           userRole: user?.role || '',
         }),
       });
+
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload?.error || 'Failed to update approval');
       }
     }
+
     setTasks((prev) =>
       prev.map((task) =>
         task.id === taskId
           ? {
-            ...task,
-            approvalStatus: decision,
-            approvedBy: user?.name || '',
-            approvalDate: new Date(),
-            updatedAt: new Date(),
-            changeHistory: [
-              {
-                id: `ch-${Date.now()}-0`,
-                type: 'status',
-                field: 'approval_status',
-                oldValue,
-                newValue,
-                note: approvalNote,
-                userId: user?.id || '',
-                userName: user?.name || 'Treasurer',
-                userRole: user?.role || 'treasurer',
-                createdAt: new Date(),
-              },
-              ...(task.changeHistory || []),
-            ],
-          }
+              ...task,
+              approvalStatus: decision,
+              approvedBy: user?.name || '',
+              approvalDate: new Date(),
+              updatedAt: new Date(),
+              changeHistory: [
+                {
+                  id: `ch-${Date.now()}-0`,
+                  type: 'status',
+                  field: 'approval_status',
+                  oldValue,
+                  newValue,
+                  note: approvalNote,
+                  userId: user?.id || '',
+                  userName: user?.name || 'Treasurer',
+                  userRole: user?.role || 'treasurer',
+                  createdAt: new Date(),
+                },
+                ...(task.changeHistory || []),
+              ],
+            }
           : task
       )
     );
@@ -216,166 +583,149 @@ export default function Approvals() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="animate-fade-in">
-          <h1 className="text-2xl font-bold text-foreground premium-headline">Pending Approvals</h1>
-          <p className="text-muted-foreground mt-1 premium-body">
-            Review and approve staff change requests
-          </p>
-        </div>
+      <Box sx={{ bgcolor: colors.pageBg, minHeight: '100%', py: { xs: 3, md: 4 } }}>
+        <Container
+          maxWidth={false}
+          sx={{
+            maxWidth: 1200,
+            mx: 'auto',
+            px: { xs: 2, md: 3 },
+          }}
+        >
+          <Stack spacing={2.5}>
+            <Box>
+              <Typography
+                sx={{
+                  color: colors.title,
+                  fontSize: { xs: 28, md: 30 },
+                  fontWeight: 700,
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                Pending Approvals
+              </Typography>
+              <Typography
+                sx={{
+                  color: colors.muted,
+                  fontSize: 14,
+                  mt: 0.75,
+                }}
+              >
+                Compact review queue for incoming staff requests and approval actions.
+              </Typography>
+            </Box>
 
-        {/* Info Banner */}
-        <div className="rounded-lg border border-border/45 bg-card p-4 shadow-none animate-slide-up">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-semibold text-foreground">Approval Guidelines</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Review incoming requests before approving to ensure the scope,
-                timeline, and assets align with brand and budget expectations.
-              </p>
-              <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">
-                {DESIGN_GOVERNANCE_NOTICE_POLICY}
-              </p>
-            </div>
-          </div>
-        </div>
+            <Card
+              elevation={0}
+              sx={{
+                bgcolor: colors.cardBg,
+                border: `1px solid ${colors.border}`,
+                borderRadius: '14px',
+                boxShadow: '0 1px 2px rgba(15, 23, 42, 0.03)',
+              }}
+            >
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1.5}
+                alignItems={{ xs: 'flex-start', sm: 'center' }}
+                justifyContent="space-between"
+                sx={{ px: 2.25, py: 1.75 }}
+              >
+                <Stack direction="row" spacing={1.25} alignItems="flex-start">
+                  <Box
+                    sx={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: '10px',
+                      bgcolor: colors.subtleBg,
+                      border: `1px solid ${colors.border}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: colors.muted,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <ErrorOutlineRoundedIcon sx={{ fontSize: 18 }} />
+                  </Box>
 
-        {/* Results Count */}
-        <p className="text-sm text-muted-foreground">
-          {filteredApprovals.length} pending approval
-          {filteredApprovals.length !== 1 ? 's' : ''}
-        </p>
+                  <Box>
+                    <Typography sx={{ color: colors.title, fontSize: 14, fontWeight: 600 }}>
+                      Approval Guidelines
+                    </Typography>
+                    <Typography sx={{ color: colors.muted, fontSize: 13, lineHeight: 1.55, mt: 0.5 }}>
+                      {DESIGN_GOVERNANCE_NOTICE_POLICY}
+                    </Typography>
+                  </Box>
+                </Stack>
 
-        {/* Approval Cards */}
-        {isLoading ? (
-          <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
-            <p className="text-sm text-muted-foreground">Loading approvals...</p>
-          </div>
-        ) : filteredApprovals.length > 0 ? (
-          <div className="space-y-4">
-            {filteredApprovals.map((task, index) => {
-              const staffPreview = getStaffUpdatePreview(task);
-              const headline = formatTaskText(task.title) || 'Untitled request';
-              const summary = getRequestSummary(task);
-              const requesterInitials =
-                task.requesterName
-                  .split(' ')
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .map((part) => part[0]?.toUpperCase() || '')
-                  .join('') || 'AP';
-              return (
-                <div
-                  key={task.id}
-                  className="relative overflow-hidden rounded-2xl border border-[#D5E2FF]/55 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl ring-1 ring-[#E3ECFF]/45 p-4 md:p-5 animate-slide-up dark:border-[#2F4F8F]/45 dark:ring-[#3C5FA0]/20 dark:bg-card dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent"
-                  style={{ animationDelay: `${index * 50}ms` }}
-                >
-                  <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-[#DCE8FF]/70 blur-3xl dark:bg-[#2C56B7]/20" />
-                  <div className="pointer-events-none absolute -left-12 -bottom-14 h-40 w-40 rounded-full bg-[#EAF1FF]/80 blur-3xl dark:bg-[#2A49A6]/20" />
-                  <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-white/50 dark:ring-white/5" />
-                  <div className="relative min-w-0">
-                    <div className="absolute right-0 top-0 inline-flex w-fit items-center gap-2.5 rounded-2xl border-none ring-0 bg-gradient-to-r from-white/90 via-[#F7FAFF]/88 to-[#EDF4FF]/84 supports-[backdrop-filter]:bg-[#F7FAFF]/72 backdrop-blur-xl px-3.5 py-2.5 shadow-none dark:bg-[linear-gradient(120deg,rgba(11,25,57,0.92),rgba(17,37,77,0.9),rgba(20,45,90,0.82))] dark:[box-shadow:inset_0_1px_0_rgba(166,188,236,0.10)] dark:backdrop-blur-xl">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-none ring-0 bg-gradient-to-br from-white/96 to-[#ECF3FF]/92 text-[#2D3F73] text-sm font-semibold dark:bg-[linear-gradient(145deg,rgba(68,99,165,0.95),rgba(33,58,112,0.92))] dark:text-[#EAF0FF]">
-                        {requesterInitials}
-                      </div>
-                      <div className="pr-1 whitespace-nowrap leading-tight">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#7B8EAF] dark:text-[#AFC2EA]">
-                          Submitted
-                        </p>
-                        <p className="text-sm font-semibold text-foreground dark:text-slate-100 leading-tight">
-                          {format(task.createdAt, 'MMM d, yyyy')}
-                        </p>
-                        <p className="text-xs text-[#7B8EAF] dark:text-[#B6C7EA]">
-                          {format(task.createdAt, 'h:mm a')}
-                        </p>
-                      </div>
-                    </div>
+                <Box sx={{ textAlign: { xs: 'left', sm: 'right' }, flexShrink: 0 }}>
+                  <Typography sx={{ color: colors.label, fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 600 }}>
+                    Queue Size
+                  </Typography>
+                  <Typography sx={{ color: colors.title, fontSize: 18, fontWeight: 600, mt: 0.25 }}>
+                    {filteredApprovals.length}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Card>
 
-                    <div className="min-w-0 pr-0 sm:pr-[220px]">
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <Badge
-                          variant="pending"
-                          className="border border-border bg-card/90 text-muted-foreground"
-                        >
-                          Awaiting Approval
-                        </Badge>
-                        {task.urgency === 'urgent' && (
-                          <Badge variant="urgent">Urgent</Badge>
-                        )}
-                      </div>
-                      <h3 className="text-2xl font-semibold leading-tight text-foreground dark:text-slate-100 premium-headline">
-                        {headline}
-                      </h3>
-                      <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground dark:text-[#A0B4DE] premium-body">
-                        {summary}
-                      </p>
-                      {staffPreview && (
-                        <div className="mt-3 rounded-xl border border-border/45 bg-card/80 px-3 py-2.5">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                            Staff update
-                          </p>
-                          <p className="mt-1 line-clamp-2 text-sm text-foreground/85">
-                            {staffPreview}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                  </div>
-
-                  <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#D9E6FF]/45 pt-4 dark:border-[#2F4F8E]/40">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="default"
-                        className="h-9 gap-2 rounded-xl px-4 border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-none hover:bg-primary/85 dark:border-transparent"
-                        onClick={() => handleApprove(task.id)}
-                        disabled={processingId === task.id}
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        {processingId === task.id ? 'Processing...' : 'Approve'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="h-9 gap-2 rounded-xl border-transparent text-foreground hover:bg-muted/60 dark:border-transparent dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
-                        onClick={() => handleReject(task.id)}
-                        disabled={processingId === task.id}
-                      >
-                        <XCircle className="h-4 w-4" />
-                        Reject
-                      </Button>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      asChild
-                      className="group h-9 rounded-full border border-[#CADBFF]/55 bg-[#F5F8FF]/85 px-4 text-[#233A71] shadow-none transition-all duration-200 hover:border-[#AEC6FF]/70 hover:bg-[#EEF4FF] hover:text-[#162A5D] dark:border-[#3E5F9F]/55 dark:bg-[#10234F]/70 dark:text-[#DCE7FF] dark:hover:border-[#5D7EC0]/65 dark:hover:bg-[#17356B]/78"
-                    >
-                      <Link
-                        to={`/task/${task.id}`}
-                        state={{ task, focusSection: 'change-history' }}
-                        className="inline-flex items-center gap-2 font-medium"
-                      >
-                        <Eye className="h-4 w-4" />
-                        Review Details
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
-            <FileCheck className="h-12 w-12 text-status-completed mx-auto mb-3" />
-            <h3 className="font-medium text-foreground">All caught up!</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              No pending approvals at the moment
-            </p>
-          </div>
-        )}
-      </div>
+            {isLoading ? (
+              <Card
+                elevation={0}
+                sx={{
+                  bgcolor: colors.cardBg,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '14px',
+                  py: 8,
+                  textAlign: 'center',
+                }}
+              >
+                <Typography sx={{ color: colors.muted, fontSize: 14 }}>
+                  Loading approvals...
+                </Typography>
+              </Card>
+            ) : filteredApprovals.length > 0 ? (
+              <Grid container spacing={2}>
+                {filteredApprovals.map((task) => (
+                  <Grid key={task.id} item xs={12} md={6}>
+                    <ApprovalCard
+                      task={task}
+                      summary={getRequestSummary(task)}
+                      requestId={formatRequestId(task)}
+                      staffUpdate={getStaffUpdatePreview(task)}
+                      processing={processingId === task.id}
+                      onApprove={handleApprove}
+                      onReject={handleReject}
+                    />
+                  </Grid>
+                ))}
+              </Grid>
+            ) : (
+              <Card
+                elevation={0}
+                sx={{
+                  bgcolor: colors.cardBg,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '14px',
+                  py: 8,
+                  px: 3,
+                  textAlign: 'center',
+                }}
+              >
+                <TaskAltRoundedIcon sx={{ fontSize: 40, color: colors.label, mb: 1.5 }} />
+                <Typography sx={{ color: colors.title, fontSize: 18, fontWeight: 600 }}>
+                  All caught up
+                </Typography>
+                <Typography sx={{ color: colors.muted, fontSize: 14, mt: 0.75 }}>
+                  No pending approvals are waiting for review right now.
+                </Typography>
+              </Card>
+            )}
+          </Stack>
+        </Container>
+      </Box>
     </DashboardLayout>
   );
 }

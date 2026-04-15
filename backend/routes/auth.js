@@ -560,10 +560,16 @@ router.post("/login", authLimiter, async (req, res) => {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    if (requestedRole === "staff" && !hasStaffEmailDomain(normalizedEmail)) {
+    const user = await User.findOne({ email: normalizedEmail });
+    const shouldEnforceStaffDomain =
+      requestedRole === "staff" &&
+      !hasStaffEmailDomain(normalizedEmail) &&
+      (!user || user.role === "staff");
+
+    if (shouldEnforceStaffDomain) {
       return res.status(403).json({ error: buildStaffDomainError() });
     }
-    const user = await User.findOne({ email: normalizedEmail });
+
     if (!user || user.isActive === false) {
       await logAudit({
         actorUserId: user?._id,

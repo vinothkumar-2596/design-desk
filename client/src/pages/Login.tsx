@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { AlertCircle, LoaderCircle, Palette, Users, Briefcase, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, LoaderCircle, Palette, Users, Briefcase, Eye, EyeOff, Shield } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 
@@ -40,6 +40,7 @@ type RoleOption = {
 };
 
 const roleOptions: RoleOption[] = [
+  { value: 'admin', label: 'Admin', icon: Shield, description: 'Review, validate & route tasks' },
   { value: 'designer', label: 'Designer', icon: Palette, description: 'Manage & complete tasks' },
   { value: 'staff', label: 'Staff', icon: Users, description: 'Submit design requests' },
   { value: 'treasurer', label: 'Treasurer', icon: Briefcase, description: 'Approve modifications' },
@@ -65,6 +66,7 @@ const FORCED_DESIGNER_EMAILS = [
   'graphics@indbazaar.com',
 ];
 const FORCED_DESIGN_LEAD_EMAILS = ['chandruvino003@gmail.com'];
+const FORCED_ADMIN_EMAILS = ['designdesk.smvec@gmail.com'];
 const DESIGNER_ROLE_HINT_EMAILS = new Set([
   ...FORCED_DESIGNER_EMAILS,
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAIL),
@@ -75,6 +77,11 @@ const DESIGN_LEAD_HINT_EMAILS = new Set([
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAIL),
   ...parseEmailList(import.meta.env.VITE_MAIN_DESIGNER_EMAILS),
 ]);
+const ADMIN_ROLE_HINT_EMAILS = new Set([
+  ...FORCED_ADMIN_EMAILS,
+  ...parseEmailList(import.meta.env.VITE_ADMIN_EMAIL),
+  ...parseEmailList(import.meta.env.VITE_ADMIN_EMAILS),
+]);
 
 const isDesignLeadEmail = (email: string) => {
   const normalized = normalizeEmail(email);
@@ -82,7 +89,10 @@ const isDesignLeadEmail = (email: string) => {
 };
 
 const getRoleOption = (role: UserRole, email = ''): RoleOption => {
-  const matchedOption = roleOptions.find((option) => option.value === role) ?? roleOptions[1];
+  const matchedOption =
+    roleOptions.find((option) => option.value === role) ??
+    roleOptions.find((option) => option.value === 'staff') ??
+    roleOptions[0];
   if (role === 'designer' && isDesignLeadEmail(email)) {
     return {
       ...matchedOption,
@@ -96,6 +106,7 @@ const getRoleOption = (role: UserRole, email = ''): RoleOption => {
 const resolveLoginRole = (email: string): UserRole => {
   const normalized = normalizeEmail(email);
   if (!normalized) return 'staff';
+  if (ADMIN_ROLE_HINT_EMAILS.has(normalized)) return 'admin';
   if (DESIGNER_ROLE_HINT_EMAILS.has(normalized)) return 'designer';
   if (normalized === NORMALIZED_TREASURER_LOGIN_EMAIL) return 'treasurer';
   return 'staff';
@@ -243,23 +254,20 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (role === 'staff' && !hasStaffEmailDomain(email)) {
-      toast.error('Use your institution email', {
-        description: `Staff login requires @${STAFF_EMAIL_DOMAIN}.`,
-      });
-      return;
-    }
     setIsLoading(true);
 
     try {
       await login(email, password, role);
       toast.success('Welcome back!', {
-        description: `Logged in as ${selectedRoleOption.label}`,
+        description: 'Dashboard ready.',
       });
       navigate(safeRedirect);
     } catch (error) {
       toast.error('Login failed', {
-        description: 'Please check your credentials and try again.',
+        description:
+          error instanceof Error && error.message
+            ? error.message
+            : 'Please check your credentials and try again.',
       });
     } finally {
       setIsLoading(false);
