@@ -3361,8 +3361,8 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
       oldValue: previousReviewState.status,
       newValue: nextReviewStatus,
       note: reviewRequired
-        ? `Final deliverables submitted for Design Lead review (v${nextVersion}).`
-        : `Final deliverables approved (v${nextVersion}).`,
+        ? `Final deliverables submitted for final confirmation (v${nextVersion}).`
+        : `Final deliverables confirmed on upload (v${nextVersion}).`,
       userId: userId || "",
       userName: resolvedUserName || "",
       userRole: userRole || "",
@@ -3376,7 +3376,7 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
         newValue: nextTaskStatus === "completed" ? "Completed" : "Under Review",
         note: reviewRequired
           ? `Delivery moved to review after final submission (v${nextVersion}).`
-          : `Final deliverables approved on upload (v${nextVersion}).`,
+          : `Final deliverables confirmed on upload (v${nextVersion}).`,
         userId: userId || "",
         userName: resolvedUserName || "",
         userRole: userRole || "",
@@ -3515,7 +3515,7 @@ router.post("/:id/final-deliverables", ensureTaskAccess, async (req, res) => {
 
     if (reviewRequired && mainDesignerUserIds.length > 0) {
       createNotificationsForUsers(mainDesignerUserIds, {
-        title: `Review required: ${updatedTask.title}`,
+        title: `Confirmation required: ${updatedTask.title}`,
         message: `${resolvedUserName || "Junior designer"} submitted final deliverables (v${nextVersion}).`,
         type: "task",
         link: taskLink,
@@ -3754,15 +3754,17 @@ router.post("/:id/final-deliverables/review", ensureTaskAccess, async (req, res)
     const canReviewFinalDeliverables =
       normalizedRole === "admin" || (normalizedRole === "designer" && isMainDesignerActor(req.user));
     if (!canReviewFinalDeliverables) {
-      return res.status(403).json({ error: "Only the Design Lead can review final deliverables." });
+      return res.status(403).json({ error: "Only admin or the Design Lead can confirm final deliverables." });
     }
 
     const decision = normalizeValue(req.body?.decision);
     if (decision !== "approved" && decision !== "rejected") {
-      return res.status(400).json({ error: "Decision must be approved or rejected." });
+      return res.status(400).json({ error: "Final deliverable review decision must be approved or rejected." });
     }
     const reviewNote = String(req.body?.note || "").trim();
-    const reviewAnnotations = sanitizeFinalDeliverableReviewAnnotations(req.body?.annotations);
+    const reviewAnnotations = sanitizeFinalDeliverableReviewAnnotations(
+      req.body?.reviewAnnotations ?? req.body?.annotations
+    );
     const hasReviewAnnotations = reviewAnnotations.length > 0;
     if (decision === "rejected" && !reviewNote && !hasReviewAnnotations) {
       return res.status(400).json({ error: "Add review note or annotations before requesting updates." });
@@ -3831,8 +3833,8 @@ router.post("/:id/final-deliverables/review", ensureTaskAccess, async (req, res)
         newValue: decision === "approved" ? "Completed" : "Clarification Required",
         note:
           decision === "approved"
-            ? `Delivery completed after Design Lead approval.`
-            : `Delivery moved back to clarification after Design Lead review.`,
+            ? `Delivery completed after final confirmation.`
+            : `Delivery moved back to clarification after final review.`,
         userId: getUserId(req) || "",
         userName: reviewerName,
         userRole: req.user?.role || "",
@@ -3886,11 +3888,14 @@ router.post("/:id/final-deliverables/review", ensureTaskAccess, async (req, res)
     if (assignedDesignerId) {
       createNotification({
         userId: assignedDesignerId,
-        title: `Final files ${decision}: ${task.title}`,
+        title:
+          decision === "approved"
+            ? `Final files confirmed: ${task.title}`
+            : `Revision requested: ${task.title}`,
         message:
           decision === "approved"
-            ? `${reviewerName} approved your final deliverables.`
-            : `${reviewerName} requested updates on your final deliverables.`,
+            ? `${reviewerName} confirmed your final deliverables and shared them to staff.`
+            : `${reviewerName} reviewed the final deliverables and requested changes.`,
         type: "task",
         link: taskLink,
         taskId,
@@ -3902,15 +3907,21 @@ router.post("/:id/final-deliverables/review", ensureTaskAccess, async (req, res)
         });
     }
 
-    if (decision === "approved" && requesterUserId) {
+    if (requesterUserId) {
       createNotification({
         userId: requesterUserId,
-        title: `Final files approved: ${task.title}`,
-        message: `${reviewerName} approved the final deliverables.`,
+        title:
+          decision === "approved"
+            ? `Final files confirmed: ${task.title}`
+            : `Final files returned for revision: ${task.title}`,
+        message:
+          decision === "approved"
+            ? `${reviewerName} confirmed the final deliverables.`
+            : `${reviewerName} requested revisions before the final files can be shared.`,
         type: "file",
         link: taskLink,
         taskId,
-        eventId: `final-approved:${taskId}:${reviewedAt.toISOString()}`
+        eventId: `final-${decision}:${taskId}:${reviewedAt.toISOString()}`
       })
         .then((note) => emitNotification(note))
         .catch((error) => {

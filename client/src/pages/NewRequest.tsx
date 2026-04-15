@@ -785,6 +785,7 @@ export default function NewRequest() {
     return null;
   }, [location.pathname]);
   const [selectedRequestType, setSelectedRequestType] = useState<RequestType | null>(routeRequestType);
+  const activeRequestType = routeRequestType ?? selectedRequestType;
   const [requestTitle, setRequestTitle] = useState('');
   const [department, setDepartment] = useState(user?.department || '');
   const [requesterPhone, setRequesterPhone] = useState(formatIndianPhoneInput(user?.phone));
@@ -807,7 +808,6 @@ export default function NewRequest() {
   const [revealedValidationSteps, setRevealedValidationSteps] = useState<
     Partial<Record<BuilderStepId, boolean>>
   >({});
-  const [didRestoreDraft, setDidRestoreDraft] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const [tourSpotlight, setTourSpotlight] = useState<TourSpotlight | null>(null);
@@ -991,19 +991,27 @@ export default function NewRequest() {
   }, [user?.department, user?.phone]);
 
   useEffect(() => {
-    if (!routeRequestType) return;
-    setSelectedRequestType(routeRequestType);
-    if (routeRequestType === 'campaign_request') {
-      setCurrentStep('campaign');
+    if (routeRequestType) {
+      setSelectedRequestType(routeRequestType);
+      if (routeRequestType === 'campaign_request') {
+        setCurrentStep('campaign');
+      }
+      return;
     }
-  }, [routeRequestType]);
+
+    if (location.pathname === '/new-request' && !restoreDraftRequested) {
+      setSelectedRequestType(null);
+      setShouldRevealSingleValidation(false);
+      setIsPresetDialogOpen(false);
+      setIsTourOpen(false);
+      setTourSpotlight(null);
+    }
+  }, [location.pathname, restoreDraftRequested, routeRequestType]);
 
   useEffect(() => {
     if (!restoreDraftRequested) return;
     const draft = loadRequestDraft(user);
     if (!draft) return;
-    setDidRestoreDraft(true);
-
     const draftTitle = draft.title || '';
     const draftDepartment = draft.requesterDepartment || user?.department || '';
     const draftPhone = draft.requesterPhone || formatIndianPhoneInput(user?.phone);
@@ -1109,6 +1117,7 @@ export default function NewRequest() {
     setIsTourOpen(false);
     setTourSpotlight(null);
     lastScrolledStepRef.current = null;
+    prevSpotlightKeyRef.current = '';
     // Return user to the first stage after the tour finishes
     setCurrentStep('campaign');
     if (typeof window !== 'undefined') {
@@ -1118,6 +1127,7 @@ export default function NewRequest() {
 
   const openTour = useCallback((nextStepIndex = 0) => {
     lastScrolledStepRef.current = null;
+    prevSpotlightKeyRef.current = '';
     setCurrentStep('campaign');
     setTourStepIndex(nextStepIndex);
     setIsTourOpen(true);
@@ -1207,18 +1217,6 @@ export default function NewRequest() {
   }, [builderTourSteps, resolveTourTarget]);
 
   // ── Tour: auto-trigger on first visit ──
-  useEffect(() => {
-    if (selectedRequestType !== 'campaign_request') return;
-    if (typeof window === 'undefined' || didRestoreDraft) return;
-    if (window.localStorage.getItem(tourStorageKey) === '1') return;
-
-    const timeoutId = window.setTimeout(() => {
-      setTourStepIndex(0);
-      setIsTourOpen(true);
-    }, 480);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [didRestoreDraft, selectedRequestType, tourStorageKey]);
 
   // ── Tour: navigate to the correct builder stage + scroll into view ──
   useEffect(() => {
@@ -1253,7 +1251,7 @@ export default function NewRequest() {
   // It does NOT depend on tourStepIndex or activeTourStep —
   // computeAndSetSpotlight reads from tourStepIndexRef so it's never stale.
   useEffect(() => {
-    if (selectedRequestType !== 'campaign_request') {
+    if (activeRequestType !== 'campaign_request') {
       setIsTourOpen(false);
       setTourSpotlight(null);
       return;
@@ -1296,7 +1294,7 @@ export default function NewRequest() {
     completeTour,
     computeAndSetSpotlight,
     isTourOpen,
-    selectedRequestType,
+    activeRequestType,
   ]);
 
   const summary = useMemo(() => {
@@ -1456,12 +1454,12 @@ export default function NewRequest() {
         : 3;
 
   const saveDraft = () => {
-    if (!selectedRequestType) {
+    if (!activeRequestType) {
       toast.error('Choose a request type first.');
       return;
     }
 
-    if (selectedRequestType === 'single_task') {
+    if (activeRequestType === 'single_task') {
       saveRequestDraft(user, {
         title: requestTitle,
         description: overallBrief,
@@ -1564,12 +1562,12 @@ export default function NewRequest() {
   };
 
   const handleSubmit = async () => {
-    if (!selectedRequestType) {
+    if (!activeRequestType) {
       toast.error('Choose a request type first.');
       return;
     }
 
-    if (selectedRequestType === 'single_task') {
+    if (activeRequestType === 'single_task') {
       const validationMessage = validateSingleRequest({
         title: requestTitle,
         department,
@@ -2085,11 +2083,9 @@ export default function NewRequest() {
   }, []);
 
   const handleRequestTypeSelect = (nextType: RequestType) => {
-    setSelectedRequestType(nextType);
     setShouldRevealSingleValidation(false);
-    navigate(
-      nextType === 'single_task' ? '/new-request/quick-design' : '/new-request/campaign-suite'
-    );
+    const nextPath =
+      nextType === 'single_task' ? '/new-request/quick-design' : '/new-request/campaign-suite';
     if (nextType === 'campaign_request') {
       setCurrentStep('campaign');
     } else {
@@ -2097,10 +2093,10 @@ export default function NewRequest() {
       setIsTourOpen(false);
       setTourSpotlight(null);
     }
+    navigate(nextPath);
   };
 
   const resetRequestTypeSelection = () => {
-    setSelectedRequestType(null);
     setShouldRevealSingleValidation(false);
     setIsPresetDialogOpen(false);
     setIsTourOpen(false);
@@ -3371,24 +3367,24 @@ export default function NewRequest() {
   );
 
   const headerBadgeText =
-    selectedRequestType === 'single_task'
+    activeRequestType === 'single_task'
       ? 'Quick Design'
-      : selectedRequestType === 'campaign_request'
+      : activeRequestType === 'campaign_request'
         ? 'Campaign Suite'
         : '';
   const trimmedRequestTitle = requestTitle.trim();
   const fallbackHeaderTitle =
-    selectedRequestType === 'single_task'
+    activeRequestType === 'single_task'
       ? 'Create a quick design request'
-      : selectedRequestType === 'campaign_request'
+      : activeRequestType === 'campaign_request'
         ? 'Create a campaign suite'
         : 'Create a New Design Request';
   const headerTitle =
     trimmedRequestTitle ? truncateHeaderTitle(trimmedRequestTitle) : fallbackHeaderTitle;
   const headerDescription =
-    selectedRequestType === 'single_task'
+    activeRequestType === 'single_task'
       ? 'Use this flow for one design deliverable.'
-      : selectedRequestType === 'campaign_request'
+      : activeRequestType === 'campaign_request'
         ? ''
         : 'Choose the type of request to get started.';
 
@@ -3398,7 +3394,7 @@ export default function NewRequest() {
         <div
           className={cn(
             'flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between',
-            selectedRequestType === 'single_task' && 'mx-auto w-full max-w-4xl'
+            activeRequestType === 'single_task' && 'mx-auto w-full max-w-4xl'
           )}
         >
           <div className="max-w-[46rem]">
@@ -3421,7 +3417,7 @@ export default function NewRequest() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {selectedRequestType === 'campaign_request' ? (
+            {activeRequestType === 'campaign_request' ? (
               <Button type="button" variant="outline" onClick={() => openTour(0)}>
                 <BookOpen className="mr-2 h-4 w-4" />
                 Quick tour
@@ -3433,7 +3429,7 @@ export default function NewRequest() {
           </div>
         </div>
 
-        {selectedRequestType === 'campaign_request' ? (
+        {activeRequestType === 'campaign_request' ? (
           <>
             <section ref={stepTrackerTourRef} className="relative overflow-hidden rounded-[22px] border border-[#BDD0FF]/65 bg-gradient-to-br from-white/62 via-[#EBF2FF]/54 to-[#DCE8FF]/46 supports-[backdrop-filter]:from-white/42 supports-[backdrop-filter]:via-[#EBF2FF]/36 supports-[backdrop-filter]:to-[#DCE8FF]/30 backdrop-blur-2xl shadow-[inset_0_0_0_1px_rgba(255,255,255,0.62)] dark:border-sidebar-border/60 dark:bg-sidebar-accent dark:[background-image:none] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_15%_0%,rgba(87,118,255,0.10),transparent_48%),radial-gradient(ellipse_at_85%_100%,rgba(56,85,190,0.08),transparent_42%)] dark:bg-[radial-gradient(ellipse_at_15%_0%,rgba(99,124,255,0.12),transparent_45%),radial-gradient(ellipse_at_85%_100%,rgba(67,97,204,0.08),transparent_40%)]" />
@@ -3551,7 +3547,7 @@ export default function NewRequest() {
               </div>
             )}
           </>
-        ) : selectedRequestType === 'single_task' ? (
+        ) : activeRequestType === 'single_task' ? (
           <div className="mx-auto w-full max-w-4xl space-y-3">
             <section className="relative overflow-hidden rounded-[22px] border border-[#BDD0FF]/65 bg-gradient-to-br from-white/62 via-[#EBF2FF]/54 to-[#DCE8FF]/46 supports-[backdrop-filter]:from-white/42 supports-[backdrop-filter]:via-[#EBF2FF]/36 supports-[backdrop-filter]:to-[#DCE8FF]/30 backdrop-blur-2xl shadow-[inset_0_0_0_1px_rgba(255,255,255,0.62)] dark:border-sidebar-border/60 dark:bg-sidebar-accent dark:[background-image:none] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_15%_0%,rgba(87,118,255,0.10),transparent_48%),radial-gradient(ellipse_at_85%_100%,rgba(56,85,190,0.08),transparent_42%)] dark:bg-[radial-gradient(ellipse_at_15%_0%,rgba(99,124,255,0.12),transparent_45%),radial-gradient(ellipse_at_85%_100%,rgba(67,97,204,0.08),transparent_40%)]" />

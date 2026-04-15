@@ -31,6 +31,7 @@ import {
   ArrowRight,
   CircleCheckBig,
   ClipboardCheck,
+  Plus,
 } from 'lucide-react';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { Link, useLocation } from 'react-router-dom';
@@ -732,6 +733,7 @@ export function DashboardLayout({
   const isMainDesignerUser = isMainDesigner(user);
   const useServerNotifications = Boolean(apiUrl);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
+  const isOnNewRequestRoute = location.pathname.startsWith('/new-request');
   const [canUseNotificationHoverPreview, setCanUseNotificationHoverPreview] = useState(false);
   const [activeNotificationPreviewId, setActiveNotificationPreviewId] = useState<string | null>(null);
   const [notificationPreviewTop, setNotificationPreviewTop] = useState(NOTIFICATION_PREVIEW_OFFSET);
@@ -2494,11 +2496,21 @@ export function DashboardLayout({
           }}
           headerActions={
             <>
-              {location.pathname !== '/new-request' && (
-                <GeminiBlink
-                  onClick={() => navigate('/new-request', { state: { openTaskBuddy: true } })}
-                  className="mr-2"
-                />
+              {!isOnNewRequestRoute && (
+                user?.role === 'admin' ? (
+                  <Link
+                    to="/new-request"
+                    className="mr-2 inline-flex h-9 items-center gap-2 rounded-full bg-primary/10 px-3 text-[13px] font-semibold text-primary transition-colors hover:bg-primary/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Create New Request</span>
+                  </Link>
+                ) : (
+                  <GeminiBlink
+                    onClick={() => navigate('/new-request', { state: { openTaskBuddy: true } })}
+                    className="mr-2"
+                  />
+                )
               )}
               <ThemeToggle className="mr-2" />
               {headerPresenceAction}

@@ -677,6 +677,7 @@ const resolveTaskCcEmails = (task?: typeof mockTasks[number]) => {
 type ChangeInput = Pick<TaskChange, 'type' | 'field' | 'oldValue' | 'newValue' | 'note'>;
 type UploadStatus = 'uploading' | 'done' | 'error';
 type ApprovalDecision = 'approved' | 'rejected';
+type FinalReviewDecision = 'approved';
 type TaskUploadChannel = 'attachment' | 'working';
 type UploadItem = {
   id: string;
@@ -1719,7 +1720,7 @@ function TaskDetailScreen() {
   const [approvalDecisionInFlight, setApprovalDecisionInFlight] = useState<ApprovalDecision | null>(null);
   const [approvalRequestInFlight, setApprovalRequestInFlight] = useState(false);
   const [finalReviewDecisionInFlight, setFinalReviewDecisionInFlight] =
-    useState<ApprovalDecision | null>(null);
+    useState<FinalReviewDecision | null>(null);
   const [finalReviewNote, setFinalReviewNote] = useState('');
   const [annotationDialogOpen, setAnnotationDialogOpen] = useState(false);
   const [annotationDialogReadOnly, setAnnotationDialogReadOnly] = useState(false);
@@ -3574,12 +3575,12 @@ function TaskDetailScreen() {
     const scenario = (() => {
       if (isPendingStatus) {
         return {
-          breadcrumbItems: ['Files Uploaded', 'Design Lead Review', 'Pending'],
-          statusPillLabel: 'In Review',
+          breadcrumbItems: ['Files Uploaded', 'Final Confirmation', 'Pending'],
+          statusPillLabel: 'Pending Confirmation',
           description:
             audience === 'staff'
-              ? 'Final deliverables are submitted and waiting for Design Lead approval.'
-              : 'Waiting for Design Lead approval.',
+              ? 'Final deliverables are submitted and waiting for final confirmation.'
+              : 'Waiting for final confirmation.',
         };
       }
 
@@ -4155,8 +4156,8 @@ function TaskDetailScreen() {
       if (finalDeliverableReviewStatus === 'pending') {
         return {
           stepIndex: 3,
-          headline: 'Awaiting review',
-          summary: 'Final deliverables are waiting for Design Lead approval.',
+          headline: 'Awaiting confirmation',
+          summary: 'Final deliverables are waiting for final confirmation.',
           supportItems: [
             compactDeadlineLabel,
             `${Math.max(baseStaffTrackerProgressPercent, 80)}% complete`,
@@ -4205,8 +4206,8 @@ function TaskDetailScreen() {
       if (finalDeliverableReviewStatus === 'pending') {
         return {
           stepIndex: 3,
-          headline: 'Review required',
-          summary: 'Final deliverables are ready for your approval or revision feedback.',
+          headline: 'Confirmation required',
+          summary: 'Final deliverables are ready for your final confirmation.',
           supportItems: [
             compactDeadlineLabel,
             `${Math.max(baseStaffTrackerProgressPercent, 80)}% complete`,
@@ -4242,8 +4243,8 @@ function TaskDetailScreen() {
       if (finalDeliverableReviewStatus === 'pending') {
         return {
           stepIndex: 3,
-          headline: 'Awaiting review',
-          summary: 'Submitted work is with the main designer for final review.',
+          headline: 'Awaiting confirmation',
+          summary: 'Submitted work is with the main designer for final confirmation.',
           supportItems: [
             compactDeadlineLabel,
             `${Math.max(baseStaffTrackerProgressPercent, 80)}% complete`,
@@ -4577,7 +4578,7 @@ function TaskDetailScreen() {
   const submitActionLabel =
     finalDeliverableReviewStatus === 'rejected' || isTaskCompleted
       ? 'Submit Revision'
-      : 'Submit for Review';
+      : 'Submit for Confirmation';
   const submitActionHint =
     'Submit creates the next version (V1, V2, ...) and includes any uploaded files or Drive links.';
   const shouldShowFileManagementPanel =
@@ -6819,11 +6820,11 @@ function TaskDetailScreen() {
 
     if (filesToSubmit.length === 0) {
       if (finalDeliverableReviewStatus === 'pending') {
-        toast.message('The latest final submission is already under review.');
+        toast.message('The latest final submission is already waiting for confirmation.');
         return;
       }
       if (finalDeliverableReviewStatus === 'approved') {
-        toast.message('The latest final submission is already approved.');
+        toast.message('The latest final submission is already confirmed.');
         return;
       }
       if (finalDeliverableReviewStatus === 'rejected') {
@@ -7048,100 +7049,20 @@ function TaskDetailScreen() {
     }
   };
 
-  const handleFinalDeliverableReviewDecision = async (decision: ApprovalDecision) => {
+  const handleFinalDeliverableReviewDecision = async () => {
     if (!taskState || !apiUrl) return;
     if (finalReviewDecisionInFlight) return;
     if (!canMainDesignerReviewFinalDeliverables) return;
 
     const reviewNoteValue = finalReviewNote.trim();
-    const reviewAnnotations =
-      decision === 'rejected'
-        ? draftReviewAnnotationList
-            .filter((annotation) => hasReviewAnnotationContent(annotation))
-            .map((annotation, index) => ({
-              ...annotation,
-              id: annotation.id || `annotation-${index}`,
-              fileId:
-                String(annotation.fileId || '').trim() ||
-                String(annotation.fileUrl || '').trim(),
-              fileName: String(annotation.fileName || '').trim(),
-              fileUrl: String(annotation.fileUrl || '').trim(),
-              comments:
-                annotation.comments?.map((comment, commentIndex) => ({
-                  ...comment,
-                  id: comment.id || `comment-${index}-${commentIndex}`,
-                  x: Number(comment.x ?? 0),
-                  y: Number(comment.y ?? 0),
-                  text: String(comment.text || '').trim(),
-                  thread:
-                    comment.thread?.map((message, messageIndex) => ({
-                      ...message,
-                      id: message.id || `thread-${index}-${commentIndex}-${messageIndex}`,
-                      text: String(message.text || '').trim(),
-                      author: String(message.author || '').trim(),
-                      createdAt: String(message.createdAt || ''),
-                    })) ?? [],
-                })) ?? [],
-              shapes:
-                annotation.shapes?.map((shape, shapeIndex) => ({
-                  ...shape,
-                  id: shape.id || `shape-${index}-${shapeIndex}`,
-                  kind: (String(shape.kind || 'pen').trim().toLowerCase() ||
-                    'pen') as
-                    | 'pen'
-                    | 'highlighter'
-                    | 'arrow'
-                    | 'rect'
-                    | 'ellipse'
-                    | 'text'
-                    | 'blur_rect'
-                    | 'highlight_rect',
-                  color: String(shape.color || '#ef4444').trim(),
-                  width: Number(shape.width ?? 2),
-                  opacity: Number(shape.opacity ?? 1),
-                  points:
-                    shape.points?.map((point) => ({
-                      x: Number(point.x ?? 0),
-                      y: Number(point.y ?? 0),
-                    })) ?? [],
-                  startX: Number(shape.startX ?? 0),
-                  startY: Number(shape.startY ?? 0),
-                  endX: Number(shape.endX ?? 0),
-                  endY: Number(shape.endY ?? 0),
-                  x: Number(shape.x ?? 0),
-                  y: Number(shape.y ?? 0),
-                  text: String(shape.text || '').trim(),
-                  fontSize: Number(shape.fontSize ?? 24),
-                  fillColor: String(shape.fillColor || '').trim(),
-                })) ?? [],
-              strokes:
-                annotation.strokes?.map((stroke, strokeIndex) => ({
-                  ...stroke,
-                  id: stroke.id || `stroke-${index}-${strokeIndex}`,
-                  width: Number(stroke.width ?? 2),
-                  points:
-                    stroke.points?.map((point) => ({
-                      x: Number(point.x ?? 0),
-                      y: Number(point.y ?? 0),
-                    })) ?? [],
-                })) ?? [],
-            }))
-        : [];
-
-    if (decision === 'rejected' && !reviewNoteValue && reviewAnnotations.length === 0) {
-      toast.error('Add review note or image annotations before marking update needed.');
-      return;
-    }
-
-    setFinalReviewDecisionInFlight(decision);
+    setFinalReviewDecisionInFlight('approved');
     try {
       const response = await authFetch(`${apiUrl}/api/tasks/${taskState.id}/final-deliverables/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          decision,
+          decision: 'approved',
           note: reviewNoteValue,
-          annotations: reviewAnnotations,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -7154,11 +7075,7 @@ function TaskDetailScreen() {
       setChangeCount(hydrated?.changeCount ?? 0);
       setApprovalStatus(hydrated?.approvalStatus);
       persistTask(hydrated);
-      toast.success(
-        decision === 'approved'
-          ? 'Final deliverables approved.'
-          : 'Update requested. Junior designer can re-submit after updates.'
-      );
+      toast.success('Final deliverables confirmed and moved to staff.');
     } catch (error) {
       const message =
         error instanceof Error && error.message
@@ -11643,11 +11560,11 @@ function TaskDetailScreen() {
                   {(() => {
                     const reviewStatusLabel =
                       finalDeliverableReviewStatus === 'pending'
-                        ? 'Pending Approval'
+                        ? 'Pending Confirmation'
                         : finalDeliverableReviewStatus === 'rejected'
                           ? 'Update Needed'
                           : finalDeliverableReviewStatus === 'approved'
-                            ? 'Approved'
+                            ? 'Confirmed'
                             : 'Not Submitted';
                     const reviewStatusPillClass =
                       finalDeliverableReviewStatus === 'approved'
@@ -11693,37 +11610,26 @@ function TaskDetailScreen() {
                     <div className="mt-4 rounded-xl border border-[#D9E6FF]/75 bg-[#F7FBFF]/88 px-4 py-3.5 dark:border-border/70 dark:bg-card/80">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                          Design Lead Review
+                          Final Confirmation
                         </p>
-                        {draftReviewAnnotationList.length > 0 && (
-                          <span className="text-[11px] text-muted-foreground">
-                            Annotated files: {draftReviewAnnotationList.length}
-                          </span>
-                        )}
                       </div>
                       <Textarea
                         value={finalReviewNote}
                         onChange={(event) => setFinalReviewNote(event.target.value)}
                         rows={2}
-                        placeholder="Add review note (or use image annotations) for Update Needed."
+                        placeholder="Optional confirmation note for staff."
                         className="mt-2.5 bg-white/90 dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-400"
                       />
                       <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                         <Button
-                          onClick={() => handleFinalDeliverableReviewDecision('approved')}
+                          onClick={() => handleFinalDeliverableReviewDecision()}
                           disabled={finalReviewDecisionInFlight !== null}
                           className="h-9 gap-2 rounded-full px-4"
                         >
                           <CheckCircle2 className="h-4 w-4" />
-                          {finalReviewDecisionInFlight === 'approved' ? 'Approving…' : 'Approve'}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => handleFinalDeliverableReviewDecision('rejected')}
-                          disabled={finalReviewDecisionInFlight !== null}
-                          className="h-9 rounded-full px-4 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-100 dark:hover:bg-slate-900/70"
-                        >
-                          {finalReviewDecisionInFlight === 'rejected' ? 'Marking…' : 'Update Needed'}
+                          {finalReviewDecisionInFlight === 'approved'
+                            ? 'Confirming...'
+                            : 'Confirm and Share to Staff'}
                         </Button>
                       </div>
                     </div>
@@ -11845,8 +11751,8 @@ function TaskDetailScreen() {
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {finalDeliverableReviewStatus === 'rejected'
-                          ? 'Revision requested — upload updated files and resubmit.'
-                          : 'Attach files or a Drive link, add a version note, then submit for review.'}
+                          ? 'Revision requested - upload updated files and resubmit.'
+                          : 'Attach files or a Drive link, add a version note, then submit for confirmation.'}
                       </p>
                     </div>
 

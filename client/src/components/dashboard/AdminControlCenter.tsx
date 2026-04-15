@@ -16,14 +16,11 @@ import {
   CheckCircle2,
   ClipboardList,
   Inbox,
-  Search,
   Send,
-  Sparkles,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -282,8 +279,8 @@ const buildActivityItem = (task: Task): ActivityItem => {
 };
 
 export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('latest');
+  const searchTerm = '';
+  const sortKey: SortKey = 'latest';
   const [activeQueue, setActiveQueue] = useState<QueueKey>('new_requests');
   const [queueCategoryFilter, setQueueCategoryFilter] = useState<QueueCategoryFilter>('all');
   const [queueUrgencyFilter, setQueueUrgencyFilter] = useState<QueueUrgencyFilter>('all');
@@ -394,50 +391,6 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
     return relevant.map(buildActivityItem);
   }, [searchTerm, tasks]);
 
-  const alert = queueData.new_requests.length
-    ? {
-        eyebrow: 'Intake review',
-        title: `${queueData.new_requests.length} staff request${queueData.new_requests.length === 1 ? '' : 's'} waiting for review`,
-        subtitle: 'Clear the intake queue first so new requests do not stall before design assignment.',
-        href: '/approvals',
-        actionLabel: 'Open approvals',
-        toneClassName:
-          'border-[#DCE7FF] bg-[linear-gradient(90deg,rgba(238,244,255,0.96),rgba(228,237,255,0.88))] text-[#243C72] dark:border-[#334A7A] dark:bg-[#132346] dark:text-[#D9E4FF]',
-        icon: Inbox,
-      }
-    : queueData.returned_to_staff.length
-      ? {
-          eyebrow: 'Staff follow-up',
-          title: `${queueData.returned_to_staff.length} request${queueData.returned_to_staff.length === 1 ? '' : 's'} still waiting on staff updates`,
-          subtitle: 'Monitor whether staff has replied and move updated requests back into review quickly.',
-          href: '/approvals',
-          actionLabel: 'Review updates',
-          toneClassName:
-            'border-[#F1DEC6] bg-[linear-gradient(90deg,rgba(255,246,235,0.96),rgba(255,241,224,0.88))] text-[#6F4818] dark:border-[#6B563F] dark:bg-[#31261D] dark:text-[#F0C287]',
-          icon: AlertTriangle,
-        }
-      : queueData.ready_to_route.length
-        ? {
-            eyebrow: 'Routing',
-            title: `${queueData.ready_to_route.length} approved request${queueData.ready_to_route.length === 1 ? '' : 's'} ready to move into design`,
-            subtitle: 'These requests are clear for assignment and should be routed to the design team.',
-            href: '/tasks',
-            actionLabel: 'Open routing',
-            toneClassName:
-              'border-[#D8E9DD] bg-[linear-gradient(90deg,rgba(239,249,241,0.96),rgba(231,246,235,0.88))] text-[#24583B] dark:border-[#44624F] dark:bg-[#1D3126] dark:text-[#B6E0C2]',
-            icon: Send,
-          }
-        : {
-            eyebrow: 'Queue status',
-            title: 'Admin intake queues are clear',
-            subtitle: 'No requests are currently waiting for review, follow-up, or routing.',
-            href: '/tasks',
-            actionLabel: 'View all tasks',
-            toneClassName:
-              'border-[#DCE6F6] bg-[linear-gradient(90deg,rgba(247,250,253,0.96),rgba(241,245,250,0.88))] text-[#304766] dark:border-border dark:bg-card dark:text-foreground',
-            icon: Sparkles,
-          };
-
   const metricCards = [
     {
       label: 'Open admin items',
@@ -482,78 +435,8 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
     reviewed: { label: 'Reviewed', color: '#9DB2FF' },
   };
 
-  const AlertIcon = alert.icon;
-
   return (
     <div className="space-y-4">
-      <section className={cn(panelClass, 'px-5 py-5')}>
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(135,176,255,0.16),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.7),transparent_28%)] dark:hidden" />
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4B5F7A] dark:text-muted-foreground">
-              Admin Overview
-            </p>
-            <h1 className="text-[30px] font-semibold tracking-tight text-[#0F172A] dark:text-foreground">
-              Overview
-            </h1>
-            <p className="max-w-2xl text-[13px] leading-6 text-[#3F5168] dark:text-muted-foreground">
-              Monitor intake review, staff follow-ups, and routing from one page.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="relative min-w-[240px]">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
-              <Input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search requests"
-                className={cn('h-10 rounded-xl pl-9 pr-3 text-[13px]', glassFieldClass)}
-              />
-            </div>
-
-            <Select value={sortKey} onValueChange={(value) => setSortKey(value as SortKey)}>
-              <SelectTrigger className={cn('h-10 w-[150px] rounded-xl text-[13px]', glassFieldClass)}>
-                <SelectValue placeholder="Sort" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="latest">Newest first</SelectItem>
-                <SelectItem value="oldest">Oldest first</SelectItem>
-                <SelectItem value="requester">Requester</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </section>
-
-      <section className={cn(panelClass, 'px-4 py-4', alert.toneClassName)}>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-current/10 bg-white/60 dark:bg-white/5">
-              <AlertIcon className="h-4 w-4" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
-                {alert.eyebrow}
-              </p>
-              <p className="text-[15px] font-semibold">{alert.title}</p>
-              <p className="max-w-3xl text-[13px] leading-5 opacity-80">{alert.subtitle}</p>
-            </div>
-          </div>
-
-          <Button
-            asChild
-            variant="outline"
-            className="h-9 rounded-xl border-current/15 bg-white/55 px-3 text-[13px] font-medium text-current backdrop-blur-xl shadow-none hover:bg-white/78 dark:bg-white/5 dark:hover:bg-white/10"
-          >
-            <Link to={alert.href} className="inline-flex items-center gap-1.5">
-              <span>{alert.actionLabel}</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        </div>
-      </section>
-
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {metricCards.map((card) => {
           const Icon = card.icon;
