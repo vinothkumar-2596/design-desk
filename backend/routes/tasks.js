@@ -2487,6 +2487,14 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
       files: normalizeTaskFileCollection(req.body?.files),
       changeHistory: [createdEntry, ...(Array.isArray(req.body.changeHistory) ? req.body.changeHistory : [])]
     };
+    payload.approvalStatus = normalizeValue(payload.approvalStatus) || "pending";
+    payload.adminReviewStatus = normalizeValue(payload.adminReviewStatus) || payload.approvalStatus || "pending";
+    payload.adminReviewedBy = String(payload.adminReviewedBy || "").trim();
+    if (payload.adminReviewStatus === "approved" || payload.adminReviewStatus === "rejected") {
+      payload.adminReviewedAt = payload.adminReviewedAt ? new Date(payload.adminReviewedAt) : now;
+    } else if (!payload.adminReviewStatus || payload.adminReviewStatus === "pending") {
+      payload.adminReviewedAt = undefined;
+    }
     const normalizedCampaign = normalizeCampaignPayload(req.body?.campaign, {
       title: req.body?.title,
       description: req.body?.description,
@@ -5060,7 +5068,33 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
     }
 
     if (nextCount >= 3 && task.approvalStatus !== "pending") {
-      updateDoc.$set = { ...(updateDoc.$set || {}), approvalStatus: "pending" };
+      updateDoc.$set = {
+        ...(updateDoc.$set || {}),
+        approvalStatus: "pending",
+        adminReviewStatus: "pending",
+        adminReviewedBy: "",
+      };
+      updateDoc.$unset = { ...(updateDoc.$unset || {}), adminReviewedAt: 1 };
+    }
+
+    const approvalEntry = sanitizedEntries.find((entry) => entry.field === "approval_status");
+    if (approvalEntry) {
+      const approvalDecision = normalizeValue(approvalEntry.newValue);
+      if (approvalDecision === "pending") {
+        updateDoc.$set = {
+          ...(updateDoc.$set || {}),
+          adminReviewStatus: "pending",
+          adminReviewedBy: "",
+        };
+        updateDoc.$unset = { ...(updateDoc.$unset || {}), adminReviewedAt: 1 };
+      } else if (approvalDecision === "approved" || approvalDecision === "rejected") {
+        updateDoc.$set = {
+          ...(updateDoc.$set || {}),
+          adminReviewStatus: approvalDecision,
+          adminReviewedBy: resolvedUserName || "",
+          adminReviewedAt: approvalEntry.createdAt || new Date(),
+        };
+      }
     }
 
     let updatedTask = await Task.findByIdAndUpdate(req.params.id, updateDoc, {
@@ -5356,7 +5390,6 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       }
     }
 
-    const approvalEntry = sanitizedEntries.find((entry) => entry.field === "approval_status");
     if (approvalEntry && userRole === "treasurer") {
       const decision = String(approvalEntry.newValue || "").toLowerCase();
       const payload = {

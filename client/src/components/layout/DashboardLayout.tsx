@@ -68,6 +68,7 @@ interface DashboardLayoutProps {
   hideGrid?: boolean;
   allowContentOverflow?: boolean;
   fitContentHeight?: boolean;
+  shellClassName?: string;
 }
 
 type NotificationItem = {
@@ -698,6 +699,7 @@ export function DashboardLayout({
   hideGrid = false,
   allowContentOverflow = false,
   fitContentHeight = false,
+  shellClassName,
 }: DashboardLayoutProps) {
   const { isAuthenticated, user } = useAuth();
   const { tasks: hydratedTasks } = useTasksContext();
@@ -737,7 +739,6 @@ export function DashboardLayout({
   const notificationPreviewAnchorTopRef = useRef(NOTIFICATION_PREVIEW_OFFSET);
   const [notificationTaskCache, setNotificationTaskCache] = useState<Record<string, Task>>({});
   const notificationTaskFetchInFlightRef = useRef<Set<string>>(new Set());
-
   const isCurrentUserViewer = useCallback(
     (viewer?: GlobalViewer | null) => {
       if (!viewer) return false;
@@ -2483,6 +2484,7 @@ export function DashboardLayout({
           hideGrid={hideGrid}
           allowContentOverflow={allowContentOverflow}
           fitContentHeight={fitContentHeight}
+          shellClassName={shellClassName}
           onContentScroll={() => {
             if (previewTimeoutRef.current) {
               clearTimeout(previewTimeoutRef.current);
@@ -2617,6 +2619,7 @@ function DashboardShell({
   hideGrid = false,
   allowContentOverflow = false,
   fitContentHeight = false,
+  shellClassName,
 }: {
   children: ReactNode;
   userInitial: string;
@@ -2628,6 +2631,7 @@ function DashboardShell({
   hideGrid?: boolean;
   allowContentOverflow?: boolean;
   fitContentHeight?: boolean;
+  shellClassName?: string;
 }) {
   const { query, setQuery, items, scopeLabel } = useGlobalSearch();
   const { resolvedTheme } = useTheme();
@@ -2976,7 +2980,8 @@ function DashboardShell({
             className={cn(
               'w-full max-w-6xl rounded-[32px] border border-[#D9E6FF] bg-white/85 dark:bg-card/85 dark:border-border shadow-none flex flex-col',
               fitContentHeight ? 'h-auto self-start' : 'h-full',
-              allowContentOverflow ? "overflow-visible" : "overflow-hidden"
+              allowContentOverflow ? "overflow-visible" : "overflow-hidden",
+              shellClassName
             )}
           >
             <div

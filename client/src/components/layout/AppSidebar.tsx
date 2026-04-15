@@ -578,7 +578,7 @@ export function AppSidebar() {
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8A97B2] dark:text-muted-foreground">
               Quick Access
             </p>
-            <div className="mt-[0.4rem] flex items-center gap-[0.4rem]">
+            <div className="mt-[0.4rem] grid grid-cols-5 gap-[0.4rem]">
               {quickAccessItems.map((item) => {
                 const tooltip = (
                   <span className="pointer-events-none absolute left-[calc(100%+0.5rem)] top-1/2 z-[120] -translate-y-1/2 whitespace-nowrap rounded-full border border-[#D9E6FF] bg-[#F5F8FF] dark:bg-card dark:border-border pl-4 pr-3 py-1 text-[11px] font-semibold text-[#2F3A56] dark:text-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-w-[220px] overflow-hidden text-ellipsis">
@@ -595,7 +595,7 @@ export function AppSidebar() {
                         <a
                           href={item.href}
                           aria-label={item.label}
-                          className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                          className="group flex h-[2rem] w-full items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                         >
                           <item.icon className="h-[0.92rem] w-[0.92rem]" />
                         </a>
@@ -603,7 +603,7 @@ export function AppSidebar() {
                         <Link
                           to={item.href}
                           aria-label={item.label}
-                          className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                          className="group flex h-[2rem] w-full items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                         >
                           <item.icon className="h-[0.92rem] w-[0.92rem]" />
                         </Link>
@@ -622,7 +622,7 @@ export function AppSidebar() {
                         onClick={() => {
                           window.dispatchEvent(new CustomEvent('designhub:open-search'));
                         }}
-                        className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                        className="group flex h-[2rem] w-full items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                       >
                         <item.icon className="h-[0.92rem] w-[0.92rem]" />
                       </button>
@@ -642,7 +642,7 @@ export function AppSidebar() {
                           setActiveQuickAction(item.action);
                           window.dispatchEvent(new CustomEvent('designhub:open-guidelines'));
                         }}
-                        className={cn(getQuickAccessButtonClass(isActive), "h-[2.1rem] w-[2.1rem]")}
+                        className={cn(getQuickAccessButtonClass(isActive), "h-[2rem] w-full")}
                       >
                         <item.icon className="h-[0.92rem] w-[0.92rem]" />
                       </button>
@@ -658,7 +658,7 @@ export function AppSidebar() {
                         type="button"
                         aria-label={item.label}
                         onClick={openEmailDesignRequest}
-                        className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                        className="group flex h-[2rem] w-full items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                       >
                         <item.icon className="h-[0.92rem] w-[0.92rem]" />
                       </button>
@@ -672,7 +672,7 @@ export function AppSidebar() {
                     <button
                       type="button"
                       aria-label={item.label}
-                      className="group flex h-[2.1rem] w-[2.1rem] items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
+                      className="group flex h-[2rem] w-full items-center justify-center rounded-full border border-[#E1E9FF] bg-[#F5F8FF] dark:bg-muted dark:border-border text-[#6B7A99] dark:text-muted-foreground transition hover:border-[#C8D7FF] hover:text-[#1E2A5A] dark:hover:text-foreground"
                     >
                       <item.icon className="h-[0.92rem] w-[0.92rem]" />
                     </button>

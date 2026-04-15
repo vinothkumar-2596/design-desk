@@ -31,12 +31,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { resolveAdminReviewedAt, resolveAdminReviewStatus } from '@/lib/roleRules';
 import { cn } from '@/lib/utils';
 import type { Task } from '@/types';
 
 type AdminControlCenterProps = { tasks: Task[] };
 type QueueKey = 'new_requests' | 'returned_to_staff' | 'ready_to_route';
 type SortKey = 'latest' | 'oldest' | 'requester';
+type QueueCategoryFilter = 'all' | Task['category'];
+type QueueUrgencyFilter = 'all' | Task['urgency'];
+type QueueActionFilter = 'all' | 'admin_next' | 'staff_next';
 
 type QueueMeta = {
   key: QueueKey;
@@ -66,6 +70,17 @@ const badgeBase =
   'inline-flex items-center rounded-lg border px-2 text-[11px] font-medium';
 const glassFieldClass =
   'border-[#D9E6FF] bg-white/72 backdrop-blur-xl shadow-none focus-visible:ring-2 focus-visible:ring-[#C7D8FF] dark:border-border dark:bg-card/80';
+const recentActivityVisibleCount = 3;
+const queueSnapshotVisibleCount = 6;
+const queueUrgencyOptions: Array<{
+  value: Exclude<QueueUrgencyFilter, 'all'>;
+  label: string;
+}> = [
+  { value: 'urgent', label: 'Urgent' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'intermediate', label: 'Intermediate' },
+  { value: 'low', label: 'Low' },
+];
 
 const queueMetaMap: Record<QueueKey, QueueMeta> = {
   new_requests: {
@@ -129,7 +144,7 @@ const hasAssignedDesigner = (task: Task) =>
   Boolean(String(task.assignedToName || task.assignedToId || task.assignedTo || '').trim());
 
 const hasStaffFollowUp = (task: Task) => {
-  const checkpoint = getTaskTime(task.adminReviewedAt || task.updatedAt || task.createdAt);
+  const checkpoint = getTaskTime(resolveAdminReviewedAt(task) || task.updatedAt || task.createdAt);
   const submittedUpdate =
     task.adminReviewResponseStatus === 'submitted' &&
     getTaskTime(task.adminReviewResponseSubmittedAt) > checkpoint;
@@ -144,7 +159,7 @@ const hasStaffFollowUp = (task: Task) => {
 };
 
 const isReadyToRouteTask = (task: Task) =>
-  task.adminReviewStatus === 'approved' &&
+  resolveAdminReviewStatus(task) === 'approved' &&
   !hasAssignedDesigner(task) &&
   task.status === 'pending' &&
   task.deadlineApprovalStatus !== 'pending';
@@ -188,7 +203,15 @@ const sortTasks = (tasks: Task[], sortKey: SortKey) => {
 const getRequesterMeta = (task: Task) =>
   task.requesterDepartment || task.requesterEmail || formatCategory(task.category) || 'Requester';
 
+const getNextActionKey = (
+  queueKey: QueueKey,
+  task: Task
+): Exclude<QueueActionFilter, 'all'> =>
+  queueKey === 'returned_to_staff' && !hasStaffFollowUp(task) ? 'staff_next' : 'admin_next';
+
 const getNextAction = (queueKey: QueueKey, task: Task) => {
+  const nextActionKey = getNextActionKey(queueKey, task);
+
   if (queueKey === 'new_requests') {
     return {
       label: 'Admin next',
@@ -198,7 +221,7 @@ const getNextAction = (queueKey: QueueKey, task: Task) => {
     };
   }
   if (queueKey === 'returned_to_staff') {
-    return hasStaffFollowUp(task)
+    return nextActionKey === 'admin_next'
       ? {
           label: 'Admin next',
           detail: 'Staff has responded. Review the updated brief or files.',
@@ -221,7 +244,9 @@ const getNextAction = (queueKey: QueueKey, task: Task) => {
 };
 
 const buildActivityItem = (task: Task): ActivityItem => {
-  if (task.adminReviewStatus === 'pending') {
+  const reviewStatus = resolveAdminReviewStatus(task);
+
+  if (reviewStatus === 'pending') {
     return {
       id: `activity-${task.id}`,
       title: task.title,
@@ -232,7 +257,7 @@ const buildActivityItem = (task: Task): ActivityItem => {
       iconClassName: queueMetaMap.new_requests.iconClassName,
     };
   }
-  if (task.adminReviewStatus === 'needs_info') {
+  if (reviewStatus === 'needs_info') {
     return {
       id: `activity-${task.id}`,
       title: task.title,
@@ -260,10 +285,13 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('latest');
   const [activeQueue, setActiveQueue] = useState<QueueKey>('new_requests');
+  const [queueCategoryFilter, setQueueCategoryFilter] = useState<QueueCategoryFilter>('all');
+  const [queueUrgencyFilter, setQueueUrgencyFilter] = useState<QueueUrgencyFilter>('all');
+  const [queueActionFilter, setQueueActionFilter] = useState<QueueActionFilter>('all');
 
   const queueData = useMemo(() => {
-    const newRequests = tasks.filter((task) => task.adminReviewStatus === 'pending');
-    const returnedToStaff = tasks.filter((task) => task.adminReviewStatus === 'needs_info');
+    const newRequests = tasks.filter((task) => resolveAdminReviewStatus(task) === 'pending');
+    const returnedToStaff = tasks.filter((task) => resolveAdminReviewStatus(task) === 'needs_info');
     const readyToRoute = tasks.filter(isReadyToRouteTask);
 
     return {
@@ -274,10 +302,39 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
   }, [tasks]);
 
   const activeQueueMeta = queueMetaMap[activeQueue];
-  const activeQueueTasks = useMemo(
-    () => sortTasks(queueData[activeQueue].filter((task) => matchesSearch(task, searchTerm)), sortKey),
-    [activeQueue, queueData, searchTerm, sortKey]
+  const activeQueueSourceTasks = queueData[activeQueue];
+  const queueFilterSource = useMemo(
+    () => [...queueData.new_requests, ...queueData.returned_to_staff, ...queueData.ready_to_route],
+    [queueData]
   );
+  const queueCategoryOptions = useMemo(
+    () =>
+      Array.from(new Set(queueFilterSource.map((task) => task.category)))
+        .filter(Boolean)
+        .sort((left, right) => formatCategory(left).localeCompare(formatCategory(right))),
+    [queueFilterSource]
+  );
+  const activeQueueTasks = useMemo(() => {
+    const filtered = activeQueueSourceTasks.filter(
+      (task) =>
+        matchesSearch(task, searchTerm) &&
+        (queueCategoryFilter === 'all' || task.category === queueCategoryFilter) &&
+        (queueUrgencyFilter === 'all' || task.urgency === queueUrgencyFilter) &&
+        (queueActionFilter === 'all' || getNextActionKey(activeQueue, task) === queueActionFilter)
+    );
+
+    return sortTasks(filtered, sortKey);
+  }, [
+    activeQueue,
+    activeQueueSourceTasks,
+    queueActionFilter,
+    queueCategoryFilter,
+    queueUrgencyFilter,
+    searchTerm,
+    sortKey,
+  ]);
+  const hasAdvancedQueueFilters =
+    queueCategoryFilter !== 'all' || queueUrgencyFilter !== 'all' || queueActionFilter !== 'all';
 
   const totalOpenQueues =
     queueData.new_requests.length +
@@ -287,7 +344,7 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
   const reviewedThisWeek = useMemo(() => {
     const sevenDaysAgo = subDays(startOfDay(new Date()), 6);
     return tasks.filter((task) => {
-      const reviewedAt = parseDate(task.adminReviewedAt);
+      const reviewedAt = parseDate(resolveAdminReviewedAt(task));
       return Boolean(reviewedAt && reviewedAt >= sevenDaysAgo);
     }).length;
   }, [tasks]);
@@ -314,7 +371,7 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
         return Boolean(createdAt && isSameDay(createdAt, date));
       }).length,
       reviewed: tasks.filter((task) => {
-        const reviewedAt = parseDate(task.adminReviewedAt);
+        const reviewedAt = parseDate(resolveAdminReviewedAt(task));
         return Boolean(reviewedAt && isSameDay(reviewedAt, date));
       }).length,
     }));
@@ -324,16 +381,15 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
     const relevant = tasks
       .filter(
         (task) =>
-          task.adminReviewStatus === 'pending' ||
-          task.adminReviewStatus === 'needs_info' ||
+          resolveAdminReviewStatus(task) === 'pending' ||
+          resolveAdminReviewStatus(task) === 'needs_info' ||
           isReadyToRouteTask(task)
       )
       .filter((task) => matchesSearch(task, searchTerm))
       .sort(
         (left, right) =>
           getTaskTime(right.updatedAt || right.createdAt) - getTaskTime(left.updatedAt || left.createdAt)
-      )
-      .slice(0, 5);
+      );
 
     return relevant.map(buildActivityItem);
   }, [searchTerm, tasks]);
@@ -434,13 +490,13 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(135,176,255,0.16),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.7),transparent_28%)] dark:hidden" />
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8090A8] dark:text-muted-foreground">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#4B5F7A] dark:text-muted-foreground">
               Admin Overview
             </p>
-            <h1 className="text-[30px] font-semibold tracking-tight text-[#111827] dark:text-foreground">
+            <h1 className="text-[30px] font-semibold tracking-tight text-[#0F172A] dark:text-foreground">
               Overview
             </h1>
-            <p className="max-w-2xl text-[13px] leading-6 text-[#6B7280] dark:text-muted-foreground">
+            <p className="max-w-2xl text-[13px] leading-6 text-[#3F5168] dark:text-muted-foreground">
               Monitor intake review, staff follow-ups, and routing from one page.
             </p>
           </div>
@@ -609,7 +665,13 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
             </span>
           </div>
 
-          <div className="mt-5 space-y-3">
+          <div
+            className={cn(
+              'mt-5 space-y-3',
+              activityItems.length > recentActivityVisibleCount &&
+                'max-h-[calc(3*5.75rem+1.5rem)] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin'
+            )}
+          >
             {activityItems.length > 0 ? (
               activityItems.map((item) => {
                 const Icon = item.icon;
@@ -618,7 +680,7 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
                   <Link
                     key={item.id}
                     to={item.href}
-                    className="flex items-start gap-3 rounded-2xl border border-[#D9E6FF]/60 bg-white/55 px-3 py-3 backdrop-blur-xl transition-colors hover:bg-white/72 dark:border-border dark:bg-muted/30 dark:hover:bg-muted/60"
+                    className="flex min-h-[5.75rem] items-start gap-3 rounded-2xl border border-[#D9E6FF]/60 bg-white/55 px-3 py-3 backdrop-blur-xl transition-colors hover:bg-white/72 dark:border-border dark:bg-muted/30 dark:hover:bg-muted/60"
                   >
                     <span
                       className={cn(
@@ -632,7 +694,7 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
                       <p className="truncate text-[13px] font-semibold text-[#111827] dark:text-foreground">
                         {item.title}
                       </p>
-                      <p className="mt-1 text-[12px] leading-5 text-[#6B7280] dark:text-muted-foreground">
+                      <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-[#6B7280] dark:text-muted-foreground">
                         {item.subtitle}
                       </p>
                     </div>
@@ -712,6 +774,86 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
           })}
         </div>
 
+        <div className="mt-4 rounded-[20px] border border-[#E4EBF5] bg-white/50 px-3 py-3 backdrop-blur-2xl dark:border-border dark:bg-card/70">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7A8AA5] dark:text-muted-foreground">
+                Advanced Filters
+              </p>
+              <p className="mt-1 text-[12px] leading-5 text-[#607086] dark:text-muted-foreground">
+                Refine the active queue by category, urgency, and who acts next.
+              </p>
+            </div>
+            <div className="inline-flex h-8 items-center rounded-lg border border-[#DCE6F6] bg-white/65 px-3 text-[12px] font-medium text-[#52627A] backdrop-blur-xl dark:border-border dark:bg-muted/40 dark:text-muted-foreground">
+              Showing {formatCount(activeQueueTasks.length)} of {formatCount(activeQueueSourceTasks.length)} items
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <Select
+              value={queueCategoryFilter}
+              onValueChange={(value) => setQueueCategoryFilter(value as QueueCategoryFilter)}
+            >
+              <SelectTrigger className={cn('h-10 rounded-xl text-[13px]', glassFieldClass)}>
+                <SelectValue placeholder="All categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {queueCategoryOptions.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {formatCategory(category)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={queueUrgencyFilter}
+              onValueChange={(value) => setQueueUrgencyFilter(value as QueueUrgencyFilter)}
+            >
+              <SelectTrigger className={cn('h-10 rounded-xl text-[13px]', glassFieldClass)}>
+                <SelectValue placeholder="All urgency levels" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All urgency levels</SelectItem>
+                {queueUrgencyOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={queueActionFilter}
+              onValueChange={(value) => setQueueActionFilter(value as QueueActionFilter)}
+            >
+              <SelectTrigger className={cn('h-10 rounded-xl text-[13px]', glassFieldClass)}>
+                <SelectValue placeholder="All next actions" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All next actions</SelectItem>
+                <SelectItem value="admin_next">Admin next</SelectItem>
+                <SelectItem value="staff_next">Staff next</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setQueueCategoryFilter('all');
+                setQueueUrgencyFilter('all');
+                setQueueActionFilter('all');
+              }}
+              disabled={!hasAdvancedQueueFilters}
+              className="h-10 rounded-xl border-[#DCE6F6] bg-white/58 px-3 text-[13px] font-medium backdrop-blur-xl shadow-none hover:bg-white/76 disabled:cursor-not-allowed disabled:opacity-60 dark:border-border dark:bg-card dark:hover:bg-muted"
+            >
+              Clear filters
+            </Button>
+          </div>
+        </div>
+
         <div className="mt-4 overflow-hidden rounded-[20px] border border-[#E4EBF5] bg-white/52 backdrop-blur-2xl dark:border-border dark:bg-card">
           <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,1fr)_120px] gap-3 border-b border-[#E7EDF7] bg-white/38 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8090A8] backdrop-blur-xl dark:border-border dark:bg-muted/30 dark:text-muted-foreground md:grid">
             <div>Request</div>
@@ -720,7 +862,13 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
             <div className="text-right">Updated</div>
           </div>
 
-          <div className="divide-y divide-[#E7EDF7] dark:divide-border">
+          <div
+            className={cn(
+              'divide-y divide-[#E7EDF7] dark:divide-border',
+              activeQueueTasks.length > queueSnapshotVisibleCount &&
+                'max-h-[42rem] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin'
+            )}
+          >
             {activeQueueTasks.length > 0 ? (
               activeQueueTasks.map((task) => {
                 const nextAction = getNextAction(activeQueue, task);
@@ -729,13 +877,13 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
                   <Link
                     key={task.id}
                     to={`/task/${task.id}`}
-                    className="grid gap-3 px-4 py-3 transition-colors hover:bg-white/42 dark:hover:bg-muted/30 md:grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,1fr)_120px]"
+                    className="group grid min-h-[7rem] gap-3 px-4 py-3 transition-all duration-200 hover:bg-[linear-gradient(90deg,rgba(238,244,255,0.92),rgba(255,255,255,0.6))] hover:shadow-[inset_3px_0_0_0_rgba(79,110,247,0.72)] dark:hover:bg-muted/35 dark:hover:shadow-[inset_3px_0_0_0_rgba(146,171,238,0.55)] md:grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,1fr)_120px]"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-[13px] font-semibold text-[#111827] dark:text-foreground">
+                      <p className="line-clamp-2 text-[13px] font-semibold text-[#111827] transition-colors duration-200 group-hover:text-[#23418A] dark:text-foreground dark:group-hover:text-[#D6E1FF]">
                         {task.title}
                       </p>
-                      <p className="mt-1 line-clamp-1 text-[12px] leading-5 text-[#6B7280] dark:text-muted-foreground">
+                      <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-[#6B7280] dark:text-muted-foreground">
                         {task.description || 'No request description provided.'}
                       </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[#94A3B8] dark:text-muted-foreground">
@@ -749,10 +897,10 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
                       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8090A8] dark:text-muted-foreground md:hidden">
                         Submitted by
                       </p>
-                      <p className="truncate text-[13px] font-medium text-[#111827] dark:text-foreground">
+                      <p className="text-[13px] font-medium text-[#111827] transition-colors duration-200 group-hover:text-[#23418A] dark:text-foreground dark:group-hover:text-[#D6E1FF]">
                         {task.requesterName || '--'}
                       </p>
-                      <p className="mt-1 truncate text-[12px] text-[#6B7280] dark:text-muted-foreground">
+                      <p className="mt-1 line-clamp-2 text-[12px] text-[#6B7280] dark:text-muted-foreground">
                         {getRequesterMeta(task)}
                       </p>
                     </div>
@@ -762,7 +910,7 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
                         Who acts next
                       </p>
                       <span className={cn(badgeBase, nextAction.className)}>{nextAction.label}</span>
-                      <p className="mt-1 truncate text-[12px] text-[#6B7280] dark:text-muted-foreground">
+                      <p className="mt-1 line-clamp-2 text-[12px] text-[#6B7280] dark:text-muted-foreground">
                         {nextAction.detail}
                       </p>
                     </div>
@@ -771,7 +919,7 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
                       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8090A8] dark:text-muted-foreground md:hidden">
                         Updated
                       </p>
-                      <p className="text-[13px] font-medium text-[#111827] dark:text-foreground">
+                      <p className="text-[13px] font-medium text-[#111827] transition-colors duration-200 group-hover:text-[#23418A] dark:text-foreground dark:group-hover:text-[#D6E1FF]">
                         {formatTaskDate(task.updatedAt || task.createdAt)}
                       </p>
                       <p className="mt-1 text-[12px] text-[#6B7280] dark:text-muted-foreground">
@@ -791,7 +939,7 @@ export function AdminControlCenter({ tasks }: AdminControlCenterProps) {
                     {emptyStateText}
                   </p>
                   <p className="text-[12px] text-[#6B7280] dark:text-muted-foreground">
-                    Try a different queue or clear the current search filter.
+                    Try a different queue or clear the current search and advanced filters.
                   </p>
                 </div>
               </div>

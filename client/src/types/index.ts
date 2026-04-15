@@ -34,6 +34,7 @@ export type CollateralOrientation = 'portrait' | 'landscape' | 'square' | 'custo
 export type CollateralUnit = 'px' | 'mm' | 'cm' | 'in' | 'ft';
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+export type AdminReviewStatus = 'pending' | 'needs_info' | 'approved' | 'rejected';
 export type FinalDeliverableReviewStatus =
   | 'not_submitted'
   | 'pending'
@@ -289,6 +290,11 @@ export interface Task {
   deadlineApprovedAt?: Date;
   isModification: boolean;
   approvalStatus?: ApprovalStatus;
+  adminReviewStatus?: AdminReviewStatus;
+  adminReviewedBy?: string;
+  adminReviewedAt?: Date;
+  adminReviewResponseStatus?: 'pending' | 'submitted';
+  adminReviewResponseSubmittedAt?: Date;
   approvedBy?: string;
   approvalDate?: Date;
   changeCount: number;
