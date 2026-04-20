@@ -536,10 +536,16 @@ let passed = 0;
 
 try {
   const staffSocket = await connectUserSocket(scenarioUsers.staff._id);
+  const adminSocket = await connectUserSocket(scenarioUsers.admin._id);
   const leadSocket = await connectUserSocket(scenarioUsers.lead._id);
   const juniorSocket = await connectUserSocket(scenarioUsers.junior._id);
   const treasurerSocket = await connectUserSocket(scenarioUsers.treasurer._id);
 
+  const createAdminEvent = waitForEvent(
+    adminSocket,
+    "request:new",
+    (payload) => payload?.title === "Realtime Workflow Request"
+  );
   const createLeadEvent = waitForEvent(
     leadSocket,
     "request:new",
@@ -568,7 +574,8 @@ try {
   });
   expectStatus(createResponse, 201);
 
-  const [leadRequestEvent, treasurerRequestEvent] = await Promise.all([
+  const [adminRequestEvent, leadRequestEvent, treasurerRequestEvent] = await Promise.all([
+    createAdminEvent,
     createLeadEvent,
     createTreasurerEvent,
   ]);
@@ -576,10 +583,11 @@ try {
   const createdTask = createResponse.data;
   const taskId = String(createdTask.id || "").trim();
   assert.ok(taskId, "Created task should return an id.");
+  assert.equal(adminRequestEvent.title, "Realtime Workflow Request");
   assert.equal(leadRequestEvent.title, "Realtime Workflow Request");
   assert.equal(treasurerRequestEvent.title, "Realtime Workflow Request");
   passed += 1;
-  console.log("PASS create request emits realtime queue events");
+  console.log("PASS create request emits realtime admin and queue events");
 
   const taskWatcher = await connectTaskWatcher(taskId);
 

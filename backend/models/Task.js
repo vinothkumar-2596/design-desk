@@ -286,9 +286,10 @@ const TaskSchema = new mongoose.Schema(
     adminReviewedAt: { type: Date },
     adminReviewResponseStatus: {
       type: String,
-      enum: ["pending", "submitted"],
+      enum: ["pending", "draft", "submitted"],
       default: "pending",
     },
+    adminReviewResponseSubmittedBy: { type: String, default: "" },
     adminReviewResponseSubmittedAt: { type: Date },
     approvedBy: { type: String, default: "" },
     approvalDate: { type: Date },

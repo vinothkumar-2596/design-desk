@@ -2594,7 +2594,7 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
     console.log("Request created:", taskId);
     const taskLink = buildTaskLink(taskId);
     const createdEventId = `task:${taskId}:created`;
-    getUserIdsByRole(["treasurer"]).then((userIds) => {
+    getUserIdsByRole(["treasurer", "admin"]).then((userIds) => {
       if (userIds.length === 0) return;
       return createNotificationsForUsers(userIds, {
         title: `New request: ${task.title}`,
@@ -2645,15 +2645,15 @@ router.post("/", requireRole(["staff", "treasurer", "designer"]), async (req, re
       const targetRoom = task.assignedToId ? String(task.assignedToId) : "designers:queue";
       io.to(targetRoom).emit("request:new", payloadTask);
       console.log(`Emitted request:new to room: ${targetRoom}`);
-      getUserIdsByRole(["treasurer"]).then((userIds) => {
-        userIds.forEach((treasurerId) => {
-          io.to(String(treasurerId)).emit("request:new", payloadTask);
+      getUserIdsByRole(["treasurer", "admin"]).then((userIds) => {
+        userIds.forEach((reviewerId) => {
+          io.to(String(reviewerId)).emit("request:new", payloadTask);
         });
         if (userIds.length > 0) {
-          console.log(`Emitted request:new to ${userIds.length} treasurer rooms`);
+          console.log(`Emitted request:new to ${userIds.length} reviewer rooms`);
         }
       }).catch((error) => {
-        console.error("Request emit error (treasurer rooms):", error?.message || error);
+        console.error("Request emit error (reviewer rooms):", error?.message || error);
       });
       if (!task.assignedToId) {
         getQueueDesignerUserIds().then((userIds) => {

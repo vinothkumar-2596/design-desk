@@ -1098,7 +1098,7 @@ export function DashboardLayout({
         socket.emit('join', { userId: user.email });
         console.log('Joined room', user.email);
       }
-      if (isMainDesigner(user)) {
+      if (user?.role === 'admin' || isMainDesigner(user)) {
         socket.emit('join', { userId: 'designers:queue' });
         console.log('Joined room designers:queue');
       }
