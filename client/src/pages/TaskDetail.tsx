@@ -1930,7 +1930,10 @@ function TaskDetailScreen() {
     treasurerApprovalCycleChanges,
     editTaskChangeHistory,
   ]);
-  const isTreasurerReviewMode = user?.role === 'treasurer' && approvalStatus === 'pending';
+  const isTreasurerReviewMode =
+    user?.role === 'treasurer' &&
+    approvalStatus === 'pending' &&
+    taskState?.adminReviewStatus !== 'approved';
   const changeHistorySelectOptions = useMemo(
     () =>
       changeHistoryForDisplay.map((entry, index) => ({
@@ -4153,7 +4156,11 @@ function TaskDetailScreen() {
       hasWorkflowAssignee ? `Assigned to ${workflowAssigneeLabel}` : 'Unassigned',
     ];
 
-    if (user?.role === 'treasurer' && approvalStatus === 'pending') {
+    if (
+      user?.role === 'treasurer' &&
+      approvalStatus === 'pending' &&
+      taskState?.adminReviewStatus !== 'approved'
+    ) {
       return {
         stepIndex: 3,
         headline: 'Approval required',

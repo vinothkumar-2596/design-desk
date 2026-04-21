@@ -595,8 +595,12 @@ export default function Dashboard() {
     return searchFilteredTasks.length > 4;
   }, [dateFilteredTasks, isAdminUser, query, searchFilteredTasks.length]);
   const pendingApprovals = useMemo(() => {
-    return hydratedTasks.filter((task) => task.approvalStatus === 'pending');
-  }, [hydratedTasks]);
+    return hydratedTasks.filter((task) => {
+      if (task.approvalStatus !== 'pending') return false;
+      if (user.role === 'treasurer' && task.adminReviewStatus === 'approved') return false;
+      return true;
+    });
+  }, [hydratedTasks, user.role]);
   const filteredApprovals = useMemo(
     () =>
       pendingApprovals.filter((task) =>
@@ -1292,7 +1296,7 @@ export default function Dashboard() {
                     ) : (
                       designerOptions.map((designer) => (
                         <SelectItem key={designer.id} value={designer.id}>
-                          {designer.name} ({getDesignerScopeLabel(designer.designerScope)}{designer.portalId ? ` • ${designer.portalId}` : ''})
+                          {designer.name} ({getDesignerScopeLabel(designer.designerScope)}{designer.portalId ? ` ï¿½ ${designer.portalId}` : ''})
                         </SelectItem>
                       ))
                     )}

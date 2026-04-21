@@ -234,6 +234,10 @@ export const calculateStats = (tasks: Task[], userId?: string, role?: string): D
     inProgressTasks: filteredTasks.filter(t => t.status === 'in_progress').length,
     completedTasks: filteredTasks.filter(t => t.status === 'completed').length,
     urgentTasks: filteredTasks.filter(t => t.urgency === 'urgent' && t.status !== 'completed').length,
-    pendingApprovals: tasks.filter(t => t.approvalStatus === 'pending').length,
+    pendingApprovals: tasks.filter(t => {
+      if (t.approvalStatus !== 'pending') return false;
+      if (role === 'treasurer' && t.adminReviewStatus === 'approved') return false;
+      return true;
+    }).length,
   };
 };
