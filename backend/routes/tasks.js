@@ -2020,6 +2020,8 @@ const ensureTaskAccess = async (req, res, next) => {
       req.method === "PATCH" && requestPath.endsWith("/note");
     const isAcceptWrite =
       req.method === "POST" && requestPath.endsWith("/accept");
+    const isDeclineWrite =
+      req.method === "POST" && requestPath.endsWith("/decline");
     const isCommentsSeenWrite =
       req.method === "POST" && requestPath.endsWith("/comments/seen");
     const isTaskViewedWrite =
@@ -2083,7 +2085,8 @@ const ensureTaskAccess = async (req, res, next) => {
         Object.keys(bodyUpdates).every((key) => managerApprovalUpdateKeys.has(key));
       const canManagerApprovalWrite =
         isChangeWrite &&
-        ["treasurer", "admin"].includes(userRole) &&
+        (["treasurer", "admin"].includes(userRole) ||
+          (userRole === "designer" && isMainDesignerUser(req.user))) &&
         hasManagerApprovalChanges &&
         hasOnlyManagerApprovalUpdates;
       const canVisibleUserReadWrite =
@@ -2205,6 +2208,7 @@ const ensureTaskAccess = async (req, res, next) => {
         isFinalDeliverablesReviewWrite ||
         isFinalDeliverableNoteWrite ||
         isAcceptWrite ||
+        isDeclineWrite ||
         isCommentsSeenWrite ||
         isTaskViewedWrite)
     ) {
@@ -4978,6 +4982,123 @@ router.post("/:id/accept", ensureTaskAccess, async (req, res) => {
   }
 });
 
+router.post("/:id/decline", ensureTaskAccess, async (req, res) => {
+  try {
+    const task = req.task;
+    const accessContext =
+      req.taskAccessContext || await resolveTaskAccessContext(task, req.user);
+    if (accessContext.mode !== "full") {
+      return res.status(403).json({ error: "Only the assigned designer can decline this task." });
+    }
+
+    const reason = String(req.body?.reason || "").trim();
+    if (!reason) {
+      return res.status(400).json({ error: "A reason is required to decline this task." });
+    }
+    if (reason.length > 500) {
+      return res.status(400).json({ error: "Reason must be 500 characters or fewer." });
+    }
+
+    const declinedAt = new Date();
+    const actorId = getUserId(req);
+    const actorName = req.user?.name || req.user?.email || "Designer";
+    const actorRole = req.user?.role || "designer";
+    const taskId = task.id || task._id?.toString?.() || req.params.id;
+    const previousStatus = task.status || "";
+    const previousAssigneeName = task.assignedToName || "";
+
+    const updatedTask = await Task.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          status: "pending",
+          assignedToId: "",
+          assignedToName: "",
+          assignedTo: "",
+          assignedToEmail: "",
+          updatedAt: declinedAt
+        },
+        $unset: { accepted_at: 1 },
+        $push: {
+          changeHistory: {
+            type: "status",
+            field: "task_status",
+            oldValue: previousStatus,
+            newValue: "Declined",
+            note: `Declined by ${actorName}: ${reason}`,
+            userId: actorId || "",
+            userName: actorName,
+            userRole: actorRole,
+            createdAt: declinedAt
+          }
+        }
+      },
+      {
+        new: true,
+        runValidators: false,
+        strict: false
+      }
+    );
+
+    if (!updatedTask) {
+      return res.status(404).json({ error: "Task not found." });
+    }
+
+    req.auditTargetId = updatedTask.id || updatedTask._id?.toString?.() || "";
+
+    await Activity.create({
+      taskId: updatedTask._id,
+      taskTitle: updatedTask.title,
+      action: "updated",
+      userId: actorId || "",
+      userName: actorName
+    });
+
+    const managerRecipient = await resolveAssignmentManagerRecipient(task);
+    const taskLink = taskId ? buildTaskLink(taskId) : "";
+    if (managerRecipient?.id) {
+      createNotification({
+        userId: managerRecipient.id,
+        title: `Task declined: ${updatedTask.title}`,
+        message: `${actorName} declined this task. Reason: ${reason}`,
+        type: "task",
+        link: taskLink,
+        taskId,
+        eventId: `task-declined:${taskId}:${actorId}:${declinedAt.toISOString()}`
+      })
+        .then(emitNotification)
+        .catch((error) => {
+          console.error("Notification error (task declined):", error?.message || error);
+        });
+    }
+
+    const io = getSocket();
+    if (io) {
+      const payloadTask = typeof updatedTask.toJSON === "function" ? updatedTask.toJSON() : updatedTask;
+      io.to(String(taskId)).emit("task:updated", {
+        taskId,
+        task: payloadTask
+      });
+      if (managerRecipient?.id) {
+        io.to(String(managerRecipient.id)).emit("task:updated", {
+          taskId,
+          task: payloadTask
+        });
+      }
+    }
+
+    const responsePayload = typeof updatedTask.toJSON === "function" ? updatedTask.toJSON() : updatedTask;
+    res.json({
+      task: responsePayload,
+      previousAssigneeName,
+      reason
+    });
+  } catch (error) {
+    console.error("Task decline error:", error?.message || error);
+    res.status(400).json({ error: "Failed to decline task." });
+  }
+});
+
 router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
   try {
     const { updates = {}, changes = [], userName } = req.body;
@@ -5487,25 +5608,59 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       }
     }
 
-    if (approvalEntry && userRole === "treasurer") {
+    const actorIsDesignLead =
+      userRole === "designer" && isMainDesignerUser(req.user);
+    if (approvalEntry && (userRole === "treasurer" || actorIsDesignLead)) {
       const decision = String(approvalEntry.newValue || "").toLowerCase();
+      const actorRoleLabel = userRole === "treasurer" ? "Treasurer" : "Design Lead";
+      const noteFromEntry = String(approvalEntry.note || "").trim();
       const payload = {
-        title: `Approval ${decision}: ${updatedTask.title}`,
-        message: approvalEntry.note || `Treasurer ${decision} this request.`,
+        title: `${actorRoleLabel} ${decision}: ${updatedTask.title}`,
+        message: noteFromEntry || `${actorRoleLabel} ${decision} this request.`,
         type: "task",
         link: taskLink,
         taskId,
         eventId: `approval:${taskId}:${decision}:${changeStamp}`,
       };
       if (requesterUserId) notifyUser(requesterUserId, payload);
-      if (designerUserId) notifyUser(designerUserId, payload);
+      if (designerUserId && designerUserId !== requesterUserId) {
+        notifyUser(designerUserId, payload);
+      }
+
+      // Loop in admins when design lead makes a decision so they're aware of the outcome.
+      if (actorIsDesignLead) {
+        try {
+          const adminIds = await getUserIdsByRole(["admin"]);
+          const adminPayload = {
+            title: `Design Lead ${decision}: ${updatedTask.title}`,
+            message: noteFromEntry
+              ? `${resolvedUserName || "Design Lead"} ${decision} this request: ${noteFromEntry}`
+              : `${resolvedUserName || "Design Lead"} ${decision} this request.`,
+            type: "task",
+            link: taskLink,
+            taskId,
+            eventId: `approval:${taskId}:design_lead:${decision}:${changeStamp}`,
+          };
+          adminIds.forEach((adminId) => {
+            if (adminId && adminId !== requesterUserId) {
+              notifyUser(adminId, adminPayload);
+            }
+          });
+        } catch (adminLookupError) {
+          console.error(
+            "Admin lookup error (design lead approval):",
+            adminLookupError?.message || adminLookupError
+          );
+        }
+      }
+
       if ((decision.includes("approved") || decision.includes("rejected")) && requesterUserId) {
         const emailSent = await sendTaskLifecycleEmailIfEnabled({
           task: updatedTask,
           userId: requesterUserId,
           emailType: decision.includes("approved") ? "APPROVAL_APPROVED" : "APPROVAL_REJECTED",
-          actorName: resolvedUserName || "Treasurer",
-          note: approvalEntry.note || "",
+          actorName: resolvedUserName || actorRoleLabel,
+          note: noteFromEntry,
           submittedAt: approvalEntry.createdAt || new Date(changeStamp),
         });
         if (!emailSent) {

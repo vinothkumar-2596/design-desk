@@ -1,0 +1,173 @@
+/*
+ * SMVEC Brand — design tokens.
+ * Mirrors the published brand manual variable system so every page in
+ * /brand-guidelines/* speaks the same vocabulary as the official reference.
+ * Scoped to .brand-root so these tokens never leak into DesignDesk.
+ */
+
+.brand-root {
+  /* Brand core */
+  --smvec-blue: #36429B;
+  --smvec-gold: #DBA328;
+  --smvec-black: #000000;
+  --smvec-white: #FFFFFF;
+
+  /* Blue tints (watermarks, surfaces, focus rings) */
+  --smvec-blue-050: #EEF1FB;
+  --smvec-blue-100: #DCE2F4;
+  --smvec-blue-300: #95A2D2;
+  --smvec-blue-500: #5566B7;
+  --smvec-blue-700: #36429B;
+  --smvec-blue-800: #2A357E;
+  --smvec-blue-900: #1F285F;
+
+  /* Gold tints (bars, accents) */
+  --smvec-gold-050: #FBF4DF;
+  --smvec-gold-100: #F6E6B5;
+  --smvec-gold-300: #E9C16C;
+  --smvec-gold-500: #DBA328;
+  --smvec-gold-700: #A47A1B;
+  --smvec-gold-900: #5C4310;
+
+  /* Neutrals */
+  --smvec-bg-soft: #F7F8FB;
+  --smvec-line: #E5E7EE;
+  --smvec-ink-4: #6E7791;
+  --smvec-ink-3: #404663;
+  --smvec-ink: #1A1F33;
+
+  /* Surface aliases */
+  --bg-1: var(--smvec-white);
+  --bg-2: var(--smvec-bg-soft);
+  --fg-1: var(--smvec-ink);
+  --fg-2: var(--smvec-ink-3);
+  --fg-3: var(--smvec-ink-4);
+  --border: var(--smvec-line);
+  --focus-ring: rgba(54, 66, 155, 0.18);
+
+  /* Typography families */
+  --font-display: 'Google Sans Display', 'Google Sans', 'Inter', system-ui, sans-serif;
+  --font-body: 'Google Sans', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-script: 'Great Vibes', 'Allura', cursive;
+
+  /* Type tokens */
+  --fs-overline: 11px;
+  --tracking-overline: 0.14em;
+  --tracking-tight: -0.02em;
+  --fw-medium: 500;
+
+  /* Radii */
+  --radius-1: 6px;
+  --radius-2: 10px;
+  --radius-3: 14px;
+
+  /* Shadows */
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-2: 0 8px 24px -12px rgba(31, 53, 114, 0.18);
+
+  /* Motion */
+  --dur-base: 180ms;
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* Rules */
+  --rule-gold: 4px solid var(--smvec-gold);
+  --rule-blue: 4px solid var(--smvec-blue);
+}
+
+/* Card chrome — applied to each section page so every section gets the
+   gold left keyline + structured header from the official manual. */
+
+.brand-card {
+  position: relative;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: 56px 64px 64px;
+  overflow: hidden;
+}
+
+.brand-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 40px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand-card__eyebrow {
+  font-size: var(--fs-overline);
+  letter-spacing: var(--tracking-overline);
+  text-transform: uppercase;
+  color: var(--smvec-blue);
+  font-weight: var(--fw-medium);
+}
+
+.brand-card__title {
+  font-family: var(--font-display);
+  font-size: 40px;
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.1;
+  margin: 6px 0 0;
+  font-weight: 400;
+  color: var(--fg-1);
+}
+
+.brand-card__title b {
+  display: inline-block;
+  border-bottom: var(--rule-gold);
+  padding-bottom: 6px;
+  font-weight: inherit;
+}
+
+.brand-card__intro {
+  text-align: right;
+  font-size: 13px;
+  color: var(--fg-3);
+  max-width: 340px;
+  line-height: 1.55;
+}
+
+/* Section divider (blue title with line filling the row) */
+.brand-section-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--smvec-blue);
+  margin: 0 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.brand-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Page-level wrapper to anchor tokens + body font */
+.brand-root {
+  background: var(--bg-1);
+  color: var(--fg-1);
+  font-family: var(--font-body);
+}
+
+@media (max-width: 768px) {
+  .brand-card {
+    padding: 32px 24px 40px;
+  }
+  .brand-card__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .brand-card__intro {
+    text-align: left;
+  }
+  .brand-card__title {
+    font-size: 32px;
+  }
+}

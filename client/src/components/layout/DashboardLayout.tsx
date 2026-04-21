@@ -2173,7 +2173,7 @@ export function DashboardLayout({
             <button
               type="button"
               onClick={() => openNotificationEntry(activeNotificationPreview)}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[#1B3260] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#15274B] dark:bg-[#EAF0FF] dark:text-[#10203A] dark:hover:bg-white"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] px-3.5 py-2 text-[12px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] transition-all hover:brightness-[1.05] active:translate-y-[1px] dark:bg-[linear-gradient(135deg,#4E6FE0,#3E5FD6_55%,#3150C8)]"
             >
               View Task
               <ArrowRight className="h-3.5 w-3.5" />

@@ -474,7 +474,10 @@ export default function EmailTask() {
                     <h3 className="mt-2 text-[1.15rem] font-semibold tracking-[-0.02em] text-[#17305D]">{actionHeading}</h3>
                     <p className="mt-2 max-w-2xl text-[13px] leading-6 text-[#5A6C8C]">{actionDescription}</p>
                     <div className="mt-4 flex flex-wrap gap-3">
-                      <Button asChild className="h-10 rounded-xl px-4">
+                      <Button
+                        asChild
+                        className="h-10 rounded-xl bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] px-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] transition-all hover:brightness-[1.05] active:translate-y-[1px] dark:bg-[linear-gradient(135deg,#4E6FE0,#3E5FD6_55%,#3150C8)]"
+                      >
                         <Link to={primaryActionPath}>
                           {primaryActionLabel}
                           <ArrowRight className="ml-2 h-4 w-4" />
@@ -514,7 +517,10 @@ export default function EmailTask() {
                     <h3 className="mt-2 text-[1.15rem] font-semibold tracking-[-0.02em] text-[#17305D]">{actionHeading}</h3>
                     <p className="mt-2 max-w-2xl text-[13px] leading-6 text-[#5A6C8C]">{actionDescription}</p>
                     <div className="mt-4 flex flex-wrap gap-3">
-                      <Button asChild className="h-10 rounded-xl px-4">
+                      <Button
+                        asChild
+                        className="h-10 rounded-xl bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] px-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] transition-all hover:brightness-[1.05] active:translate-y-[1px] dark:bg-[linear-gradient(135deg,#4E6FE0,#3E5FD6_55%,#3150C8)]"
+                      >
                         <Link to={primaryActionPath}>
                           {primaryActionLabel}
                           <ArrowRight className="ml-2 h-4 w-4" />

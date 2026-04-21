@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /tmp/brand-ref)",
+      "Read(//tmp/**)",
+      "Bash(curl -sL -o brand.html \"https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793331/brand_afucak.html\")",
+      "Bash(curl -sL -o colors.html \"https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793331/colors_looprj.html\")",
+      "Bash(curl -sL -o typography.html \"https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793331/typography_nc2ncm.html\")",
+      "Read(//tmp/brand-ref/**)",
+      "Read(//d/tmp/brand-ref/**)",
+      "Bash(awk 'NR<1000 || NR>1453' TaskDetail.tsx)",
+      "Bash(mv TaskDetail.tsx.tmp TaskDetail.tsx)"
+    ]
+  }
+}

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { mockTasks } from '@/data/mockTasks';
 import { useAuth } from '@/contexts/AuthContext';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,14 +14,22 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  AlertTriangle,
-  CheckCircle2,
-  Edit3,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   FileCheck,
-  MessageSquare,
-  XCircle,
+  Info,
+  Search,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -41,6 +48,66 @@ import {
 import { API_URL, authFetch } from '@/lib/api';
 
 type ReviewDecision = 'approved' | 'needs_info' | 'rejected';
+
+const REJECTION_TEMPLATES: Array<{
+  group: string;
+  items: Array<{ label: string; text: string }>;
+}> = [
+  {
+    group: 'Request Information',
+    items: [
+      {
+        label: 'Incomplete Brief',
+        text: 'Required request details are missing. Kindly update the brief with complete information and resubmit.',
+      },
+      {
+        label: 'Missing Content',
+        text: 'Required content, references, or supporting files were not attached. Please upload the necessary materials and submit again.',
+      },
+    ],
+  },
+  {
+    group: 'Planning & Capacity',
+    items: [
+      {
+        label: 'Capacity Constraint',
+        text: 'Current production bandwidth is allocated to higher-priority deliverables. Kindly resubmit with revised priority or timeline.',
+      },
+      {
+        label: 'Deadline Issue',
+        text: 'The requested deadline cannot be accommodated within current workload and production timelines. Please revise the schedule and resubmit.',
+      },
+    ],
+  },
+  {
+    group: 'Workflow & Governance',
+    items: [
+      {
+        label: 'Duplicate Request',
+        text: 'A similar request has already been submitted. Kindly refer to the existing request to avoid duplication.',
+      },
+      {
+        label: 'Approval Required',
+        text: 'This request requires prior approval before execution. Kindly obtain the necessary approval and resubmit.',
+      },
+    ],
+  },
+  {
+    group: 'Scope & Eligibility',
+    items: [
+      {
+        label: 'Outside Scope',
+        text: 'The request falls outside the supported design scope or current workflow process.',
+      },
+      {
+        label: 'Insufficient Resources',
+        text: 'Additional inputs, assets, or resources are required to proceed with this request.',
+      },
+    ],
+  },
+];
+
+const APPROVALS_PAGE_SIZE = 8;
 
 const REQUEST_CHANGE_TEMPLATES = [
   {
@@ -75,6 +142,15 @@ export default function Approvals() {
   const [isLoading, setIsLoading] = useState(false);
   const [requestChangesTaskId, setRequestChangesTaskId] = useState<string | null>(null);
   const [requestChangesNote, setRequestChangesNote] = useState('');
+  const [rejectTaskId, setRejectTaskId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [selectedRejectionLabels, setSelectedRejectionLabels] = useState<string[]>([]);
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterUrgency, setFilterUrgency] = useState<string>('all');
+  const [filterDepartment, setFilterDepartment] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'most_changes'>('newest');
+  const [filterQuery, setFilterQuery] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const apiUrl = API_URL;
   const isAdminReviewMode = user?.role === 'admin';
   const isDesignLeadReviewMode = isDesignLeadRole(user);
@@ -117,10 +193,28 @@ export default function Approvals() {
     setItems(buildSearchItemsFromTasks(pendingApprovals));
   }, [pendingApprovals, setItems, setScopeLabel]);
 
-  const filteredApprovals = useMemo(
-    () =>
-      pendingApprovals.filter((task) =>
-        matchesSearch(query, [
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    pendingApprovals.forEach((task) => {
+      if (task.category) set.add(String(task.category));
+    });
+    return Array.from(set).sort();
+  }, [pendingApprovals]);
+
+  const departmentOptions = useMemo(() => {
+    const set = new Set<string>();
+    pendingApprovals.forEach((task) => {
+      const dept = String(task.requesterDepartment || '').trim();
+      if (dept) set.add(dept);
+    });
+    return Array.from(set).sort();
+  }, [pendingApprovals]);
+
+  const filteredApprovals = useMemo(() => {
+    const combinedQuery = `${query || ''} ${filterQuery || ''}`.trim();
+    const filtered = pendingApprovals.filter((task) => {
+      if (
+        !matchesSearch(combinedQuery, [
           task.title,
           task.description,
           task.requesterName,
@@ -128,15 +222,69 @@ export default function Approvals() {
           task.category,
           task.status,
         ])
+      ) {
+        return false;
+      }
+      if (filterCategory !== 'all' && String(task.category) !== filterCategory) return false;
+      if (filterUrgency !== 'all' && String(task.urgency) !== filterUrgency) return false;
+      if (
+        filterDepartment !== 'all' &&
+        String(task.requesterDepartment || '').trim() !== filterDepartment
+      )
+        return false;
+      return true;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortOrder === 'most_changes') {
+        return (b.changeCount || 0) - (a.changeCount || 0);
+      }
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return sortOrder === 'oldest' ? aTime - bTime : bTime - aTime;
+    });
+    return sorted;
+  }, [pendingApprovals, query, filterQuery, filterCategory, filterUrgency, filterDepartment, sortOrder]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterQuery, filterCategory, filterUrgency, filterDepartment, sortOrder, query]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredApprovals.length / APPROVALS_PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedApprovals = useMemo(
+    () =>
+      filteredApprovals.slice(
+        (safePage - 1) * APPROVALS_PAGE_SIZE,
+        safePage * APPROVALS_PAGE_SIZE
       ),
-    [pendingApprovals, query]
+    [filteredApprovals, safePage]
   );
+  const hasActiveFilters =
+    Boolean(filterQuery.trim()) ||
+    filterCategory !== 'all' ||
+    filterUrgency !== 'all' ||
+    filterDepartment !== 'all' ||
+    sortOrder !== 'newest';
+  const resetFilters = () => {
+    setFilterQuery('');
+    setFilterCategory('all');
+    setFilterUrgency('all');
+    setFilterDepartment('all');
+    setSortOrder('newest');
+  };
   const requestChangesTask = useMemo(
     () => tasks.find((task) => task.id === requestChangesTaskId) ?? null,
     [requestChangesTaskId, tasks]
   );
   const isRequestChangesSubmitting =
     Boolean(requestChangesTaskId) && processingId === requestChangesTaskId;
+  const rejectTask = useMemo(
+    () => tasks.find((task) => task.id === rejectTaskId) ?? null,
+    [rejectTaskId, tasks]
+  );
+  const isRejectSubmitting =
+    Boolean(rejectTaskId) && processingId === rejectTaskId;
 
   const getStaffUpdatePreview = (task: (typeof tasks)[number]) => {
     const history = [...(task.changeHistory || [])].sort(
@@ -188,6 +336,55 @@ export default function Approvals() {
   const openRequestChangesModal = (task: (typeof tasks)[number]) => {
     setRequestChangesTaskId(task.id);
     setRequestChangesNote(getLatestAdminRequestedUpdatesNote(task.changeHistory));
+  };
+
+  const resetRejectModal = () => {
+    setRejectTaskId(null);
+    setRejectReason('');
+    setSelectedRejectionLabels([]);
+  };
+
+  const handleRejectModalChange = (open: boolean) => {
+    if (!open) {
+      if (isRejectSubmitting) return;
+      resetRejectModal();
+    }
+  };
+
+  const openRejectModal = (task: (typeof tasks)[number]) => {
+    setRejectTaskId(task.id);
+    setRejectReason('');
+    setSelectedRejectionLabels([]);
+  };
+
+  const buildReasonFromLabels = (labels: string[]) => {
+    const allItems = REJECTION_TEMPLATES.flatMap((g) => g.items);
+    return labels
+      .map((label) => allItems.find((item) => item.label === label)?.text)
+      .filter((text): text is string => Boolean(text))
+      .join('\n\n');
+  };
+
+  const toggleRejectionTemplate = (label: string) => {
+    setSelectedRejectionLabels((prev) => {
+      const isSelected = prev.includes(label);
+      const next = isSelected ? prev.filter((value) => value !== label) : [...prev, label];
+      setRejectReason(buildReasonFromLabels(next));
+      return next;
+    });
+  };
+
+  const handleRejectReasonChange = (value: string) => {
+    setRejectReason(value);
+    if (selectedRejectionLabels.length === 0) return;
+    const allItems = REJECTION_TEMPLATES.flatMap((g) => g.items);
+    const remaining = selectedRejectionLabels.filter((label) => {
+      const tpl = allItems.find((item) => item.label === label);
+      return tpl ? value.includes(tpl.text) : false;
+    });
+    if (remaining.length !== selectedRejectionLabels.length) {
+      setSelectedRejectionLabels(remaining);
+    }
   };
 
   const appendRequestChangeTemplate = (value: string) => {
@@ -242,12 +439,15 @@ export default function Approvals() {
         : decision === 'needs_info'
           ? 'Need Info'
           : 'Rejected';
+    const trimmedFeedback = feedbackNote?.trim() || '';
     const reviewNote =
-      isAdminReviewMode && decision === 'needs_info' && feedbackNote?.trim()
-        ? formatAdminRequestedUpdatesNote(feedbackNote)
-        : isAdminReviewMode
-          ? `Admin review ${decision.replace('_', ' ')} by ${user?.name || actorLabel}`
-          : `Approval ${decision} by ${user?.name || actorLabel}`;
+      isAdminReviewMode && decision === 'needs_info' && trimmedFeedback
+        ? formatAdminRequestedUpdatesNote(trimmedFeedback)
+        : !isAdminReviewMode && decision === 'rejected' && trimmedFeedback
+          ? `Approval rejected by ${user?.name || actorLabel}: ${trimmedFeedback}`
+          : isAdminReviewMode
+            ? `Admin review ${decision.replace('_', ' ')} by ${user?.name || actorLabel}`
+            : `Approval ${decision} by ${user?.name || actorLabel}`;
 
     if (apiUrl) {
       const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/changes`, {
@@ -346,21 +546,26 @@ export default function Approvals() {
     setProcessingId(taskId);
     try {
       await updateReviewStatus(taskId, decision, options?.feedbackNote);
-      toast.success(
+      const actorLabel = isAdminReviewMode ? 'Admin' : 'Design Lead';
+      const toastTitle =
         decision === 'approved'
           ? isAdminReviewMode
-            ? 'Task approved for design intake'
-            : 'Request approved'
+            ? 'Intake approved'
+            : 'Approved by Design Lead'
           : decision === 'needs_info'
-            ? 'Request changes sent to staff'
-            : 'Request rejected',
-        {
-          description:
-            decision === 'needs_info'
-              ? 'The requested updates were saved with the admin review.'
-              : 'The requester has been notified.',
-        }
-      );
+            ? 'Changes requested from staff'
+            : isAdminReviewMode
+              ? 'Intake rejected'
+              : 'Rejected by Design Lead';
+      const toastDescription =
+        decision === 'needs_info'
+          ? 'The requested updates were saved with the admin review.'
+          : decision === 'approved'
+            ? isAdminReviewMode
+              ? 'Brief moved to the design lead queue. Staff has been notified.'
+              : 'Modification approved and staff has been notified.'
+            : `Staff has been notified of the ${actorLabel.toLowerCase()} decision.`;
+      toast.success(toastTitle, { description: toastDescription });
       return true;
     } catch (error) {
       const message =
@@ -392,6 +597,20 @@ export default function Approvals() {
     }
   };
 
+  const handleRejectSubmit = async () => {
+    if (!rejectTaskId) return;
+    const feedbackNote = rejectReason.trim();
+    if (!feedbackNote) {
+      toast.message('Please provide a reason for rejecting this request.');
+      return;
+    }
+
+    const applied = await submitDecision(rejectTaskId, 'rejected', { feedbackNote });
+    if (applied) {
+      resetRejectModal();
+    }
+  };
+
   const headerTitle = isAdminReviewMode
     ? 'Admin Review Queue'
     : 'Pending Modification Approvals';
@@ -416,35 +635,132 @@ export default function Approvals() {
           <p className="text-muted-foreground mt-1 premium-body">{headerDescription}</p>
         </div>
 
-        <div className="rounded-lg border border-border/45 bg-card p-4 shadow-none animate-slide-up">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-semibold text-foreground">Approval Guidelines</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                {isAdminReviewMode
-                  ? 'Review incoming requests for completeness, clarity, files, and realistic deadlines before routing them forward.'
-                  : 'Review incoming modification requests before approving to ensure the requested changes still align with the approved brief.'}
-              </p>
-              <p className="mt-2 text-[12.5px] leading-6 text-muted-foreground">
-                {DESIGN_GOVERNANCE_NOTICE_POLICY}
-              </p>
+        <div className="rounded-lg border border-[#E5ECFA] bg-white px-4 py-3 animate-slide-up dark:border-[#2F4F8F]/45 dark:bg-card">
+          <div className="flex items-start gap-2.5">
+            <Info className="mt-[3px] h-3.5 w-3.5 shrink-0 text-[#3657C9] dark:text-[#8FA7E6]" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[12.5px] font-semibold leading-tight tracking-[-0.005em] text-[#1E2A5A] dark:text-slate-100">
+                Approval Guidelines
+              </h3>
+              <ul className="mt-1.5 space-y-1 text-[12px] leading-5 text-[#5B6E95] dark:text-[#A0B4DE]">
+                <li className="flex gap-2">
+                  <span className="select-none text-[#C9D7FF] dark:text-[#4868A7]">•</span>
+                  <span>
+                    {isAdminReviewMode
+                      ? 'Review incoming requests for completeness, clarity, files, and realistic deadlines before routing them forward.'
+                      : 'Review incoming modification requests before approval to ensure alignment with the approved brief.'}
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="select-none text-[#C9D7FF] dark:text-[#4868A7]">•</span>
+                  <span>
+                    Approved designs must remain aligned with official design guidelines and standardized language. Additional revisions require formal Treasurer review and authorization.
+                  </span>
+                </li>
+              </ul>
             </div>
           </div>
         </div>
 
-        <p className="text-sm text-muted-foreground">
-          {filteredApprovals.length} pending {isAdminReviewMode ? 'review' : 'approval'}
-          {filteredApprovals.length !== 1 ? 's' : ''}
-        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9AA7BF] dark:text-[#7E8DAB]" />
+            <Input
+              value={filterQuery}
+              onChange={(event) => setFilterQuery(event.target.value)}
+              placeholder="Search by title, requester, department..."
+              className="h-8 rounded-md border border-[#E5ECFA] bg-white pl-8 pr-2.5 text-[12.5px] text-[#1E2A5A] placeholder:text-[#9AA7BF] shadow-none focus-visible:border-[#4A68D8] focus-visible:ring-1 focus-visible:ring-[#C9D7FF] dark:border-[#2F4F8F]/45 dark:bg-card dark:text-slate-100 dark:placeholder:text-[#7E8DAB]"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={filterCategory} onValueChange={setFilterCategory}>
+              <SelectTrigger className="h-8 w-[136px] rounded-md border border-[#E5ECFA] bg-white px-2.5 text-[12px] text-[#3D4A6E] shadow-none focus:ring-1 focus:ring-[#C9D7FF] dark:border-[#2F4F8F]/45 dark:bg-card dark:text-slate-200">
+                <SelectValue placeholder="All categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {categoryOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {formatCategoryLabel(option) || option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterUrgency} onValueChange={setFilterUrgency}>
+              <SelectTrigger className="h-8 w-[124px] rounded-md border border-[#E5ECFA] bg-white px-2.5 text-[12px] text-[#3D4A6E] shadow-none focus:ring-1 focus:ring-[#C9D7FF] dark:border-[#2F4F8F]/45 dark:bg-card dark:text-slate-200">
+                <SelectValue placeholder="All urgency" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All urgency</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
+                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
+            {departmentOptions.length > 0 ? (
+              <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+                <SelectTrigger className="h-8 w-[148px] rounded-md border border-[#E5ECFA] bg-white px-2.5 text-[12px] text-[#3D4A6E] shadow-none focus:ring-1 focus:ring-[#C9D7FF] dark:border-[#2F4F8F]/45 dark:bg-card dark:text-slate-200">
+                  <SelectValue placeholder="All departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All departments</SelectItem>
+                  {departmentOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            <Select
+              value={sortOrder}
+              onValueChange={(value) => setSortOrder(value as typeof sortOrder)}
+            >
+              <SelectTrigger className="h-8 w-[132px] rounded-md border border-[#E5ECFA] bg-white px-2.5 text-[12px] text-[#3D4A6E] shadow-none focus:ring-1 focus:ring-[#C9D7FF] dark:border-[#2F4F8F]/45 dark:bg-card dark:text-slate-200">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest first</SelectItem>
+                <SelectItem value="oldest">Oldest first</SelectItem>
+                <SelectItem value="most_changes">Most changes</SelectItem>
+              </SelectContent>
+            </Select>
+            {hasActiveFilters ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={resetFilters}
+                className="h-8 rounded-md px-2.5 text-[12px] font-medium text-[#5B6E95] hover:bg-[#F5F8FF] hover:text-[#1E2A5A] dark:text-[#A0B4DE] dark:hover:bg-[#10234F]/60"
+              >
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            {filteredApprovals.length} pending {isAdminReviewMode ? 'review' : 'approval'}
+            {filteredApprovals.length !== 1 ? 's' : ''}
+            {hasActiveFilters ? ' · filtered' : ''}
+          </p>
+          {filteredApprovals.length > APPROVALS_PAGE_SIZE ? (
+            <p className="text-[12px] text-muted-foreground">
+              Showing {(safePage - 1) * APPROVALS_PAGE_SIZE + 1}–
+              {Math.min(safePage * APPROVALS_PAGE_SIZE, filteredApprovals.length)} of{' '}
+              {filteredApprovals.length}
+            </p>
+          ) : null}
+        </div>
 
         {isLoading ? (
           <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
             <p className="text-sm text-muted-foreground">Loading approvals...</p>
           </div>
         ) : filteredApprovals.length > 0 ? (
-          <div className="space-y-3">
-            {filteredApprovals.map((task, index) => {
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2 items-stretch">
+            {paginatedApprovals.map((task, index) => {
               const staffPreview = getStaffUpdatePreview(task);
               const headline = formatTaskText(task.title) || 'Untitled request';
               const summary = getRequestSummary(task);
@@ -460,159 +776,141 @@ export default function Approvals() {
               return (
                 <div
                   key={task.id}
-                  className="relative overflow-hidden rounded-[22px] border border-[#D5E2FF]/55 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 p-3.5 backdrop-blur-2xl ring-1 ring-[#E3ECFF]/45 animate-slide-up dark:border-[#2F4F8F]/45 dark:ring-[#3C5FA0]/20 dark:bg-card dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent"
-                  style={{ animationDelay: `${index * 50}ms` }}
+                  className="group relative flex h-full flex-col gap-3 rounded-xl border border-[#E5ECFA] bg-white p-4 [transition:transform_220ms_cubic-bezier(0.22,0.61,0.36,1),border-color_180ms_ease-out] will-change-transform animate-slide-up hover:-translate-y-[2px] hover:border-[#C9D7FF] dark:border-[#2F4F8F]/40 dark:bg-card dark:hover:border-[#5D7EC0]/55"
+                  style={{ animationDelay: `${index * 40}ms` }}
                 >
-                  <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-[#DCE8FF]/60 blur-3xl dark:bg-[#2C56B7]/20" />
-                  <div className="pointer-events-none absolute -left-10 bottom-0 h-32 w-32 rounded-full bg-[#EAF1FF]/65 blur-3xl dark:bg-[#2A49A6]/18" />
-                  <div className="pointer-events-none absolute inset-0 rounded-[22px] ring-1 ring-white/50 dark:ring-white/5" />
-
-                  <div className="relative grid gap-3 xl:grid-cols-[minmax(0,1fr)_11.5rem] xl:items-start">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge
-                          variant="pending"
-                          className="h-6 border border-border bg-card/90 px-2.5 text-[11px] text-muted-foreground"
-                        >
-                          {isAdminReviewMode ? 'Awaiting Admin Review' : 'Awaiting Approval'}
-                        </Badge>
-                        {task.urgency === 'urgent' ? (
-                          <Badge variant="urgent" className="h-6 px-2.5 text-[11px]">
-                            Urgent
-                          </Badge>
-                        ) : null}
-                        <Badge
-                          variant="outline"
-                          className="h-6 border-[#D7E3FF] bg-white/75 px-2.5 text-[11px] text-[#5B6E95] dark:border-[#3E5F9F]/55 dark:bg-[#10234F]/70 dark:text-[#DCE7FF]"
-                        >
-                          {categoryLabel}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-3 flex items-start gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-white/96 to-[#ECF3FF]/92 text-[13px] font-semibold text-[#2D3F73] ring-1 ring-white/70 dark:bg-[linear-gradient(145deg,rgba(68,99,165,0.95),rgba(33,58,112,0.92))] dark:text-[#EAF0FF] dark:ring-white/10">
-                          {requesterInitials}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <h3 className="truncate text-[1.2rem] font-semibold leading-tight text-foreground dark:text-slate-100 premium-headline">
-                              {headline}
-                            </h3>
-                            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-[#8092B2] dark:text-[#AFC2EA]">
-                              {String(task.id || '').trim() ? `Task ${String(task.id).slice(-6).toUpperCase()}` : 'Draft'}
-                            </span>
-                          </div>
-                          <p className="mt-1 line-clamp-1 text-[13px] text-muted-foreground dark:text-[#A0B4DE] premium-body">
-                            {summary}
-                          </p>
-                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#6E83A8] dark:text-[#AFC2EA]">
-                            <span>{task.requesterName || 'Unknown requester'}</span>
-                            <span className="h-1 w-1 rounded-full bg-[#CAD7EF] dark:bg-[#4868A7]" />
-                            <span>{task.requesterDepartment || 'No department'}</span>
-                            <span className="h-1 w-1 rounded-full bg-[#CAD7EF] dark:bg-[#4868A7]" />
-                            <span>{task.changeCount} change{task.changeCount === 1 ? '' : 's'}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {staffPreview ? (
-                        <div className="mt-3 rounded-xl border border-border/45 bg-card/80 px-3 py-2">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                            Staff update
-                          </p>
-                          <p className="mt-1 line-clamp-1 text-[13px] text-foreground/85">
-                            {staffPreview}
-                          </p>
-                        </div>
+                  {/* TOP ROW: status / type tag · submitted */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <span className="inline-flex items-center gap-1 font-medium text-[#5B6E95] dark:text-[#A0B4DE]">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#F5A623]" />
+                        {isAdminReviewMode ? 'Awaiting Admin Review' : 'Awaiting Approval'}
+                      </span>
+                      <span className="text-[#CAD7EF] dark:text-[#4868A7]">·</span>
+                      <span className="text-[#5B6E95] dark:text-[#A0B4DE]">{categoryLabel}</span>
+                      {task.urgency === 'urgent' ? (
+                        <>
+                          <span className="text-[#CAD7EF] dark:text-[#4868A7]">·</span>
+                          <span className="font-medium text-[#C5443A]">Urgent</span>
+                        </>
                       ) : null}
                     </div>
-
-                    <div className="flex items-start justify-between gap-3 rounded-2xl border border-white/50 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(244,248,255,0.8))] px-3.5 py-3 supports-[backdrop-filter]:bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(244,248,255,0.68))] backdrop-blur-xl dark:border-[#35548F]/50 dark:bg-[linear-gradient(180deg,rgba(12,28,67,0.88),rgba(16,35,79,0.82))]">
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8092B2] dark:text-[#AFC2EA]">
-                          Submitted
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-foreground dark:text-slate-100">
-                          {format(task.createdAt, 'MMM d, yyyy')}
-                        </p>
-                        <p className="text-[12px] text-[#6E83A8] dark:text-[#B6C7EA]">
-                          {format(task.createdAt, 'h:mm a')}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8092B2] dark:text-[#AFC2EA]">
-                          Status
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-foreground dark:text-slate-100">
-                          {isAdminReviewMode ? 'Intake Review' : 'Lead Approval'}
-                        </p>
-                        <p className="text-[12px] text-[#6E83A8] dark:text-[#B6C7EA]">
-                          {task.urgency === 'urgent' ? 'High attention' : 'Standard queue'}
-                        </p>
-                      </div>
-                    </div>
+                    <p className="shrink-0 text-[11px] text-[#7E8DAB] dark:text-[#8FA7E6]/80">
+                      {format(task.createdAt, 'MMM d · h:mm a')}
+                    </p>
                   </div>
 
-                  <div className="relative mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#D9E6FF]/45 pt-3 dark:border-[#2F4F8E]/40">
-                    <div className="flex flex-wrap items-center gap-1.5">
+                  {/* IDENTITY ROW: avatar · title · stage */}
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF4FF] text-[12px] font-semibold text-[#3657C9] dark:bg-[#10234F]/70 dark:text-[#8FA7E6]">
+                      {requesterInitials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <h3 className="truncate text-[15px] font-semibold leading-tight text-[#1E2A5A] dark:text-slate-100">
+                          {headline}
+                        </h3>
+                        <span className="text-[11px] font-mono text-[#8092B2] dark:text-[#AFC2EA]">
+                          {String(task.id || '').trim()
+                            ? String(task.id).slice(-6).toUpperCase()
+                            : 'DRAFT'}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 line-clamp-1 text-[12.5px] leading-5 text-[#6E83A8] dark:text-[#A0B4DE]">
+                        {summary}
+                      </p>
+                    </div>
+                    <span className="shrink-0 self-start text-[10.5px] font-medium uppercase tracking-[0.08em] text-[#7E8DAB] dark:text-[#AFC2EA]">
+                      {isAdminReviewMode ? 'Intake' : 'Lead'}
+                    </span>
+                  </div>
+
+                  {/* META ROW: subtle inline meta */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-[#7E8DAB] dark:text-[#8FA7E6]/85">
+                    <span className="text-[#5B6E95] dark:text-[#A0B4DE]">
+                      {task.requesterName || 'Unknown requester'}
+                    </span>
+                    <span className="text-[#CAD7EF] dark:text-[#4868A7]">·</span>
+                    <span>{task.requesterDepartment || 'No department'}</span>
+                    <span className="text-[#CAD7EF] dark:text-[#4868A7]">·</span>
+                    <span>
+                      {task.changeCount} change{task.changeCount === 1 ? '' : 's'}
+                    </span>
+                  </div>
+
+                  {/* STAFF UPDATE PREVIEW */}
+                  {staffPreview ? (
+                    <div className="rounded-md bg-[#F8FBFF] px-3 py-2 dark:bg-[#0F1D39]/50">
+                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#7E8DAB] dark:text-[#AFC2EA]">
+                        Staff update
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-5 text-[#3D4A6E] dark:text-slate-300">
+                        {staffPreview}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {/* FOOTER ACTIONS */}
+                  <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-2">
+                    <div className="flex items-center gap-1">
                       <Button
                         variant="default"
                         size="sm"
-                        className="h-8 gap-1.5 rounded-lg px-3.5 border border-white/35 bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-none hover:bg-primary/85 dark:border-transparent"
+                        className="h-8 gap-1.5 rounded-md px-3 bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] text-[12px] font-semibold text-white shadow-none transition-colors hover:brightness-[1.04] active:translate-y-[1px] dark:bg-[linear-gradient(135deg,#4E6FE0,#3E5FD6_55%,#3150C8)]"
                         onClick={() => handleDecision(task.id, 'approved')}
                         disabled={processingId === task.id}
                       >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
                         {processingId === task.id ? 'Processing...' : 'Approve'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 rounded-md px-2.5 text-[12px] font-medium text-[#5B6E95] hover:bg-[#F5F8FF] hover:text-[#1E2A5A] dark:text-[#A0B4DE] dark:hover:bg-[#10234F]/60 dark:hover:text-slate-100"
+                        onClick={() =>
+                          isDesignLeadReviewMode
+                            ? openRejectModal(task)
+                            : handleDecision(task.id, 'rejected')
+                        }
+                        disabled={processingId === task.id}
+                      >
+                        Reject
                       </Button>
                       {isAdminReviewMode ? (
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
-                          className="h-8 gap-1.5 rounded-lg border-transparent px-3 text-foreground hover:bg-muted/60 dark:border-transparent dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
+                          className="h-8 rounded-md px-2.5 text-[12px] font-medium text-[#5B6E95] hover:bg-[#F5F8FF] hover:text-[#1E2A5A] dark:text-[#A0B4DE] dark:hover:bg-[#10234F]/60 dark:hover:text-slate-100"
                           onClick={() => openRequestChangesModal(task)}
                           disabled={processingId === task.id}
                         >
-                          <MessageSquare className="h-3.5 w-3.5" />
                           Request Changes
                         </Button>
                       ) : null}
                       {isAdminReviewMode ? (
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
-                          className="h-8 gap-1.5 rounded-lg border-transparent px-3 text-foreground hover:bg-muted/60 dark:border-transparent dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
+                          className="h-8 rounded-md px-2.5 text-[12px] font-medium text-[#5B6E95] hover:bg-[#F5F8FF] hover:text-[#1E2A5A] dark:text-[#A0B4DE] dark:hover:bg-[#10234F]/60 dark:hover:text-slate-100"
                           onClick={() => openTaskBriefEditor(task)}
                           disabled={processingId === task.id}
                         >
-                          <Edit3 className="h-3.5 w-3.5" />
                           Edit Brief
                         </Button>
                       ) : null}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5 rounded-lg border-transparent px-3 text-foreground hover:bg-muted/60 dark:border-transparent dark:bg-[#0D1C45]/75 dark:text-slate-100 dark:hover:bg-[#173267]/80"
-                        onClick={() => handleDecision(task.id, 'rejected')}
-                        disabled={processingId === task.id}
-                      >
-                        <XCircle className="h-3.5 w-3.5" />
-                        Reject
-                      </Button>
                     </div>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       asChild
-                      className="group h-8 rounded-full border border-[#CADBFF]/55 bg-[#F5F8FF]/85 px-3.5 text-[#233A71] shadow-none transition-all duration-200 hover:border-[#AEC6FF]/70 hover:bg-[#EEF4FF] hover:text-[#162A5D] dark:border-[#3E5F9F]/55 dark:bg-[#10234F]/70 dark:text-[#DCE7FF] dark:hover:border-[#5D7EC0]/65 dark:hover:bg-[#17356B]/78"
+                      className="h-8 gap-1.5 rounded-md px-2.5 text-[12px] font-medium text-[#3657C9] hover:bg-[#EEF4FF] hover:text-[#1E2A5A] dark:text-[#8FA7E6] dark:hover:bg-[#17356B]/60"
                     >
                       <Link
                         to={`/task/${task.id}`}
                         state={{ task, focusSection: 'change-history' }}
-                        className="inline-flex items-center gap-1.5 font-medium"
+                        className="inline-flex items-center gap-1.5"
                       >
                         <Eye className="h-3.5 w-3.5" />
-                        Review Details
+                        Details
                       </Link>
                     </Button>
                   </div>
@@ -623,12 +921,76 @@ export default function Approvals() {
         ) : (
           <div className="text-center py-16 bg-card rounded-xl border border-border animate-fade-in">
             <FileCheck className="h-12 w-12 text-status-completed mx-auto mb-3" />
-            <h3 className="font-medium text-foreground">All caught up!</h3>
+            <h3 className="font-medium text-foreground">
+              {hasActiveFilters ? 'No matches' : 'All caught up!'}
+            </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              No pending {isAdminReviewMode ? 'reviews' : 'approvals'} at the moment
+              {hasActiveFilters
+                ? 'No requests match the current filters.'
+                : `No pending ${isAdminReviewMode ? 'reviews' : 'approvals'} at the moment`}
             </p>
+            {hasActiveFilters ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-4 h-9 rounded-lg px-3 text-[12.5px]"
+                onClick={resetFilters}
+              >
+                Clear filters
+              </Button>
+            ) : null}
           </div>
         )}
+
+        {totalPages > 1 ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-[#D9E6FF] bg-white px-3 py-2 dark:border-[#2F4F8F]/45 dark:bg-card">
+            <p className="text-[12px] text-muted-foreground">
+              Page {safePage} of {totalPages}
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+                className="h-8 gap-1 rounded-lg border-[#D9E6FF] bg-white px-2 text-[12px] shadow-none hover:bg-[#EEF4FF] disabled:opacity-50 dark:border-[#2F4F8F]/45 dark:bg-card"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Prev
+              </Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <Button
+                  key={page}
+                  type="button"
+                  variant={page === safePage ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCurrentPage(page)}
+                  className={cn(
+                    'h-8 min-w-[32px] rounded-lg px-2 text-[12px] font-medium shadow-none',
+                    page === safePage
+                      ? 'bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] text-white hover:brightness-[1.05] dark:bg-[linear-gradient(135deg,#4E6FE0,#3E5FD6_55%,#3150C8)]'
+                      : 'border-[#D9E6FF] bg-white hover:bg-[#EEF4FF] dark:border-[#2F4F8F]/45 dark:bg-card'
+                  )}
+                >
+                  {page}
+                </Button>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+                className="h-8 gap-1 rounded-lg border-[#D9E6FF] bg-white px-2 text-[12px] shadow-none hover:bg-[#EEF4FF] disabled:opacity-50 dark:border-[#2F4F8F]/45 dark:bg-card"
+              >
+                Next
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <Dialog open={Boolean(requestChangesTask)} onOpenChange={handleRequestChangesModalChange}>
@@ -701,6 +1063,137 @@ export default function Approvals() {
             >
               {isRequestChangesSubmitting ? 'Sending...' : 'Send request'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(rejectTask)} onOpenChange={handleRejectModalChange}>
+        <DialogContent
+          className="grid max-h-[88vh] grid-rows-[auto_1fr_auto] gap-0 overflow-hidden rounded-xl border border-[#E5ECFA] bg-white p-0 shadow-[0_18px_48px_-24px_rgba(31,53,114,0.18)] sm:max-w-[560px] dark:border-[#2F4F8F]/45 dark:bg-card"
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !(event.metaKey || event.ctrlKey)) {
+              const target = event.target as HTMLElement | null;
+              if (target?.tagName !== 'TEXTAREA') {
+                event.preventDefault();
+              }
+            }
+          }}
+        >
+          <DialogHeader className="space-y-1 px-6 pb-4 pt-5 text-left sm:text-left">
+            <DialogTitle className="text-[17px] font-semibold leading-tight tracking-[-0.01em] text-[#1E2A5A] dark:text-slate-100">
+              Reject Request
+            </DialogTitle>
+            <DialogDescription className="text-[12.5px] leading-5 text-[#6E83A8] dark:text-[#A0B4DE]">
+              Select a reason or enter a custom explanation visible to the requester.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="overflow-y-auto px-6 pb-5 space-y-5">
+            <div className="space-y-3">
+              <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#7E8DAB] dark:text-[#AFC2EA]">
+                Quick Select Reasons
+              </p>
+              <div className="space-y-3">
+                {REJECTION_TEMPLATES.map((group) => (
+                  <div key={group.group} className="space-y-1.5">
+                    <p className="text-[11px] font-medium text-[#5B6E95] dark:text-[#A0B4DE]">
+                      {group.group}
+                    </p>
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                      {group.items.map((item) => {
+                        const isSelected = selectedRejectionLabels.includes(item.label);
+                        return (
+                          <button
+                            key={item.label}
+                            type="button"
+                            role="checkbox"
+                            aria-checked={isSelected}
+                            onClick={() => toggleRejectionTemplate(item.label)}
+                            disabled={isRejectSubmitting}
+                            className={cn(
+                              'flex h-9 items-center gap-2 rounded-md border px-3 text-left text-[12.5px] font-medium transition-colors disabled:opacity-60',
+                              isSelected
+                                ? 'border-[#4A68D8] bg-[#EEF4FF] text-[#1E2A5A] dark:border-[#5D7EC0] dark:bg-[#17356B]/70 dark:text-[#DCE7FF]'
+                                : 'border-[#E5ECFA] bg-white text-[#5B6E95] hover:border-[#C9D7FF] hover:bg-[#F5F8FF] hover:text-[#1E2A5A] dark:border-[#2F4F8F]/45 dark:bg-card dark:text-[#A0B4DE] dark:hover:bg-[#10234F]/60 dark:hover:text-slate-100'
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors',
+                                isSelected
+                                  ? 'border-[#4A68D8] bg-[#4A68D8] text-white dark:border-[#5D7EC0] dark:bg-[#5D7EC0]'
+                                  : 'border-[#C9D7FF] bg-white dark:border-[#2F4F8F]/55 dark:bg-transparent'
+                              )}
+                              aria-hidden="true"
+                            >
+                              {isSelected ? (
+                                <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M2.5 6.2L4.7 8.4L9.5 3.6" />
+                                </svg>
+                              ) : null}
+                            </span>
+                            <span className="truncate">{item.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="reject-reason-note"
+                className="text-[13px] font-medium leading-5 text-[#1E2A5A] dark:text-slate-100"
+              >
+                Rejection Reason
+              </Label>
+              <p className="text-[11.5px] leading-4 text-[#7E8DAB] dark:text-[#A0B4DE]">
+                {selectedRejectionLabels.length === 0
+                  ? 'Type a custom message or pick one or more reasons above.'
+                  : selectedRejectionLabels.length === 1
+                    ? `Using "${selectedRejectionLabels[0]}" — edit the text below if needed.`
+                    : `${selectedRejectionLabels.length} reasons selected — edit or combine the text below.`}
+              </p>
+              <Textarea
+                id="reject-reason-note"
+                value={rejectReason}
+                onChange={(event) => handleRejectReasonChange(event.target.value)}
+                placeholder="Select a reason above or type a custom rejection note."
+                className="min-h-[130px] resize-y rounded-md border-[#E5ECFA] px-3 py-2.5 text-[13.5px] leading-6 text-[#1E2A5A] placeholder:text-[#9AA7BF] shadow-none focus-visible:border-[#4A68D8] focus-visible:ring-1 focus-visible:ring-[#C9D7FF] dark:border-[#2F4F8F]/45 dark:text-slate-100"
+                disabled={isRejectSubmitting}
+                maxLength={500}
+              />
+              <p className="text-[11.5px] leading-4 text-[#7E8DAB] dark:text-[#A0B4DE]">
+                Visible to the requester.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-[#E5ECFA] bg-white px-6 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-[#2F4F8F]/45 dark:bg-card">
+            <p className="text-[11.5px] text-[#7E8DAB] dark:text-[#A0B4DE]">
+              {rejectReason.trim().length}/500
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => handleRejectModalChange(false)}
+                disabled={isRejectSubmitting}
+                className="h-9 rounded-md px-3.5 text-[13px] font-medium text-[#5B6E95] hover:bg-[#F5F8FF] hover:text-[#1E2A5A] dark:text-[#A0B4DE] dark:hover:bg-[#10234F]/60 dark:hover:text-slate-100"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleRejectSubmit()}
+                disabled={isRejectSubmitting || !rejectReason.trim()}
+                className="h-9 rounded-md px-3.5 bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] text-[13px] font-semibold text-white shadow-none transition-colors hover:brightness-[1.04] active:translate-y-[1px] dark:bg-[linear-gradient(135deg,#4E6FE0,#3E5FD6_55%,#3150C8)]"
+              >
+                {isRejectSubmitting ? 'Rejecting...' : 'Reject Request'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

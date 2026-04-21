@@ -1,0 +1,131 @@
+/*
+ * SMVEC Brand Guidelines — official font package.
+ *
+ *   "Google Sans"          — 17pt text-optimised cut (body, UI, most headings)
+ *   "Google Sans Display"  — display cut (editorial display sizes)
+ *   "Great Vibes"          — anniversary script, RESERVED for the 26 YEARS mark only
+ *
+ * Google Sans is self-hosted via Cloudinary. Great Vibes is loaded from Google Fonts.
+ * Loaded only when /brand-guidelines/* mounts (BrandLayout imports this file).
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap');
+
+/* ─── Google Sans (17pt — text / body) ──────────────────────────────────── */
+
+@font-face {
+  font-family: 'Google Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793306/GoogleSans_17pt-Regular_dkv56g.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793306/GoogleSans_17pt-Italic_vkuf3z.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793305/GoogleSans_17pt-Medium_zjwu0s.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793307/GoogleSans_17pt-MediumItalic_el13bf.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793306/GoogleSans_17pt-SemiBold_uj91km.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793308/GoogleSans_17pt-SemiBoldItalic_wc1jhw.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793305/GoogleSans_17pt-Bold_fanqzl.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793305/GoogleSans_17pt-BoldItalic_yf98ej.ttf') format('truetype');
+}
+
+/* ─── Google Sans Display (large editorial display sizes) ───────────────── */
+
+@font-face {
+  font-family: 'Google Sans Display';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793307/GoogleSans-Regular_e5hjph.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans Display';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793305/GoogleSans-Italic_ol61m5.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans Display';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793305/GoogleSans-Medium_s2kizn.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans Display';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793307/GoogleSans-MediumItalic_nzqiap.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans Display';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793307/GoogleSans-SemiBold_vm0s4a.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans Display';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793308/GoogleSans-SemiBoldItalic_htnbdo.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans Display';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793307/GoogleSans-Bold_gfmyko.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Google Sans Display';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('https://res.cloudinary.com/dofapr3pk/raw/upload/v1776793307/GoogleSans-BoldItalic_upedqq.ttf') format('truetype');
+}

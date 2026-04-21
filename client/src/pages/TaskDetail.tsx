@@ -74,6 +74,7 @@ import {
   MoreHorizontal,
   Search,
   Archive,
+  Mail,
 } from 'lucide-react';
 import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import {
@@ -874,63 +875,13 @@ const WORKING_UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024;
 
 import { API_URL, authFetch, getAuthToken, getFreshAuthToken, openDriveReconnectWindow } from '@/lib/api';
 
-const shouldPromptDriveReconnect = (errorMessage?: string) => {
-  const normalized = String(errorMessage || '').toLowerCase();
-  return (
-    normalized.includes('drive oauth not connected') ||
-    normalized.includes('must be set for oauth') ||
-    normalized.includes('missing oauth code') ||
-    normalized.includes('google drive authentication failed') ||
-    normalized.includes('invalid credentials') ||
-    normalized.includes('token has been expired or revoked')
-  );
-};
-
-type DriveFolderPreviewItem = {
-  id: string;
-  name: string;
-  mimeType?: string;
-  size?: number;
-  modifiedTime?: string;
-  thumbnailUrl?: string;
-  webViewLink?: string;
-  webContentLink?: string;
-  isFolder?: boolean;
-};
-
-type DriveFolderPreviewPayload = {
-  id: string;
-  itemCount: number;
-  truncated?: boolean;
-  items: DriveFolderPreviewItem[];
-};
-
-const driveFolderPreviewCache = new Map<string, DriveFolderPreviewPayload>();
-const driveFolderPreviewPendingCache = new Map<string, Promise<DriveFolderPreviewPayload>>();
-const driveFolderPreviewImageCache = new Map<string, 'ready' | 'error'>();
-const driveFolderPreviewImagePendingCache = new Map<string, Promise<void>>();
-
-const buildDriveFolderLink = (folderId?: string) => {
-  const normalizedId = String(folderId || '').trim();
-  if (!normalizedId) return '';
-  return `https://drive.google.com/drive/folders/${encodeURIComponent(normalizedId)}`;
-};
-
-const buildDriveThumbnailUrl = (fileId?: string, size = 'w320-h320') => {
-  const normalizedId = String(fileId || '').trim();
-  if (!normalizedId) return '';
-  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(normalizedId)}&sz=${size}`;
-};
-
-const normalizeGoogleDriveUrl = (value?: string) => {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return '';
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  if (/^(?:www\.)?(?:drive|docs)\.google\.com\//i.test(trimmed)) {
-    return `https://${trimmed.replace(/^\/+/, '')}`;
-  }
-  return trimmed;
-};
+import {
+  shouldPromptDriveReconnect,
+  buildDriveFolderLink,
+  buildDriveThumbnailUrl,
+  normalizeGoogleDriveUrl,
+  DriveFolderHoverPreview,
+} from '@/lib/driveFolderPreview';
 
 const attachRelativeUploadPath = (file: File, relativePath?: string) => {
   const normalizedPath = String(relativePath || '').trim().replace(/\\/g, '/');
@@ -1046,461 +997,6 @@ const extractDroppedUploadFiles = async (dataTransfer: DataTransfer) => {
   return extracted.flat();
 };
 
-const isImageMimeType = (mimeType?: string) =>
-  String(mimeType || '').trim().toLowerCase().startsWith('image/');
-
-const formatFolderPreviewFileSize = (bytes?: number) => {
-  if (!Number.isFinite(Number(bytes)) || Number(bytes) <= 0) return '';
-  const normalized = Number(bytes);
-  if (normalized < 1024) return `${normalized} B`;
-  if (normalized < 1024 * 1024) return `${Math.max(1, Math.round(normalized / 1024))} KB`;
-  return `${(normalized / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const getDriveFolderPreviewItemUrl = (item: DriveFolderPreviewItem) =>
-  String(item.thumbnailUrl || '').trim() ||
-  (item.isFolder || !isImageMimeType(item.mimeType) ? '' : buildDriveThumbnailUrl(item.id));
-
-const preloadDriveFolderPreviewImage = (value?: string) => {
-  const url = String(value || '').trim();
-  if (!url) return Promise.resolve();
-
-  const cachedStatus = driveFolderPreviewImageCache.get(url);
-  if (cachedStatus === 'ready') return Promise.resolve();
-  if (cachedStatus === 'error') {
-    return Promise.reject(new Error('Preview image unavailable.'));
-  }
-
-  const pending = driveFolderPreviewImagePendingCache.get(url);
-  if (pending) return pending;
-
-  if (typeof window === 'undefined' || typeof Image === 'undefined') {
-    return Promise.resolve();
-  }
-
-  const request = new Promise<void>((resolve, reject) => {
-    const image = new Image();
-    image.decoding = 'async';
-    image.referrerPolicy = 'no-referrer';
-    image.onload = () => {
-      driveFolderPreviewImageCache.set(url, 'ready');
-      resolve();
-    };
-    image.onerror = () => {
-      driveFolderPreviewImageCache.set(url, 'error');
-      reject(new Error('Preview image unavailable.'));
-    };
-    image.src = url;
-  }).finally(() => {
-    driveFolderPreviewImagePendingCache.delete(url);
-  });
-
-  driveFolderPreviewImagePendingCache.set(url, request);
-  return request;
-};
-
-function DriveFolderPreviewVisual({
-  item,
-  previewUrl,
-  metaLabel,
-}: {
-  item: DriveFolderPreviewItem;
-  previewUrl: string;
-  metaLabel: string;
-}) {
-  const normalizedPreviewUrl = String(previewUrl || '').trim();
-  const [loadState, setLoadState] = useState<'fallback' | 'loading' | 'ready' | 'error'>(() => {
-    if (!normalizedPreviewUrl) return 'fallback';
-    const cachedStatus = driveFolderPreviewImageCache.get(normalizedPreviewUrl);
-    if (cachedStatus === 'ready') return 'ready';
-    if (cachedStatus === 'error') return 'error';
-    return 'loading';
-  });
-
-  useEffect(() => {
-    if (!normalizedPreviewUrl) {
-      setLoadState('fallback');
-      return;
-    }
-
-    const cachedStatus = driveFolderPreviewImageCache.get(normalizedPreviewUrl);
-    if (cachedStatus === 'ready') {
-      setLoadState('ready');
-      return;
-    }
-    if (cachedStatus === 'error') {
-      setLoadState('error');
-      return;
-    }
-
-    let cancelled = false;
-    setLoadState('loading');
-    preloadDriveFolderPreviewImage(normalizedPreviewUrl)
-      .then(() => {
-        if (!cancelled) {
-          setLoadState('ready');
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLoadState('error');
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [normalizedPreviewUrl]);
-
-  const showPreview = Boolean(normalizedPreviewUrl) && loadState === 'ready';
-  const showFallback = !showPreview;
-
-  return (
-    <div className="relative aspect-square overflow-hidden rounded-lg border border-[#D9E6FF] bg-[radial-gradient(circle_at_top_left,_rgba(191,214,255,0.55),_transparent_58%),linear-gradient(160deg,_rgba(245,248,255,0.96),_rgba(225,235,255,0.82))] dark:border-border dark:bg-[linear-gradient(160deg,_rgba(30,41,59,0.95),_rgba(51,65,85,0.82))]">
-      {showFallback ? (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-1 text-center">
-            {item.isFolder ? (
-              <img
-                src="/icons/drive-folder.svg"
-                alt=""
-                aria-hidden="true"
-                className="h-8 w-8 object-contain"
-              />
-            ) : (
-              <img
-                src="/google-drive.ico"
-                alt=""
-                aria-hidden="true"
-                className="h-7 w-7 object-contain opacity-85"
-              />
-            )}
-            <span className="px-2 text-[10px] font-medium text-[#536482] dark:text-slate-200">
-              {metaLabel}
-            </span>
-            {loadState === 'loading' && normalizedPreviewUrl ? (
-              <Loader2 className="h-3 w-3 animate-spin text-[#4C63B7] dark:text-slate-200" />
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-      {showPreview ? (
-        <img
-          src={normalizedPreviewUrl}
-          alt={item.name}
-          className="relative z-10 h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-          loading="eager"
-          fetchPriority="high"
-          referrerPolicy="no-referrer"
-          onError={() => {
-            driveFolderPreviewImageCache.set(normalizedPreviewUrl, 'error');
-            setLoadState('error');
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-const fetchDriveFolderPreview = async (folderId: string, apiUrl?: string) => {
-  const normalizedFolderId = String(folderId || '').trim();
-  if (!normalizedFolderId) {
-    throw new Error('Folder link is missing.');
-  }
-
-  const cached = driveFolderPreviewCache.get(normalizedFolderId);
-  if (cached) return cached;
-
-  if (!apiUrl) {
-    throw new Error('Backend is required for folder preview.');
-  }
-
-  const pending = driveFolderPreviewPendingCache.get(normalizedFolderId);
-  if (pending) return pending;
-
-  const request = authFetch(`${apiUrl}/api/files/folder-preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ folderId: normalizedFolderId }),
-  })
-    .then(async (response) => {
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load folder preview.');
-      }
-      const payload = data as DriveFolderPreviewPayload;
-      driveFolderPreviewCache.set(normalizedFolderId, payload);
-      payload.items.slice(0, 12).forEach((item) => {
-        const previewUrl = getDriveFolderPreviewItemUrl(item);
-        if (previewUrl) {
-          void preloadDriveFolderPreviewImage(previewUrl);
-        }
-      });
-      return payload;
-    })
-    .finally(() => {
-      driveFolderPreviewPendingCache.delete(normalizedFolderId);
-    });
-
-  driveFolderPreviewPendingCache.set(normalizedFolderId, request);
-  return request;
-};
-
-const prefetchDriveFolderPreview = (folderId: string, apiUrl?: string) => {
-  void fetchDriveFolderPreview(folderId, apiUrl).catch(() => {});
-};
-
-function DriveFolderHoverPreview({
-  folderId,
-  apiUrl,
-  depth = 0,
-}: {
-  folderId: string;
-  apiUrl?: string;
-  depth?: number;
-}) {
-  const normalizedFolderId = String(folderId || '').trim();
-  const isNestedPreview = depth > 0;
-  const previewGridClass = isNestedPreview ? 'grid-cols-2' : 'grid-cols-3';
-  const skeletonCount = isNestedPreview ? 4 : 6;
-  const [previewState, setPreviewState] = useState<{
-    status: 'idle' | 'loading' | 'ready' | 'error';
-    data: DriveFolderPreviewPayload | null;
-    error: string;
-  }>(() => {
-    const cached = normalizedFolderId ? driveFolderPreviewCache.get(normalizedFolderId) : null;
-    return cached
-      ? { status: 'ready', data: cached, error: '' }
-      : { status: 'idle', data: null, error: '' };
-  });
-
-  useEffect(() => {
-    if (!normalizedFolderId) {
-      setPreviewState({ status: 'error', data: null, error: 'Folder link is missing.' });
-      return;
-    }
-
-    const cached = driveFolderPreviewCache.get(normalizedFolderId);
-    if (cached) {
-      setPreviewState({ status: 'ready', data: cached, error: '' });
-      return;
-    }
-
-    if (!apiUrl) {
-      setPreviewState({ status: 'error', data: null, error: 'Backend is required for folder preview.' });
-      return;
-    }
-
-    let cancelled = false;
-    setPreviewState({ status: 'loading', data: null, error: '' });
-
-    fetchDriveFolderPreview(normalizedFolderId, apiUrl)
-      .then((data) => {
-        if (cancelled) return;
-        setPreviewState({ status: 'ready', data, error: '' });
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setPreviewState({
-          status: 'error',
-          data: null,
-          error: String(error?.message || 'Failed to load folder preview.'),
-        });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [apiUrl, normalizedFolderId]);
-
-  useEffect(() => {
-    if (!apiUrl || depth > 0 || previewState.status !== 'ready') return;
-    const folderItems = (previewState.data?.items || [])
-      .filter((item) => item.isFolder && item.id && item.id !== normalizedFolderId)
-      .slice(0, 6);
-    folderItems.forEach((item) => prefetchDriveFolderPreview(item.id, apiUrl));
-  }, [apiUrl, depth, normalizedFolderId, previewState.data, previewState.status]);
-
-  useEffect(() => {
-    if (previewState.status !== 'ready') return;
-    (previewState.data?.items || []).slice(0, 12).forEach((item) => {
-      const previewUrl = getDriveFolderPreviewItemUrl(item);
-      if (previewUrl) {
-        void preloadDriveFolderPreviewImage(previewUrl);
-      }
-    });
-  }, [previewState.data, previewState.status]);
-
-  if (previewState.status === 'loading' || previewState.status === 'idle') {
-    return (
-      <div className="rounded-xl border border-[#D9E6FF] bg-white/70 p-3 dark:border-border dark:bg-muted/20">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Folder Items
-            </p>
-            <p className="text-xs text-muted-foreground">Loading preview...</p>
-          </div>
-          <Loader2 className="h-4 w-4 animate-spin text-[#3D5A9E] dark:text-slate-200" />
-        </div>
-        <div className={cn('grid gap-2', previewGridClass)}>
-          {Array.from({ length: skeletonCount }).map((_, index) => (
-            <div key={`folder-preview-skeleton-${index}`} className="space-y-2">
-              <div className="aspect-square rounded-lg bg-[#EEF4FF] dark:bg-white/10" />
-              <div className="h-3 rounded bg-[#EEF4FF] dark:bg-white/10" />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (previewState.status === 'error') {
-    const folderHref = buildDriveFolderLink(normalizedFolderId);
-    const shouldReconnect = shouldPromptDriveReconnect(previewState.error);
-    return (
-      <div className="rounded-xl border border-[#F0D4D4] bg-[#FFF7F7] p-4 dark:border-red-500/35 dark:bg-red-950/15">
-        <p className="text-sm font-medium text-[#8E3A3A] dark:text-red-200">
-          {previewState.error}
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {shouldReconnect ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={async () => {
-                try {
-                  await openDriveReconnectWindow();
-                } catch (error) {
-                  const message =
-                    error instanceof Error && error.message
-                      ? error.message
-                      : 'Failed to get Drive reconnect URL.';
-                  toast.error('Drive reconnect failed', { description: message });
-                }
-              }}
-              className="h-8 rounded-lg border-[#E2B4B4] bg-white px-3 text-xs font-semibold text-[#8E3A3A] hover:bg-[#FFF1F1] dark:border-red-400/40 dark:bg-red-950/20 dark:text-red-100 dark:hover:bg-red-950/30"
-            >
-              Reconnect Drive
-            </Button>
-          ) : null}
-          {folderHref ? (
-            <a
-              href={folderHref}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#E2B4B4] bg-white px-3 text-xs font-semibold text-[#8E3A3A] transition-colors hover:bg-[#FFF1F1] dark:border-red-400/40 dark:bg-red-950/20 dark:text-red-100 dark:hover:bg-red-950/30"
-            >
-              Open folder
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          ) : null}
-        </div>
-      </div>
-    );
-  }
-
-  const previewData = previewState.data;
-  const items = previewData?.items || [];
-
-  if (items.length === 0) {
-    return (
-      <div className="rounded-xl border border-[#D9E6FF] bg-white/70 p-3 dark:border-border dark:bg-muted/20">
-        <p className="text-sm font-medium text-foreground">This folder is empty.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border border-[#D9E6FF] bg-white/70 p-3 dark:border-border dark:bg-muted/20">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Folder Items
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {previewData?.itemCount || items.length} item
-            {(previewData?.itemCount || items.length) === 1 ? '' : 's'}
-            {previewData?.truncated ? ' shown from this folder' : ''}
-          </p>
-        </div>
-      </div>
-      <div className={cn('overflow-y-auto pr-1 scrollbar-thin', isNestedPreview ? 'max-h-[13rem]' : 'max-h-[16rem]')}>
-        <div className={cn('grid gap-2', previewGridClass)}>
-          {items.map((item) => {
-            const href =
-              String(item.webViewLink || '').trim() ||
-              (item.isFolder ? buildDriveFolderLink(item.id) : '');
-            const previewUrl = getDriveFolderPreviewItemUrl(item);
-            const metaLabel = item.isFolder
-              ? 'Folder'
-              : formatFolderPreviewFileSize(item.size) || 'Drive file';
-            const tile = (
-              <>
-                <DriveFolderPreviewVisual
-                  item={item}
-                  previewUrl={previewUrl}
-                  metaLabel={metaLabel}
-                />
-                <p className="mt-1 truncate text-[10px] font-medium text-foreground">
-                  {item.name}
-                </p>
-                <p className="truncate text-[10px] text-muted-foreground">{metaLabel}</p>
-              </>
-            );
-
-            if (!item.isFolder) {
-              return (
-                <a
-                  key={item.id}
-                  href={href || undefined}
-                  target={href ? '_blank' : undefined}
-                  rel={href ? 'noreferrer' : undefined}
-                  className="group block"
-                >
-                  {tile}
-                </a>
-              );
-            }
-
-            return (
-              <HoverCard key={item.id} openDelay={80} closeDelay={100}>
-                <HoverCardTrigger asChild>
-                  <a
-                    href={href || undefined}
-                    target={href ? '_blank' : undefined}
-                    rel={href ? 'noreferrer' : undefined}
-                    className="group block"
-                    onMouseEnter={() => prefetchDriveFolderPreview(item.id, apiUrl)}
-                    onFocus={() => prefetchDriveFolderPreview(item.id, apiUrl)}
-                  >
-                    {tile}
-                  </a>
-                </HoverCardTrigger>
-                <HoverCardContent
-                  side="right"
-                  align="start"
-                  sideOffset={10}
-                  className="w-[20rem] max-w-[calc(100vw-2rem)] border-[#D9E6FF] bg-white/95 p-3 dark:border-border dark:bg-card"
-                >
-                  <div className="space-y-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-foreground">{item.name}</p>
-                      <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                        Subfolder Preview
-                      </p>
-                    </div>
-                    <DriveFolderHoverPreview folderId={item.id} apiUrl={apiUrl} depth={depth + 1} />
-                  </div>
-                </HoverCardContent>
-              </HoverCard>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function AttachmentThumbnail({
   previewUrls,
@@ -1701,6 +1197,9 @@ function TaskDetailScreen() {
   const [isUpdatingFinalVersionNote, setIsUpdatingFinalVersionNote] = useState(false);
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [isAcceptingTask, setIsAcceptingTask] = useState(false);
+  const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
+  const [isDecliningTask, setIsDecliningTask] = useState(false);
   const [emergencyDecisionReason, setEmergencyDecisionReason] = useState('');
   const [showWorkingFileList, setShowWorkingFileList] = useState(true);
   const [showFinalDeliverableList, setShowFinalDeliverableList] = useState(true);
@@ -6765,6 +6264,99 @@ function TaskDetailScreen() {
     }
   };
 
+  const openDeclineModal = () => {
+    setDeclineReason('');
+    setIsDeclineModalOpen(true);
+  };
+
+  const handleDeclineModalChange = (open: boolean) => {
+    if (!open) {
+      if (isDecliningTask) return;
+      setIsDeclineModalOpen(false);
+      setDeclineReason('');
+    } else {
+      setIsDeclineModalOpen(true);
+    }
+  };
+
+  const appendDeclineTemplate = (template: string) => {
+    setDeclineReason((current) => {
+      const trimmed = current.trim();
+      if (!trimmed) return template;
+      if (trimmed.includes(template)) return current;
+      return `${trimmed}\n${template}`;
+    });
+  };
+
+  const handleDeclineTask = async () => {
+    if (!taskState) return;
+    if (!ensureWritableTask()) return;
+    if (!apiUrl) {
+      toast.error('Task decline API is not configured.');
+      return;
+    }
+    const reason = declineReason.trim();
+    if (!reason) {
+      toast.message('Please provide a reason before declining.');
+      return;
+    }
+    const taskId = taskState.id || (taskState as { _id?: string })._id || '';
+    if (!taskId) {
+      toast.error('Task not found.');
+      return;
+    }
+
+    setIsDecliningTask(true);
+    try {
+      const response = await authFetch(`${apiUrl}/api/tasks/${taskId}/decline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to decline task.');
+      }
+
+      const updatedTaskRaw = (payload?.task || payload) as any;
+      const hydrated = withAccessMetadata(
+        hydrateTask({
+          ...updatedTaskRaw,
+          id: updatedTaskRaw?.id || updatedTaskRaw?._id || taskId,
+        } as typeof mockTasks[number]),
+        taskState
+      );
+      if (hydrated) {
+        setTaskState(hydrated);
+        setChangeHistory(hydrated.changeHistory ?? []);
+        setChangeCount(hydrated.changeCount ?? 0);
+        setApprovalStatus(hydrated.approvalStatus);
+        persistTask(hydrated);
+      }
+      toast.success('Task declined.', {
+        description: 'The assignment manager has been notified with your reason.',
+      });
+      setIsDeclineModalOpen(false);
+      setDeclineReason('');
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to decline task.';
+      toast.error(message);
+    } finally {
+      setIsDecliningTask(false);
+    }
+  };
+
+  const DECLINE_REASON_TEMPLATES: Array<{ label: string; text: string }> = [
+    { label: 'Unclear brief', text: 'The brief is unclear or incomplete; please add more context.' },
+    { label: 'Out of scope', text: 'This scope falls outside my current expertise.' },
+    { label: 'Capacity', text: 'I am currently overloaded and cannot deliver on time.' },
+    { label: 'Deadline', text: 'The proposed deadline is not feasible for this scope.' },
+    { label: 'Missing assets', text: 'Required reference files or brand assets are missing.' },
+  ];
+
   const getLatestFinalVersionIdFromTask = (task?: typeof taskState) => {
     const versions = Array.isArray(task?.finalDeliverableVersions)
       ? task.finalDeliverableVersions
@@ -7064,7 +6656,20 @@ function TaskDetailScreen() {
         }
       );
       if (!applied) return;
-      toast.success(decision === 'approved' ? 'Request approved.' : 'Request rejected.');
+      const actorRoleLabel =
+        user?.role === 'admin'
+          ? 'Admin'
+          : user?.role === 'treasurer'
+            ? 'Treasurer'
+            : user?.role === 'designer' && isMainDesigner(user)
+              ? 'Design Lead'
+              : 'Reviewer';
+      toast.success(
+        decision === 'approved'
+          ? `Approved by ${actorRoleLabel}`
+          : `Rejected by ${actorRoleLabel}`,
+        { description: 'Staff has been notified of the decision.' }
+      );
     } finally {
       setApprovalDecisionInFlight(null);
     }
@@ -10973,22 +10578,111 @@ function TaskDetailScreen() {
                   <div>
                     <h2 className="font-semibold text-foreground">Task Acceptance</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Confirm this assignment before starting task updates.
+                      Confirm this assignment before starting task updates, or decline with a reason.
                     </p>
                   </div>
-                  <Button onClick={handleAcceptTask} disabled={isAcceptingTask}>
-                    {isAcceptingTask ? (
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Accepting...
-                      </span>
-                    ) : (
-                      'Accept Task'
-                    )}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={openDeclineModal}
+                      disabled={isAcceptingTask || isDecliningTask}
+                      className="h-10 gap-2 rounded-full border-[#D9E6FF] bg-[#F8FBFF] text-[#1E2A5A] shadow-none hover:bg-[#EEF4FF] dark:border-white/10 dark:bg-slate-900/70 dark:text-white dark:hover:bg-slate-900/80"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Decline
+                    </Button>
+                    <Button onClick={handleAcceptTask} disabled={isAcceptingTask || isDecliningTask}>
+                      {isAcceptingTask ? (
+                        <span className="inline-flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Accepting...
+                        </span>
+                      ) : (
+                        'Accept Task'
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
+
+            <Dialog open={isDeclineModalOpen} onOpenChange={handleDeclineModalChange}>
+              <DialogContent className="gap-0 overflow-hidden border-[#DDE5F2] bg-white p-0 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.28)] sm:max-w-xl dark:border-border dark:bg-card">
+                <DialogHeader className="space-y-1 border-b border-border/60 px-5 py-4">
+                  <DialogTitle className="text-[20px] font-semibold leading-6 text-foreground">
+                    Decline task
+                  </DialogTitle>
+                  <DialogDescription className="text-[13px] leading-5 text-muted-foreground">
+                    Share why you can't take this assignment so the manager can reassign or update the brief.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 px-5 py-4">
+                  <div className="space-y-2">
+                    <p className="text-[12px] font-medium leading-4 text-muted-foreground">
+                      Quick reasons
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {DECLINE_REASON_TEMPLATES.map((template) => (
+                        <Button
+                          key={template.label}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 rounded-full border-border/80 bg-transparent px-2.5 text-[12px] font-normal text-muted-foreground shadow-none hover:bg-muted/50 hover:text-foreground dark:bg-transparent"
+                          onClick={() => appendDeclineTemplate(template.text)}
+                          disabled={isDecliningTask}
+                        >
+                          {template.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="task-decline-reason"
+                      className="text-[13px] font-medium leading-5 text-foreground"
+                    >
+                      Reason
+                    </Label>
+                    <Textarea
+                      id="task-decline-reason"
+                      value={declineReason}
+                      onChange={(event) => setDeclineReason(event.target.value)}
+                      placeholder="Example: I'm at capacity this week and won't be able to deliver by the deadline."
+                      className="min-h-[140px] resize-y rounded-lg border-border/80 px-3.5 py-3 text-[14px] leading-6 shadow-none focus-visible:ring-1 focus-visible:ring-[#C8D7FF] dark:border-border"
+                      disabled={isDecliningTask}
+                      maxLength={500}
+                    />
+                    <p className="text-[12px] leading-4 text-muted-foreground">
+                      Visible to the manager who assigned this task.
+                    </p>
+                  </div>
+                </div>
+
+                <DialogFooter className="border-t border-border/60 px-5 py-3 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => handleDeclineModalChange(false)}
+                    disabled={isDecliningTask}
+                    className="h-9 px-4 text-sm font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void handleDeclineTask()}
+                    disabled={isDecliningTask || !declineReason.trim()}
+                    className="h-9 px-4 text-sm font-medium"
+                  >
+                    {isDecliningTask ? 'Declining...' : 'Decline task'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {/* Status Update (Designer/Admin only) */}
             {canDesignerActions && !isCampaignRequest && normalizedTaskStatus !== 'completed' && (
@@ -13100,9 +12794,18 @@ function TaskDetailScreen() {
       </div>
       </div>
       <Dialog open={isAssignModalOpen} onOpenChange={handleAssignModalChange}>
-        <DialogContent className={`sm:max-w-xl ${assignPanelClassName} dark:border-0`}>
-          <DialogHeader>
-            <DialogTitle>Assign Designer</DialogTitle>
+        <DialogContent
+          className={cn(
+            'sm:max-w-xl',
+            assignPanelClassName,
+            'dark:border-0',
+            assignSuccessInfo && 'sm:max-w-md shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)]'
+          )}
+        >
+          <DialogHeader className={assignSuccessInfo ? 'sr-only' : undefined}>
+            <DialogTitle>
+              {assignSuccessInfo ? 'Designer assigned' : 'Assign Designer'}
+            </DialogTitle>
             <DialogDescription>
               {assignSuccessInfo
                 ? `Assignment submitted for "${assignSuccessInfo.taskTitle}".`
@@ -13113,26 +12816,41 @@ function TaskDetailScreen() {
           </DialogHeader>
 
           {assignSuccessInfo ? (
-            <div className="rounded-xl border border-[#D9E6FF] bg-[#F5F8FF] p-4 dark:border-[#2A3C6B]/70 dark:bg-[#0F1D39]/80">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 rounded-full bg-[#EAF0FF] p-1.5 text-[#34429D] dark:bg-[#1A315E] dark:text-[#AFC5FF]">
-                  <CheckCircle2 className="h-4 w-4" />
+            <div className="px-1 pb-2 pt-1">
+              <div className="flex items-start gap-3.5">
+                <div className="relative shrink-0">
+                  <div className="pointer-events-none absolute inset-0 rounded-xl bg-[#4A68D8]/25 blur-md dark:bg-[#4E6FE0]/30" />
+                  <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] shadow-[inset_0_1px_0_rgba(255,255,255,0.28),inset_0_0_0_1px_rgba(255,255,255,0.12)] dark:bg-[linear-gradient(135deg,#4E6FE0,#3E5FD6_55%,#3150C8)]">
+                    <Check className="h-5 w-5 text-white" strokeWidth={2.75} />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-[#1E2A5A] dark:text-[#E8EEFF]">
-                    Assignment confirmed
-                  </p>
-                  <p className="text-sm text-[#2B3F86] dark:text-[#C4D3FF]">
-                    <span className="font-medium">{assignSuccessInfo.taskTitle}</span> has been assigned to{' '}
-                    <span className="font-medium">{assignSuccessInfo.designerName}</span>.
-                  </p>
-                  <p className="text-xs text-[#4B5FA8] dark:text-[#94A9E8]">
-                    Email notification sent
-                    {assignSuccessInfo.ccCount > 0
-                      ? ` to ${assignSuccessInfo.ccCount} CC recipient(s).`
-                      : '.'}
+
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <h3 className="text-[1.05rem] font-semibold leading-tight tracking-[-0.01em] text-[#1E2A5A] dark:text-slate-100">
+                    Designer Assigned Successfully
+                  </h3>
+                  <p className="mt-1 text-[13px] leading-5 text-[#6B7A99] dark:text-slate-400">
+                    Task{' '}
+                    <span className="font-semibold text-[#223067] dark:text-slate-200">
+                      "{assignSuccessInfo.taskTitle}"
+                    </span>{' '}
+                    is now assigned to{' '}
+                    <span className="font-semibold text-[#223067] dark:text-slate-200">
+                      {assignSuccessInfo.designerName}
+                    </span>
+                    .
                   </p>
                 </div>
+              </div>
+
+              <div className="mt-5 inline-flex items-center gap-2 rounded-md border border-[#D9E6FF] bg-[#F5F8FF] px-2.5 py-1.5 text-[11.5px] font-medium text-[#4B5FA8] dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-400">
+                <Mail className="h-3.5 w-3.5 text-[#4A68D8] dark:text-[#8FA7E6]" />
+                <span>
+                  Email notification sent
+                  {assignSuccessInfo.ccCount > 0
+                    ? ` · ${assignSuccessInfo.ccCount} CC recipient${assignSuccessInfo.ccCount === 1 ? '' : 's'}`
+                    : ''}
+                </span>
               </div>
             </div>
           ) : (

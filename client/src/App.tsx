@@ -3,7 +3,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { lazy, Suspense } from "react";
 import { ScrollToTop } from "@/components/common/ScrollToTop";
+
+const BrandGuidelines = lazy(() => import("./pages/brand-guidelines/BrandGuidelines"));
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { GlobalSearchProvider } from "@/contexts/GlobalSearchContext";
@@ -69,6 +72,14 @@ const App = () => (
                   <Route path="/ai-mode" element={<AIMode />} />
                   <Route path="/help" element={<Help />} />
                   <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
+                  <Route
+                    path="/brand-guidelines/*"
+                    element={
+                      <Suspense fallback={null}>
+                        <BrandGuidelines />
+                      </Suspense>
+                    }
+                  />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </BrowserRouter>

@@ -43,6 +43,8 @@ import {
   Paperclip,
   ArrowRight,
   Plus,
+  Mail,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar as DateCalendar } from '@/components/ui/calendar';
@@ -896,12 +898,20 @@ export default function Dashboard() {
     setStorageTick((prev) => prev + 1);
   };
 
+  const actorRoleLabel = isAdminUser
+    ? 'Admin'
+    : user.role === 'treasurer'
+      ? 'Treasurer'
+      : isMainDesigner(user)
+        ? 'Design Lead'
+        : 'Reviewer';
+
   const handleApprove = async (taskId: string) => {
     setProcessingApprovalId(taskId);
     try {
       await updateApprovalStatus(taskId, 'approved');
-      toast.success('Request approved', {
-        description: 'The requester has been notified.',
+      toast.success(`Approved by ${actorRoleLabel}`, {
+        description: 'Staff has been notified of the decision.',
       });
     } catch (error) {
       const message =
@@ -916,8 +926,8 @@ export default function Dashboard() {
     setProcessingApprovalId(taskId);
     try {
       await updateApprovalStatus(taskId, 'rejected');
-      toast.success('Request rejected', {
-        description: 'The requester has been notified.',
+      toast.success(`Rejected by ${actorRoleLabel}`, {
+        description: 'Staff has been notified of the decision.',
       });
     } catch (error) {
       const message =
@@ -1024,7 +1034,7 @@ export default function Dashboard() {
           <AdminControlCenter tasks={visibleTasks} />
         ) : (
           <div className="grid gap-5 lg:grid-cols-[1.6fr,1fr]">
-            <div className="relative overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl ring-1 ring-black/5 shadow-none dark:bg-card dark:border-border dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent p-5 min-h-[242px] lg:min-h-[264px]">
+            <div className="relative overflow-hidden rounded-2xl border border-[#E5ECFA] bg-gradient-to-br from-white/85 via-white/70 to-[#E6F1FF]/75 supports-[backdrop-filter]:from-white/65 supports-[backdrop-filter]:via-white/55 supports-[backdrop-filter]:to-[#E6F1FF]/60 backdrop-blur-2xl shadow-none dark:bg-card dark:border-border dark:shadow-none dark:bg-none dark:from-transparent dark:via-transparent dark:to-transparent p-5 min-h-[242px] lg:min-h-[264px]">
               <div className="relative z-10 flex h-full flex-col justify-between gap-4">
                 <div className="space-y-2">
                   <span className="inline-flex w-fit items-center rounded-full border border-border/70 bg-secondary/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
@@ -1044,7 +1054,7 @@ export default function Dashboard() {
                   <Button
                     asChild
                     size="default"
-                    className="bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-[0_20px_40px_-22px_hsl(var(--primary)/0.55)] backdrop-blur-xl hover:bg-primary/85 hover:shadow-[0_22px_44px_-22px_hsl(var(--primary)/0.6)] transition-all duration-200"
+                    className="bg-primary/80 bg-gradient-to-r from-white/15 via-primary/80 to-primary/90 text-white shadow-none backdrop-blur-xl transition-colors duration-200 hover:bg-primary/85 hover:shadow-none"
                   >
                     <Link to="/new-request">
                       <Plus className="h-4 w-4 mr-2" />
@@ -1242,9 +1252,18 @@ export default function Dashboard() {
 
       </div>
       <Dialog open={isAssignModalOpen} onOpenChange={handleAssignModalChange}>
-        <DialogContent className={`sm:max-w-xl ${assignPanelClassName} dark:border-0`}>
-          <DialogHeader>
-            <DialogTitle>Assign Designer</DialogTitle>
+        <DialogContent
+          className={cn(
+            'sm:max-w-xl',
+            assignPanelClassName,
+            'dark:border-0',
+            assignSuccessInfo && 'sm:max-w-md shadow-[0_24px_60px_-24px_rgba(15,23,42,0.25)]'
+          )}
+        >
+          <DialogHeader className={assignSuccessInfo ? 'sr-only' : undefined}>
+            <DialogTitle>
+              {assignSuccessInfo ? 'Designer assigned' : 'Assign Designer'}
+            </DialogTitle>
             <DialogDescription>
               {assignSuccessInfo
                 ? `Assignment submitted for "${assignSuccessInfo.taskTitle}".`
@@ -1255,23 +1274,41 @@ export default function Dashboard() {
           </DialogHeader>
 
           {assignSuccessInfo ? (
-            <div className="rounded-xl border border-[#D9E6FF] bg-[#F5F8FF] p-4 dark:border-[#2A3C6B]/70 dark:bg-[#0F1D39]/80">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 rounded-full bg-[#EAF0FF] p-1.5 text-[#34429D] dark:bg-[#1A315E] dark:text-[#AFC5FF]">
-                  <CheckCircle2 className="h-4 w-4" />
+            <div className="px-1 pb-2 pt-1">
+              <div className="flex items-start gap-3.5">
+                <div className="relative shrink-0">
+                  <div className="pointer-events-none absolute inset-0 rounded-xl bg-[#4A68D8]/25 blur-md dark:bg-[#4E6FE0]/30" />
+                  <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] shadow-[inset_0_1px_0_rgba(255,255,255,0.28),inset_0_0_0_1px_rgba(255,255,255,0.12)] dark:bg-[linear-gradient(135deg,#4E6FE0,#3E5FD6_55%,#3150C8)]">
+                    <Check className="h-5 w-5 text-white" strokeWidth={2.75} />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-[#1E2A5A] dark:text-[#E8EEFF]">
-                    Assignment confirmed
-                  </p>
-                  <p className="text-sm text-[#2B3F86] dark:text-[#C4D3FF]">
-                    <span className="font-medium">{assignSuccessInfo.taskTitle}</span> has been assigned to{' '}
-                    <span className="font-medium">{assignSuccessInfo.designerName}</span>.
-                  </p>
-                  <p className="text-xs text-[#4B5FA8] dark:text-[#94A9E8]">
-                    Email notification sent{assignSuccessInfo.ccCount > 0 ? ` to ${assignSuccessInfo.ccCount} CC recipient(s).` : '.'}
+
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <h3 className="text-[1.05rem] font-semibold leading-tight tracking-[-0.01em] text-[#1E2A5A] dark:text-slate-100">
+                    Designer Assigned Successfully
+                  </h3>
+                  <p className="mt-1 text-[13px] leading-5 text-[#6B7A99] dark:text-slate-400">
+                    Task{' '}
+                    <span className="font-semibold text-[#223067] dark:text-slate-200">
+                      "{assignSuccessInfo.taskTitle}"
+                    </span>{' '}
+                    is now assigned to{' '}
+                    <span className="font-semibold text-[#223067] dark:text-slate-200">
+                      {assignSuccessInfo.designerName}
+                    </span>
+                    .
                   </p>
                 </div>
+              </div>
+
+              <div className="mt-5 inline-flex items-center gap-2 rounded-md border border-[#D9E6FF] bg-[#F5F8FF] px-2.5 py-1.5 text-[11.5px] font-medium text-[#4B5FA8] dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-400">
+                <Mail className="h-3.5 w-3.5 text-[#4A68D8] dark:text-[#8FA7E6]" />
+                <span>
+                  Email notification sent
+                  {assignSuccessInfo.ccCount > 0
+                    ? ` · ${assignSuccessInfo.ccCount} CC recipient${assignSuccessInfo.ccCount === 1 ? '' : 's'}`
+                    : ''}
+                </span>
               </div>
             </div>
           ) : (
