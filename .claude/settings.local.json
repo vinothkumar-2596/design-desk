@@ -12,7 +12,9 @@
       "Bash(netstat -ano)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:4000/api/tasks)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:4000/api/tasks/test/deliverables/v1/zip -X POST -H \"Content-Type: application/json\" -d '{}')",
-      "Bash(tasklist /FI \"PID eq 33776\")"
+      "Bash(tasklist /FI \"PID eq 33776\")",
+      "Bash(xargs grep *)",
+      "Bash(node -c routes/tasks.js)"
     ]
   }
 }

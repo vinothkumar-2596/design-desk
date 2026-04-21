@@ -3918,7 +3918,7 @@ export default function NewRequest() {
       <section
         className={cn(
           glassCardClass,
-          'overflow-hidden shadow-[0_24px_52px_-40px_rgba(59,99,204,0.084)]'
+          'overflow-hidden shadow-none'
         )}
       >
         <div className="border-b border-border/70 px-5 py-4 dark:border-border/60">
@@ -4215,7 +4215,7 @@ export default function NewRequest() {
       className={cn(
         currentStep === 'review'
           ? cn(reviewSurfaceClass, 'overflow-hidden shadow-none xl:flex xl:h-full xl:flex-col')
-          : cn(glassCardClass, 'overflow-hidden shadow-[0_24px_52px_-40px_rgba(59,99,204,0.084)] xl:flex xl:h-full xl:flex-col')
+          : cn(glassCardClass, 'overflow-hidden shadow-none xl:flex xl:h-full xl:flex-col')
       )}
     >
       <div className="border-b border-border/70 px-5 py-3.5 dark:border-border/60">

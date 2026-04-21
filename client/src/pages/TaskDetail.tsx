@@ -133,6 +133,7 @@ import {
   getCollateralSizeSummary,
 } from '@/lib/campaignRequest';
 import { inferTaskRequestType, mergeViewerReadAt } from '@/lib/taskHydration';
+import { getLatestAdminRequestedUpdatesNote } from '@/lib/adminReview';
 
 type DisplayTaskStatus = TaskStatus | 'assigned' | 'accepted';
 const statusConfig: Record<DisplayTaskStatus, { label: string; variant: 'pending' | 'progress' | 'review' | 'completed' | 'clarification' }> = {
@@ -1842,6 +1843,19 @@ function TaskDetailScreen() {
     if (!approvalLockedForStaff) return;
     setIsEditingTask(false);
   }, [approvalLockedForStaff]);
+
+  const [adminReviewModalOpen, setAdminReviewModalOpen] = useState(false);
+  const adminReviewModalShownRef = useRef<string | null>(null);
+  const showAdminReviewPrompt =
+    user?.role === 'staff' &&
+    taskState?.adminReviewStatus === 'needs_info' &&
+    taskState?.adminReviewResponseStatus !== 'submitted';
+  useEffect(() => {
+    if (!showAdminReviewPrompt || !taskState?.id) return;
+    if (adminReviewModalShownRef.current === taskState.id) return;
+    adminReviewModalShownRef.current = taskState.id;
+    setAdminReviewModalOpen(true);
+  }, [showAdminReviewPrompt, taskState?.id]);
   const chronologicalChangeHistory = useMemo(
     () =>
       [...changeHistory].sort(
@@ -9626,6 +9640,122 @@ function TaskDetailScreen() {
             ) : null}
           </div>
         </div>
+
+        {showAdminReviewPrompt && (() => {
+          const adminNote = getLatestAdminRequestedUpdatesNote(taskState.changeHistory);
+          const reviewerName = taskState.adminReviewedBy || 'Admin';
+          const reviewedAt = taskState.adminReviewedAt
+            ? format(new Date(taskState.adminReviewedAt), "MMM d, yyyy 'at' h:mm a")
+            : '';
+          const isDraft = taskState.adminReviewResponseStatus === 'draft';
+          const requestType = inferTaskRequestType(taskState);
+          const handleEditRequest = () => {
+            setAdminReviewModalOpen(false);
+            navigate(
+              requestType === 'campaign_request'
+                ? '/new-request/campaign-suite'
+                : '/new-request/quick-design',
+              {
+                state: {
+                  editTaskId: taskState.id,
+                  editTaskSnapshot: taskState,
+                  returnTo: `${location.pathname}${location.search}`,
+                },
+              }
+            );
+          };
+          const ctaLabel = isDraft ? 'Continue editing' : 'Edit request';
+          return (
+            <Fragment>
+              <button
+                type="button"
+                onClick={() => setAdminReviewModalOpen(true)}
+                className="group inline-flex animate-slide-up items-center gap-2 self-start rounded-full border border-[#C9D7FF] bg-gradient-to-r from-white/85 via-[#EEF4FF]/85 to-[#DCE8FF]/85 supports-[backdrop-filter]:from-white/60 supports-[backdrop-filter]:via-[#EEF4FF]/60 supports-[backdrop-filter]:to-[#DCE8FF]/55 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1E2A5A] backdrop-blur-xl transition hover:border-[#B6C8FF] hover:from-white/90 hover:via-[#EEF4FF]/90 hover:to-[#DCE8FF]/90 dark:border-border dark:bg-muted/70 dark:bg-none dark:text-foreground dark:hover:bg-muted/80"
+              >
+                <span className="relative inline-flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4A68D8]/50" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#3657C9]" />
+                </span>
+                <AlertTriangle className="h-3.5 w-3.5 text-[#3657C9] dark:text-foreground" />
+                Admin requested changes
+                {isDraft && (
+                  <span className="ml-1 rounded-full bg-[#3657C9] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-white">
+                    Draft
+                  </span>
+                )}
+                <span className="ml-1 text-[#3657C9] underline-offset-2 group-hover:underline dark:text-slate-300">
+                  Review
+                </span>
+              </button>
+
+              <Dialog open={adminReviewModalOpen} onOpenChange={setAdminReviewModalOpen}>
+                <DialogContent
+                  className={cn(
+                    glassPanelClass,
+                    'max-w-md gap-0 overflow-hidden border-[#C9D7FF]/60 p-0 shadow-none'
+                  )}
+                >
+                  <div className="px-7 pb-7 pt-7">
+                    <div className="flex items-center gap-2 text-[11px] font-medium text-[#6B7A99] dark:text-slate-400">
+                      <span className="inline-flex items-center gap-1.5 text-[#3657C9] dark:text-slate-200">
+                        <ClipboardCheck className="h-3.5 w-3.5" />
+                        Admin Review
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>Action needed</span>
+                    </div>
+
+                    <DialogHeader className="mt-4 space-y-2 text-left sm:text-left">
+                      <DialogTitle className="text-[1.4rem] font-semibold leading-tight text-[#1E2A5A] dark:text-slate-100">
+                        Changes Requested
+                      </DialogTitle>
+                      <DialogDescription className="text-[13px] leading-6 text-[#6B7A99] dark:text-slate-400">
+                        Update the brief based on the admin's feedback before this request can move forward.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <p className="mt-3 text-[12px] text-[#8090B2] dark:text-slate-500">
+                      Reviewed by {reviewerName}
+                      {reviewedAt ? ` · ${reviewedAt}` : ''}
+                    </p>
+
+                    <div className="mt-6 rounded-xl bg-[#EEF4FF]/70 px-4 py-3.5 supports-[backdrop-filter]:bg-[#EEF4FF]/55 backdrop-blur-md dark:bg-muted/40">
+                      <p className="text-[10.5px] font-medium tracking-wide text-[#7E8DAB] dark:text-slate-400">
+                        Revision note
+                      </p>
+                      {adminNote ? (
+                        <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-6 text-[#3D4A6E] dark:text-slate-300">
+                          {adminNote}
+                        </p>
+                      ) : (
+                        <p className="mt-1.5 text-[13.5px] leading-6 text-[#7E8DAB] dark:text-slate-400">
+                          No specific note was provided. Please review the brief and resubmit.
+                        </p>
+                      )}
+                    </div>
+
+                    <Button
+                      type="button"
+                      onClick={handleEditRequest}
+                      className="mt-7 h-11 w-full gap-2 rounded-full border-0 bg-[linear-gradient(135deg,#4A68D8,#3352BE_55%,#2B47AE)] text-[13.5px] font-semibold text-white shadow-none transition-colors hover:brightness-[1.05] dark:bg-[linear-gradient(135deg,#4E6FE0,#3E5FD6_55%,#3150C8)] dark:text-white"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                      {ctaLabel}
+                    </Button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAdminReviewModalOpen(false)}
+                      className="mt-3 block w-full text-center text-[12.5px] font-medium text-[#6B7A99] transition-colors hover:text-[#1E2A5A] dark:text-slate-400 dark:hover:text-slate-100"
+                    >
+                      View later
+                    </button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </Fragment>
+          );
+        })()}
 
         {/* Main Content Grid */}
         <div

@@ -5018,7 +5018,22 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
       (change) => change?.type === "file_removed" && change?.field === "files"
     );
     if (hasFileRemovalChange && userRole !== "designer") {
-      return res.status(403).json({ error: "Only designers can remove files." });
+      const existingFiles = Array.isArray(req.task?.files) ? req.task.files : [];
+      const nextFiles = Array.isArray(updates?.files) ? updates.files : null;
+      if (!nextFiles) {
+        return res.status(403).json({ error: "Only designers can remove files." });
+      }
+      const nextNames = new Set(
+        nextFiles.map((file) => String(file?.name || "")).filter(Boolean)
+      );
+      const removedNonInput = existingFiles.some((file) => {
+        const name = String(file?.name || "");
+        if (!name || nextNames.has(name)) return false;
+        return String(file?.type || "input") !== "input";
+      });
+      if (removedNonInput) {
+        return res.status(403).json({ error: "Only designers can remove deliverable files." });
+      }
     }
 
     const task = req.task;
@@ -5398,6 +5413,77 @@ router.post("/:id/changes", ensureTaskAccess, async (req, res) => {
         if (!emailSent) {
           console.warn(`Emergency ${emergencyDecision} email skipped or failed.`);
         }
+      }
+    }
+
+    const adminReviewEntry = sanitizedEntries.find(
+      (entry) => entry.field === "admin_review_status"
+    );
+    if (adminReviewEntry && userRole === "admin") {
+      const decision = normalizeValue(adminReviewEntry.newValue);
+      const rawNote = String(adminReviewEntry.note || "").trim();
+      const ADMIN_REQUESTED_PREFIX = "Admin requested updates:";
+      const feedbackNote = rawNote.startsWith(ADMIN_REQUESTED_PREFIX)
+        ? rawNote.slice(ADMIN_REQUESTED_PREFIX.length).trim()
+        : rawNote;
+
+      if (decision === "approved") {
+        try {
+          const leadIds = await getQueueDesignerUserIds();
+          const leadPayload = {
+            title: `New design intake: ${updatedTask.title}`,
+            message: `${resolvedUserName || "Admin"} approved a new request for design intake.`,
+            type: "task",
+            link: taskLink,
+            taskId,
+            eventId: `admin_review:${taskId}:design_lead:${changeStamp}`,
+          };
+          leadIds.forEach((leadId) => {
+            if (leadId && leadId !== requesterUserId) {
+              notifyUser(leadId, leadPayload);
+            }
+          });
+        } catch (leadLookupError) {
+          console.error(
+            "Design lead lookup error:",
+            leadLookupError?.message || leadLookupError
+          );
+        }
+      }
+
+      if (!requesterUserId) {
+        // Requester-facing notifications below require a recipient id.
+      } else if (decision.includes("need")) {
+        notifyUser(requesterUserId, {
+          title: `Changes requested: ${updatedTask.title}`,
+          message: feedbackNote
+            ? `${resolvedUserName || "Admin"} requested updates: ${feedbackNote}`
+            : `${resolvedUserName || "Admin"} requested updates before approval.`,
+          type: "task",
+          link: taskLink,
+          taskId,
+          eventId: `admin_review:${taskId}:needs_info:${changeStamp}`,
+        });
+      } else if (decision === "approved") {
+        notifyUser(requesterUserId, {
+          title: `Admin approved: ${updatedTask.title}`,
+          message: `${resolvedUserName || "Admin"} approved your request for design intake.`,
+          type: "task",
+          link: taskLink,
+          taskId,
+          eventId: `admin_review:${taskId}:approved:${changeStamp}`,
+        });
+      } else if (decision === "rejected") {
+        notifyUser(requesterUserId, {
+          title: `Admin rejected: ${updatedTask.title}`,
+          message: feedbackNote
+            ? `${resolvedUserName || "Admin"} rejected this request: ${feedbackNote}`
+            : `${resolvedUserName || "Admin"} rejected this request.`,
+          type: "task",
+          link: taskLink,
+          taskId,
+          eventId: `admin_review:${taskId}:rejected:${changeStamp}`,
+        });
       }
     }
 
