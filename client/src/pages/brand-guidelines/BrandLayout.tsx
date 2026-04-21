@@ -1,7 +1,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { ArrowLeft, Menu, X, Download } from 'lucide-react';
-import { BRAND_NAVIGATION } from './assets';
+import { BRAND_NAVIGATION, BRAND_ASSETS } from './assets';
 import { cn } from '@/lib/utils';
 import './fonts.css';
 import './tokens.css';
@@ -20,9 +20,17 @@ export function BrandLayout({ children }: BrandLayoutProps) {
 
   return (
     <div className="brand-root min-h-screen">
+      {/* BRAND COLOR STRIPE */}
+      <div className="flex h-2 w-full" aria-hidden="true">
+        <span style={{ width: '60%', background: 'var(--smvec-blue)' }} />
+        <span style={{ width: '25%', background: 'var(--smvec-gold)' }} />
+        <span style={{ width: '10%', background: '#5A6376' }} />
+        <span style={{ width: '5%', background: 'var(--smvec-blue-100)' }} />
+      </div>
+
       {/* TOP BAR */}
       <header className="sticky top-0 z-40 border-b border-[#E4E7F1] bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-[1320px] items-center justify-between px-5">
+        <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between px-4 lg:pl-4 lg:pr-10">
           <div className="flex items-center gap-3">
             <Link
               to="/dashboard"
@@ -32,12 +40,28 @@ export function BrandLayout({ children }: BrandLayoutProps) {
               <ArrowLeft className="h-4 w-4" />
             </Link>
             <Link to="/brand-guidelines" className="flex items-center gap-3">
-              <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-[#36429B] text-[12px] font-semibold text-white">
-                S
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-white p-1">
+                <img
+                  src={BRAND_ASSETS.svg.frame42}
+                  alt="SMVEC emblem"
+                  className="h-full w-full object-contain"
+                />
               </span>
-              <div className="leading-tight">
-                <p className="text-[13px] font-semibold tracking-[-0.01em] text-[#0B1024]">SMVEC</p>
-                <p className="text-[10.5px] uppercase tracking-[0.18em] text-[#7A8299]">Brand Guidelines</p>
+              <div className="flex flex-col leading-tight">
+                <p
+                  className="text-[13px] font-semibold tracking-[-0.01em]"
+                  style={{ color: 'var(--smvec-blue)', fontFamily: 'var(--font-display)' }}
+                >
+                  SMVEC
+                  <span aria-hidden="true" className="mx-1.5 font-normal text-[#C4C9DC]">×</span>
+                  DesignDesk
+                </p>
+                <p
+                  className="text-[10px] font-medium uppercase tracking-[0.22em]"
+                  style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}
+                >
+                  Brand Guidelines
+                </p>
               </div>
             </Link>
           </div>
@@ -107,7 +131,7 @@ export function BrandLayout({ children }: BrandLayoutProps) {
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-[1320px] gap-8 px-5 py-8 lg:gap-12">
+      <div className="mx-auto flex max-w-[1440px] gap-8 px-4 py-10 lg:gap-20 lg:pl-4 lg:pr-10">
         {/* SIDE NAV */}
         <aside
           className={cn(
@@ -117,34 +141,45 @@ export function BrandLayout({ children }: BrandLayoutProps) {
               : 'hidden'
           )}
         >
-          <nav className="space-y-5 lg:sticky lg:top-20 lg:w-56">
-            {BRAND_NAVIGATION.map((group) => (
-              <div key={group.group} className="space-y-1.5">
-                <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-[#7A8299]">
-                  {group.group}
-                </p>
-                <ul className="space-y-0.5">
-                  {group.items.map((item) => (
-                    <li key={item.href}>
-                      <NavLink
-                        to={item.href}
-                        end={item.href === '/brand-guidelines'}
-                        className={({ isActive }) =>
-                          cn(
-                            'block rounded px-2 py-1.5 text-[13px] leading-5 transition-colors',
-                            isActive
-                              ? 'bg-[#F2F4FB] font-medium text-[#36429B]'
-                              : 'text-[#48506B] hover:bg-[#F8F9FE] hover:text-[#0B1024]'
-                          )
-                        }
-                      >
-                        {item.label}
-                      </NavLink>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+          <nav
+            className="lg:sticky lg:top-20 lg:w-60"
+            aria-label="Brand guidelines"
+          >
+            <div className="space-y-5">
+              {BRAND_NAVIGATION.map((group, groupIdx) => (
+                <div key={group.group} className="space-y-2">
+                  <p
+                    className="px-3 text-[9.5px] font-medium uppercase tracking-[0.26em] text-[#A8AEC4]"
+                    style={{ fontFamily: 'var(--font-display)' }}
+                  >
+                    <span aria-hidden="true" className="mr-2 text-[#CFD3E2]">
+                      {String(groupIdx + 1).padStart(2, '0')}
+                    </span>
+                    {group.group}
+                  </p>
+                  <ul className="space-y-px">
+                    {group.items.map((item) => (
+                      <li key={item.href}>
+                        <NavLink
+                          to={item.href}
+                          end={item.href === '/brand-guidelines'}
+                          className={({ isActive }) =>
+                            cn(
+                              'flex items-center gap-2 rounded-md py-2 px-3 text-[13px] leading-5 outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#36429B]/25',
+                              isActive
+                                ? 'bg-[#EEF1FB] font-semibold text-[#36429B]'
+                                : 'font-semibold text-[#3D4A6E] transition-colors duration-150 ease-out hover:bg-[#EEF1FB]/60 hover:text-[#0B1024]'
+                            )
+                          }
+                        >
+                          <span className="truncate">{item.label}</span>
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
           </nav>
         </aside>
 
@@ -154,7 +189,7 @@ export function BrandLayout({ children }: BrandLayoutProps) {
 
       {/* FOOTER */}
       <footer className="border-t border-[#E4E7F1] bg-[#F8F9FE]">
-        <div className="mx-auto flex max-w-[1320px] flex-col gap-3 px-5 py-6 text-[12px] text-[#7A8299] md:flex-row md:items-center md:justify-between">
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-3 px-4 py-6 text-[12px] text-[#7A8299] md:flex-row md:items-center md:justify-between lg:pl-4 lg:pr-10">
           <p>
             &copy; {new Date().getFullYear()} Sri Manakula Vinayagar Engineering College. Brand
             guidelines for internal teams and partner agencies.

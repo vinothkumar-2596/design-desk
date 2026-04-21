@@ -192,10 +192,6 @@ export default function Logo() {
               className="relative overflow-hidden rounded-[10px] border bg-white p-6"
               style={{ borderColor: 'var(--border)' }}
             >
-              <span
-                className="absolute left-0 top-0 bottom-0 w-1"
-                style={{ background: 'var(--smvec-gold)' }}
-              />
               <div
                 className="mb-1.5 leading-none"
                 style={{

@@ -92,6 +92,12 @@ export const BRAND_NAVIGATION: Array<{
     ],
   },
   {
+    group: 'Editorial',
+    items: [
+      { label: 'Blog', href: '/brand-guidelines/blog' },
+    ],
+  },
+  {
     group: 'Process',
     items: [
       { label: 'Approval workflow', href: '/brand-guidelines/approval' },

@@ -207,10 +207,6 @@ function Stat({ num, label }: { num: string; label: string }) {
       style={{ borderColor: 'var(--border)' }}
     >
       <span
-        className="absolute left-0 top-0 bottom-0 w-1"
-        style={{ background: 'var(--smvec-gold)' }}
-      />
-      <span
         className="text-[36px] leading-none"
         style={{
           fontFamily: 'var(--font-display)',
