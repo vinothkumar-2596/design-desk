@@ -59,6 +59,7 @@ export const BRAND_FONT_DOWNLOADS = [
 
 export const BRAND_NAVIGATION: Array<{
   group: string;
+  caption?: string;
   items: Array<{ label: string; href: string; description?: string }>;
 }> = [
   {
@@ -93,6 +94,7 @@ export const BRAND_NAVIGATION: Array<{
   },
   {
     group: 'Editorial',
+    caption: 'Curated by Vinothkumar S',
     items: [
       { label: 'Blog', href: '/brand-guidelines/blog' },
     ],

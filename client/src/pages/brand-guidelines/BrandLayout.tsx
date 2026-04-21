@@ -148,15 +148,25 @@ export function BrandLayout({ children }: BrandLayoutProps) {
             <div className="space-y-5">
               {BRAND_NAVIGATION.map((group, groupIdx) => (
                 <div key={group.group} className="space-y-2">
-                  <p
-                    className="px-3 text-[9.5px] font-medium uppercase tracking-[0.26em] text-[#A8AEC4]"
-                    style={{ fontFamily: 'var(--font-display)' }}
-                  >
-                    <span aria-hidden="true" className="mr-2 text-[#CFD3E2]">
-                      {String(groupIdx + 1).padStart(2, '0')}
-                    </span>
-                    {group.group}
-                  </p>
+                  <div className="px-3">
+                    <p
+                      className="text-[9.5px] font-medium uppercase tracking-[0.26em] text-[#A8AEC4]"
+                      style={{ fontFamily: 'var(--font-display)' }}
+                    >
+                      <span aria-hidden="true" className="mr-2 text-[#CFD3E2]">
+                        {String(groupIdx + 1).padStart(2, '0')}
+                      </span>
+                      {group.group}
+                    </p>
+                    {group.caption ? (
+                      <p
+                        className="mt-0.5 text-[10.5px]"
+                        style={{ color: '#9AA0BC', fontFamily: 'var(--font-display)' }}
+                      >
+                        {group.caption}
+                      </p>
+                    ) : null}
+                  </div>
                   <ul className="space-y-px">
                     {group.items.map((item) => (
                       <li key={item.href}>
