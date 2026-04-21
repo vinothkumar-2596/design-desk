@@ -26,6 +26,35 @@ export const BRAND_COLORS = {
   white: '#FFFFFF',
 } as const;
 
+/**
+ * Screenshots used by the DesignDesk showcase on the featured blog post.
+ *
+ * Files live under `/public/brand-guidelines/screenshots/` and are referenced
+ * by absolute path so they ship with the app and don't need a CDN.
+ * See `public/brand-guidelines/screenshots/README.md` for capture guidance.
+ */
+export const DESIGNDESK_SCREENSHOTS: Array<{
+  label: string;
+  caption: string;
+  url: string;
+}> = [
+  {
+    label: 'Landing',
+    caption: 'Design workflows, made efficient — a single platform to request, track, and collaborate.',
+    url: '/brand-guidelines/screenshots/landing.png',
+  },
+  {
+    label: 'New request',
+    caption: 'Quick Design intake captures brief, deadline, references, and contact in one form.',
+    url: '/brand-guidelines/screenshots/new-request.png',
+  },
+  {
+    label: 'Task detail',
+    caption: 'Campaign overview, deliverables, brief, and specifications in a single thread.',
+    url: '/brand-guidelines/screenshots/task-detail.png',
+  },
+];
+
 export const BRAND_FONT_DOWNLOADS = [
   {
     family: 'Google Sans (Display)',
@@ -57,53 +86,72 @@ export const BRAND_FONT_DOWNLOADS = [
   },
 ] as const;
 
+export type BrandNavIcon =
+  | 'home'
+  | 'info'
+  | 'compass'
+  | 'logo'
+  | 'palette'
+  | 'type'
+  | 'components'
+  | 'ruler'
+  | 'image'
+  | 'download'
+  | 'blog'
+  | 'workflow'
+  | 'mail';
+
 export const BRAND_NAVIGATION: Array<{
   group: string;
   caption?: string;
-  items: Array<{ label: string; href: string; description?: string }>;
+  items: Array<{
+    label: string;
+    href: string;
+    description?: string;
+    icon?: BrandNavIcon;
+  }>;
 }> = [
   {
     group: 'Overview',
     items: [
-      { label: 'Home', href: '/brand-guidelines' },
-      { label: 'Why this exists', href: '/brand-guidelines/why' },
-      { label: 'Brand overview', href: '/brand-guidelines/overview' },
+      { label: 'Home', href: '/brand-guidelines', icon: 'home' },
+      { label: 'Why this exists', href: '/brand-guidelines/why', icon: 'info' },
+      { label: 'Brand overview', href: '/brand-guidelines/overview', icon: 'compass' },
     ],
   },
   {
     group: 'Visual Identity',
     items: [
-      { label: 'Logo & marks', href: '/brand-guidelines/logo' },
-      { label: 'Color palette', href: '/brand-guidelines/colors' },
-      { label: 'Typography', href: '/brand-guidelines/typography' },
+      { label: 'Logo & marks', href: '/brand-guidelines/logo', icon: 'logo' },
+      { label: 'Color palette', href: '/brand-guidelines/colors', icon: 'palette' },
+      { label: 'Typography', href: '/brand-guidelines/typography', icon: 'type' },
     ],
   },
   {
     group: 'System',
     items: [
-      { label: 'Components', href: '/brand-guidelines/components' },
-      { label: 'Spacing & motion', href: '/brand-guidelines/spacing' },
+      { label: 'Components', href: '/brand-guidelines/components', icon: 'components' },
+      { label: 'Spacing & motion', href: '/brand-guidelines/spacing', icon: 'ruler' },
     ],
   },
   {
     group: 'Applied',
     items: [
-      { label: 'Collateral applications', href: '/brand-guidelines/applications' },
-      { label: 'Downloads', href: '/brand-guidelines/downloads' },
+      { label: 'Collateral applications', href: '/brand-guidelines/applications', icon: 'image' },
+      { label: 'Downloads', href: '/brand-guidelines/downloads', icon: 'download' },
     ],
   },
   {
     group: 'Editorial',
-    caption: 'Curated by Vinothkumar S',
     items: [
-      { label: 'Blog', href: '/brand-guidelines/blog' },
+      { label: 'Blog', href: '/brand-guidelines/blog', icon: 'blog' },
     ],
   },
   {
     group: 'Process',
     items: [
-      { label: 'Approval workflow', href: '/brand-guidelines/approval' },
-      { label: 'Contact brand team', href: '/brand-guidelines/contact' },
+      { label: 'Approval workflow', href: '/brand-guidelines/approval', icon: 'workflow' },
+      { label: 'Contact brand team', href: '/brand-guidelines/contact', icon: 'mail' },
     ],
   },
 ];

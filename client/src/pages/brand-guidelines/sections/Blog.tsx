@@ -267,6 +267,27 @@ export default function Blog() {
           </div>
         </div>
       </section>
+
+      {/* Editorial credit footer */}
+      <footer
+        className="flex flex-col items-center gap-1 border-t pt-6 text-center"
+        style={{ borderColor: 'var(--smvec-blue-100)' }}
+      >
+        <p
+          className="text-[10px] font-semibold uppercase tracking-[0.28em]"
+          style={{ color: 'var(--smvec-blue)', fontFamily: 'var(--font-display)' }}
+        >
+          The Brand Journal
+        </p>
+        <p
+          className="text-[12px]"
+          style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}
+        >
+          Curated &amp; edited by{' '}
+          <span style={{ color: 'var(--smvec-ink)', fontWeight: 500 }}>Vinothkumar S</span> ·
+          Brand &amp; Communications Cell, SMVEC
+        </p>
+      </footer>
     </div>
   );
 }

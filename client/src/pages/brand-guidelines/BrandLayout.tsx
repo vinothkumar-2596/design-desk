@@ -1,7 +1,41 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { ArrowLeft, Menu, X, Download } from 'lucide-react';
-import { BRAND_NAVIGATION, BRAND_ASSETS } from './assets';
+import {
+  ArrowLeft,
+  Menu,
+  X,
+  Download,
+  Home as HomeIcon,
+  Info,
+  Compass,
+  Bookmark,
+  Palette as PaletteIcon,
+  Type as TypeIcon,
+  LayoutGrid,
+  Ruler,
+  Square,
+  BookOpen,
+  Check,
+  Mail,
+  type LucideIcon,
+} from 'lucide-react';
+import { BRAND_NAVIGATION, BRAND_ASSETS, type BrandNavIcon } from './assets';
+
+const NAV_ICON_MAP: Record<BrandNavIcon, LucideIcon> = {
+  home: HomeIcon,
+  info: Info,
+  compass: Compass,
+  logo: Bookmark,
+  palette: PaletteIcon,
+  type: TypeIcon,
+  components: LayoutGrid,
+  ruler: Ruler,
+  image: Square,
+  download: Download,
+  blog: BookOpen,
+  workflow: Check,
+  mail: Mail,
+};
 import { cn } from '@/lib/utils';
 import './fonts.css';
 import './tokens.css';
@@ -168,24 +202,34 @@ export function BrandLayout({ children }: BrandLayoutProps) {
                     ) : null}
                   </div>
                   <ul className="space-y-px">
-                    {group.items.map((item) => (
-                      <li key={item.href}>
-                        <NavLink
-                          to={item.href}
-                          end={item.href === '/brand-guidelines'}
-                          className={({ isActive }) =>
-                            cn(
-                              'flex items-center gap-2 rounded-md py-2 px-3 text-[13px] leading-5 outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#36429B]/25',
-                              isActive
-                                ? 'bg-[#EEF1FB] font-semibold text-[#36429B]'
-                                : 'font-semibold text-[#3D4A6E] transition-colors duration-150 ease-out hover:bg-[#EEF1FB]/60 hover:text-[#0B1024]'
-                            )
-                          }
-                        >
-                          <span className="truncate">{item.label}</span>
-                        </NavLink>
-                      </li>
-                    ))}
+                    {group.items.map((item) => {
+                      const Icon = item.icon ? NAV_ICON_MAP[item.icon] : null;
+                      return (
+                        <li key={item.href}>
+                          <NavLink
+                            to={item.href}
+                            end={item.href === '/brand-guidelines'}
+                            className={({ isActive }) =>
+                              cn(
+                                'flex items-center gap-2.5 rounded-md py-2 px-3 text-[13px] leading-5 outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#36429B]/25',
+                                isActive
+                                  ? 'bg-[#EEF1FB] font-semibold text-[#36429B]'
+                                  : 'font-semibold text-[#3D4A6E] transition-colors duration-150 ease-out hover:bg-[#EEF1FB]/60 hover:text-[#0B1024]'
+                              )
+                            }
+                          >
+                            {Icon ? (
+                              <Icon
+                                className="h-3.5 w-3.5 shrink-0"
+                                strokeWidth={2}
+                                aria-hidden="true"
+                              />
+                            ) : null}
+                            <span className="truncate">{item.label}</span>
+                          </NavLink>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ))}

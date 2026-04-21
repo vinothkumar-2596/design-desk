@@ -216,6 +216,11 @@ html:has(.brand-root)::-webkit-scrollbar {
   transform-style: preserve-3d;
 }
 
+@keyframes brand-slider-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
 .brand-phrase {
   display: inline-block;
   transition:

@@ -3,7 +3,12 @@
  * palette (Royal Blue, Golden Age, Black, White + tints) and communicates the
  * article's subject through simple geometric / typographic motifs — no stock
  * photography, no off-brand imagery.
+ *
+ * Special case: the `designdesk-overview` slug returns the live DesignDesk
+ * showcase slider instead of a static cover.
  */
+
+import { DesignDeskShowcase } from './DesignDeskShowcase';
 
 type Category =
   | 'Identity'
@@ -268,12 +273,12 @@ export function BlogCover({
   slug,
 }: {
   category: Category;
-  /** Reserved for per-post overrides in the future. */
+  /** Per-post overrides (e.g. the DesignDesk showcase slider). */
   slug?: string;
 }) {
-  // slug kept in signature so data callers don't have to change if we ever
-  // want per-article variants; currently the category drives the treatment.
-  void slug;
+  if (slug === 'designdesk-overview') {
+    return <DesignDeskShowcase />;
+  }
   switch (category) {
     case 'Typography':
       return <TypographyCover />;
