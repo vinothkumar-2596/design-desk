@@ -17,7 +17,6 @@ import {
   BookOpen,
   Check,
   Mail,
-  ShieldCheck,
   Sparkles,
   type LucideIcon,
 } from 'lucide-react';
@@ -37,7 +36,7 @@ const NAV_ICON_MAP: Record<BrandNavIcon, LucideIcon> = {
   blog: BookOpen,
   workflow: Check,
   mail: Mail,
-  review: ShieldCheck,
+  review: Sparkles,
 };
 import { cn } from '@/lib/utils';
 import './fonts.css';

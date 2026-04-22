@@ -1,6 +1,114 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ShieldCheck, Upload, X, Loader2, CheckCircle2, AlertTriangle, XCircle, Info, ChevronDown, ChevronUp, FileImage, Download } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Sparkles, Upload, X, Loader2, CheckCircle2, AlertTriangle, XCircle, Info, ChevronDown, ChevronUp, FileImage, Download } from 'lucide-react';
 import { API_URL, authFetch } from '@/lib/api';
+
+const TUTORIAL_KEY = 'brand-review-tutorial-v1';
+
+const BLUE = '#36429B';
+const GOLD = '#DBA328';
+
+const TUTORIAL_STEPS = [
+  {
+    tag: 'Step 1 of 3',
+    title: 'Upload your creative',
+    desc: 'Drag & drop or click to browse. Supports JPG, PNG, WEBP and PDF up to 10 MB. The AI reads the actual image — upload the final version for best results.',
+    bg: BLUE,
+    visual: (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+        <div style={{ width: 64, height: 64, borderRadius: 18, background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="28" height="28" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {['JPG', 'PNG', 'WEBP', 'PDF'].map(f => (
+            <span key={f} style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 600 }}>{f}</span>
+          ))}
+        </div>
+      </div>
+    ),
+  },
+  {
+    tag: 'Step 2 of 3',
+    title: 'Add context for better results',
+    desc: 'Select the creative type — Poster, Banner, Social Media, etc. This helps the AI apply the right compliance standard. Campaign name and audience are optional.',
+    bg: '#2A357E',
+    visual: (
+      <div style={{ width: '100%', maxWidth: 260, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {['Creative type · Poster', 'Campaign · Freshers 2026', 'Audience · Students, Staff'].map((item, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: '9px 14px' }}>
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.6)', flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: '#fff', opacity: 0.9 }}>{item}</span>
+          </div>
+        ))}
+      </div>
+    ),
+  },
+  {
+    tag: 'Step 3 of 3',
+    title: 'Get your compliance score',
+    desc: 'Click "Run Brand Compliance Review". The AI scans logo, colors, typography and layout — returning a full score with approval status and actionable feedback in seconds.',
+    bg: '#1F285F',
+    visual: (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontSize: 28, fontWeight: 700, color: '#fff' }}>92</span>
+        </div>
+        <div style={{ display: 'flex', gap: 14, fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>
+          <span>✓ Logo</span><span>✓ Colors</span><span>✓ Typography</span>
+        </div>
+        <div style={{ background: GOLD, color: '#fff', borderRadius: 6, padding: '4px 14px', fontSize: 11, fontWeight: 700 }}>Approved</div>
+      </div>
+    ),
+  },
+];
+
+function TutorialModal({ step, onNext, onSkip }: { step: number; onNext: () => void; onSkip: () => void }) {
+  const isLast = step === TUTORIAL_STEPS.length - 1;
+  const s = TUTORIAL_STEPS[step];
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(10,14,30,0.6)', backdropFilter: 'blur(6px)' }}>
+      <div style={{ width: '100%', maxWidth: 420, borderRadius: 20, overflow: 'hidden', background: '#fff', boxShadow: '0 32px 80px -16px rgba(10,14,30,0.45), 0 0 0 1px rgba(0,0,0,0.07)', fontFamily: 'system-ui, sans-serif' }}>
+
+        {/* Visual header */}
+        <div style={{ position: 'relative', minHeight: 190, background: s.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '32px 32px 28px', transition: 'background 0.4s ease' }}>
+          <button onClick={onSkip} style={{ position: 'absolute', top: 14, right: 14, width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="white" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          </button>
+          {s.visual}
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '24px 28px 28px' }}>
+          <p style={{ margin: '0 0 6px', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.18em', textTransform: 'uppercase', color: GOLD }}>{s.tag}</p>
+          <h3 style={{ margin: '0 0 10px', fontSize: 18, fontWeight: 700, color: '#111827', lineHeight: 1.3 }}>{s.title}</h3>
+          <p style={{ margin: '0 0 24px', fontSize: 13, lineHeight: 1.7, color: '#6B7280' }}>{s.desc}</p>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            {/* Progress pills */}
+            <div style={{ display: 'flex', gap: 6 }}>
+              {TUTORIAL_STEPS.map((_, i) => (
+                <div key={i} style={{ height: 6, borderRadius: 3, transition: 'width 0.3s ease, background 0.3s ease', width: i === step ? 22 : 6, background: i <= step ? BLUE : '#E5E7EB' }} />
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {!isLast && (
+                <button onClick={onSkip} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#9CA3AF' }}>Skip</button>
+              )}
+              <button
+                onClick={onNext}
+                style={{ background: BLUE, color: '#fff', border: 'none', cursor: 'pointer', borderRadius: 10, padding: '10px 22px', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                {isLast ? 'Get started' : <><span>Next</span><span style={{ fontSize: 16 }}>→</span></>}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 const SCAN_STEPS = [
   { label: 'Reading image resolution & file quality', category: 'Technical' },
@@ -280,6 +388,27 @@ export default function Review() {
   const [scanStep, setScanStep] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Tutorial
+  const [tutorialStep, setTutorialStep] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!localStorage.getItem(TUTORIAL_KEY)) setTutorialStep(0);
+  }, []);
+
+  const nextTutorialStep = () => {
+    if (tutorialStep === null) return;
+    if (tutorialStep >= TUTORIAL_STEPS.length - 1) {
+      localStorage.setItem(TUTORIAL_KEY, '1');
+      setTutorialStep(null);
+    } else {
+      setTutorialStep(s => (s ?? 0) + 1);
+    }
+  };
+  const skipTutorial = () => {
+    localStorage.setItem(TUTORIAL_KEY, '1');
+    setTutorialStep(null);
+  };
+
   const scanDone = isAnalyzing && scanStep === SCAN_STEPS.length - 1;
 
   useEffect(() => {
@@ -417,6 +546,10 @@ export default function Review() {
 
   return (
     <div className="brand-card">
+      {tutorialStep !== null && (
+        <TutorialModal step={tutorialStep} onNext={nextTutorialStep} onSkip={skipTutorial} />
+      )}
+
       <header className="brand-card__header">
         <div>
           <div className="brand-card__eyebrow">AI Tools</div>
@@ -629,7 +762,7 @@ export default function Review() {
               </>
             ) : (
               <>
-                <ShieldCheck className="h-4 w-4" />
+                <Sparkles className="h-4 w-4" />
                 Run Brand Compliance Review
               </>
             )}
@@ -648,13 +781,36 @@ export default function Review() {
         <div>
           {!result && !isAnalyzing && (
             <div
-              className="flex h-full min-h-[320px] flex-col items-center justify-center gap-4 rounded-[12px] border-2 border-dashed"
+              className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-[14px] border border-dashed px-8"
               style={{ borderColor: 'var(--border)', background: 'var(--bg-2)' }}
             >
-              <ShieldCheck className="h-10 w-10" style={{ color: 'var(--border)' }} />
-              <p className="text-center text-[13px]" style={{ color: 'var(--fg-3)' }}>
-                Upload a creative and run the review to see your compliance score.
+              {/* Icon */}
+              <div className="relative mb-5 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: 'var(--smvec-blue)', boxShadow: '0 8px 20px -8px rgba(54,66,155,0.35)' }}>
+                <Sparkles className="h-6 w-6 text-white" />
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: 'var(--smvec-gold)' }}>AI</span>
+              </div>
+
+              <p className="mb-1.5 text-center text-[14px] font-semibold" style={{ color: 'var(--fg-1)', fontFamily: 'var(--font-display)' }}>
+                Brand Compliance Score
               </p>
+              <p className="mb-6 text-center text-[12px] leading-[1.65]" style={{ color: 'var(--fg-3)' }}>
+                Upload your creative and run the review.<br />The AI scores it against SMVEC brand standards.
+              </p>
+
+              {/* What we check */}
+              <div className="w-full space-y-1.5">
+                {[
+                  { label: 'Logo usage & placement', icon: '⬡' },
+                  { label: 'Color palette compliance', icon: '◈' },
+                  { label: 'Typography & hierarchy', icon: 'Aa' },
+                  { label: 'Design quality & readability', icon: '✦' },
+                ].map(({ label, icon }) => (
+                  <div key={label} className="flex items-center gap-2.5 rounded-[8px] px-3 py-2" style={{ background: 'var(--bg-1)', border: '1px solid var(--border)' }}>
+                    <span className="text-[11px] font-semibold w-5 text-center" style={{ color: 'var(--fg-3)' }}>{icon}</span>
+                    <span className="text-[12px]" style={{ color: 'var(--fg-2)' }}>{label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
