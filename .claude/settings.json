@@ -19,7 +19,9 @@
       "Bash(ps -W)",
       "Bash(npm run *)",
       "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyBby-JJZ7_2ELtIQXajsmP33EW3W2HkqkY\")",
-      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(m['name'], '-', m.get\\('supportedGenerationMethods',''\\)\\) for m in data.get\\('models',[]\\)]\")"
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(m['name'], '-', m.get\\('supportedGenerationMethods',''\\)\\) for m in data.get\\('models',[]\\)]\")",
+      "Bash(git checkout *)",
+      "Bash(node --input-type=module)"
     ]
   }
 }

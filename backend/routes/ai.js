@@ -622,45 +622,48 @@ router.post("/gemini", async (req, res) => {
 
 const BRAND_REVIEW_SYSTEM_PROMPT = `You are an expert Brand Compliance and Design Review AI for SMVEC (Sri Manakula Vinayagar Engineering College), an autonomous NAAC "A"-graded engineering institution in Puducherry, India.
 
-SMVEC OFFICIAL BRAND GUIDELINES — USE THESE AS YOUR REFERENCE:
+IMPORTANT — READ CONTEXT BEFORE SCORING:
+SMVEC has TWO categories of creative output. Apply the correct standard based on the design's apparent purpose:
 
-COLORS (MANDATORY):
+CATEGORY A — FORMAL COMMUNICATIONS (strict brand rules apply):
+Includes: admission brochures, official letters, certificates, banners for convocation/NAAC, institutional posters, academic event flyers, press releases.
+→ Must use exact brand colors, Google Sans typography, SMVEC logo correctly placed.
+
+CATEGORY B — CULTURAL & FEST CREATIVES (relaxed brand rules apply):
+Includes: cultural fests (Celestia, Freshers, Sports Day, etc.), club events, inter-college competitions, social media reels/stories for student events.
+→ Must use SMVEC's primary color family (Royal Blue #36429B and/or Gold #DBA328 as dominant or strong accent colors). Decorative/display fonts are ALLOWED. Illustrated or stylized logos acceptable. Creative backgrounds and patterns are acceptable. Score Brand Identity on whether the creative still feels like it belongs to SMVEC.
+
+DETECT CATEGORY AUTOMATICALLY from the design — look for fest logos, event names, cultural imagery, student-facing content vs. formal institutional content.
+
+SMVEC BRAND REFERENCE:
+COLORS:
 - Primary: Royal Blue #36429B
 - Accent: Golden Age #DBA328
 - Neutral: Black #000000, White #FFFFFF
-- Allowed backgrounds: White or Royal Blue only (Gold only as wordmark sublabel)
-- FORBIDDEN colors: Purple, pink, neon, bright red, green, orange, or any off-brand color
+- For Category A: FORBIDDEN colors include purple, pink, neon, bright red, green, orange
+- For Category B: Blue and gold must be present as primary or strong accent. Additional creative colors allowed if blue/gold are dominant.
 
 TYPOGRAPHY:
-- Display/Headings: Google Sans Display (Regular weight preferred)
-- Body/UI: Google Sans Text 17pt
-- Anniversary script: Great Vibes (ONLY for the official "26 YEARS" lockup — forbidden elsewhere)
-- Forbidden: informal/decorative fonts, Comic Sans, script fonts other than the anniversary mark
+- Category A: Google Sans Display for headings, Google Sans Text for body. No decorative fonts.
+- Category B: Display/decorative fonts allowed for event title/logo. Body text should remain readable.
 
 LOGO RULES:
-- SMVEC logo = botanical tree-and-lamp emblem + optional "26 YEARS" script + wordmark
-- Must maintain clear space (minimum = logo height ÷ 4 on all sides)
-- Must NOT be: distorted, stretched, rotated, recolored, shadowed, outlined, or placed on patterns/textures
-- Approved backgrounds only: white or royal blue
-- If logo is absent from a design that requires it, deduct all logo points
+- Category A: Full SMVEC botanical emblem required, clear space maintained, no distortion.
+- Category B: SMVEC name, "SMV" abbreviation, or emblem must appear somewhere. Stylized versions acceptable. Full formal logo preferred but abbreviated branding is not a major violation.
 
-BRAND TONE:
-- Institutional, professional, academic
-- Structured hierarchy, no decorative excess
-- Conservative layout; informal styles are non-compliant
+SCORING — Apply category-appropriate leniency in your scores and notes:
 
-SCORING DIMENSIONS:
 1. BRAND COMPLIANCE (40 pts max):
-   - Logo presence, size, placement, clear space (10 pts)
-   - Color palette compliance with approved palette (10 pts)
-   - Typography — correct fonts and hierarchy (10 pts)
-   - Overall brand identity adherence (10 pts)
+   - Logo presence, size, placement (10 pts) — Category B: partial credit for abbreviated/stylized logo
+   - Color palette (10 pts) — Category B: full marks if blue+gold are clearly dominant
+   - Typography (10 pts) — Category B: decorative event fonts score 7–9/10 if readable
+   - Overall brand identity (10 pts) — Does it feel like it belongs to SMVEC?
 
 2. DESIGN QUALITY (35 pts max):
    - Visual hierarchy and layout structure (10 pts)
    - Alignment, spacing, balance (10 pts)
    - Readability and contrast (8 pts)
-   - Professional/institutional feel (7 pts)
+   - Professional/institutional feel (7 pts) — Category B: "energetic and on-brand" counts as professional
 
 3. CONTENT ACCURACY (15 pts max):
    - Text clarity, grammar, spelling (8 pts)
@@ -676,7 +679,7 @@ APPROVAL THRESHOLDS:
 - 55–74 → "Needs Revision"
 - Below 55 → "Rejected"
 
-Be rigorous. Penalize clearly. If logo is absent where required, score 0 for logo. If forbidden colors appear, deduct heavily.
+Be accurate and fair. Good design execution should be recognized even when brand compliance has gaps. Write specific, actionable notes — not generic statements like "non-compliant typography". Explain exactly what you see and what would improve it.
 
 Respond with ONLY a valid JSON object — no markdown, no explanation, just JSON:
 {
@@ -711,6 +714,76 @@ Respond with ONLY a valid JSON object — no markdown, no explanation, just JSON
   "summary": ""
 }`;
 
+// Vision-capable models tried in order; each has its own free-tier quota pool.
+const BRAND_REVIEW_VISION_MODELS = [
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-2.0-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+];
+
+// Groq vision models (OpenAI-compatible, separate quota pool)
+const GROQ_VISION_MODELS = [
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "llama-3.2-11b-vision-preview",
+    "llama-3.2-90b-vision-preview",
+];
+
+const tryGroqBrandReview = async (imageBase64, mimeType, promptText) => {
+    const groqKey = process.env.GROQ_API_KEY;
+    if (!groqKey) return null;
+
+    for (const model of GROQ_VISION_MODELS) {
+        try {
+            const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${groqKey}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    model,
+                    messages: [{
+                        role: "user",
+                        content: [
+                            { type: "text", text: promptText },
+                            { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+                        ],
+                    }],
+                    temperature: 0.1,
+                    max_tokens: 1500,
+                }),
+            });
+
+            if (!resp.ok) {
+                const body = await resp.text();
+                console.error(`[brand-review] Groq [${model}] HTTP ${resp.status}:`, body.slice(0, 200));
+                continue;
+            }
+
+            const data = await resp.json();
+            const text = data.choices?.[0]?.message?.content ?? "";
+            const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+            const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+                console.error(`[brand-review] Groq [${model}] no JSON in response:`, text.slice(0, 200));
+                continue;
+            }
+            const review = JSON.parse(jsonMatch[0]);
+            if (typeof review.overallScore !== "number") {
+                console.error(`[brand-review] Groq [${model}] unexpected shape:`, JSON.stringify(review).slice(0, 200));
+                continue;
+            }
+            console.log(`[brand-review] Groq success with model: ${model}`);
+            return review;
+        } catch (err) {
+            console.error(`[brand-review] Groq [${model}] error:`, err.message ?? err);
+        }
+    }
+    return null;
+};
+
 router.post("/brand-review", async (req, res) => {
     const { imageBase64, mimeType, contextInfo } = req.body || {};
 
@@ -723,76 +796,86 @@ router.post("/brand-review", async (req, res) => {
         return res.status(503).json({ error: "AI service is temporarily unavailable.", code: "AI_KEY_MISSING" });
     }
 
-    const keyPool = getGeminiKeyPool();
-    if (keyPool.keys.length === 0) {
-        const retryAfterSeconds = keyPool.nextRetryAt
-            ? Math.max(1, Math.ceil((keyPool.nextRetryAt - Date.now()) / 1000))
-            : 60;
-        return res.status(429).json({
-            error: `AI service is cooling down. Try again in ${retryAfterSeconds} seconds.`,
-            code: "AI_QUOTA_EXCEEDED",
-            retry_after_seconds: retryAfterSeconds,
-        });
-    }
-
     let promptText = BRAND_REVIEW_SYSTEM_PROMPT;
     if (contextInfo && String(contextInfo).trim()) {
         promptText += `\n\nADDITIONAL CONTEXT:\n${String(contextInfo).trim()}`;
     }
 
+    // Try Groq first — it has its own quota pool and is fast.
+    const groqFirst = await tryGroqBrandReview(imageBase64, mimeType, promptText);
+    if (groqFirst) return res.json(groqFirst);
+
     let lastErrorInfo = null;
 
-    for (const apiKey of keyPool.keys) {
-        try {
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+    // Groq unavailable — fall back through Gemini keys/models.
+    for (const modelName of BRAND_REVIEW_VISION_MODELS) {
+        for (const apiKey of configuredKeys) {
+            try {
+                const genAI = new GoogleGenerativeAI(apiKey);
+                const model = genAI.getGenerativeModel({ model: modelName });
 
-            const result = await model.generateContent({
-                contents: [{
-                    parts: [
-                        { text: promptText },
-                        { inlineData: { mimeType: String(mimeType), data: String(imageBase64) } },
-                    ],
-                }],
-                generationConfig: {
-                    temperature: 0.1,
-                    maxOutputTokens: 1500,
-                },
-            });
+                const result = await model.generateContent({
+                    contents: [{
+                        parts: [
+                            { text: promptText },
+                            { inlineData: { mimeType: String(mimeType), data: String(imageBase64) } },
+                        ],
+                    }],
+                    generationConfig: {
+                        temperature: 0.1,
+                        maxOutputTokens: 1500,
+                    },
+                });
 
-            const text = result.response.text();
-            const cleaned = text.replace(/```json\n?|\n?```/g, "").trim();
-            const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) {
-                return res.status(500).json({ error: "AI did not return a valid review. Please try again." });
-            }
-            const review = JSON.parse(jsonMatch[0]);
-            advanceGeminiKeyCursor(apiKey);
-            return res.json(review);
-        } catch (error) {
-            const errorInfo = classifyGeminiError(error);
-            lastErrorInfo = errorInfo;
-            const cooldownMs = getGeminiCooldownMs(errorInfo);
-            if (cooldownMs > 0) {
-                markGeminiKeyCooldown(apiKey, cooldownMs, errorInfo.code);
-            }
-            console.error(`Brand review Gemini error for key ${getMaskedKey(apiKey)}:`, error);
+                const text = result.response.text();
+                const cleaned = text
+                    .replace(/```json\s*/gi, "")
+                    .replace(/```\s*/g, "")
+                    .trim();
+                // Grab the outermost {...} block
+                const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+                if (!jsonMatch) {
+                    console.error(`[brand-review] no JSON in response [${modelName}]. snippet: ${text.slice(0, 300)}`);
+                    continue; // try next key / model
+                }
+                let review;
+                try {
+                    review = JSON.parse(jsonMatch[0]);
+                } catch {
+                    console.error(`[brand-review] JSON parse failed [${modelName}]. snippet: ${text.slice(0, 300)}`);
+                    continue; // try next key / model
+                }
+                if (typeof review.overallScore !== "number") {
+                    console.error(`[brand-review] unexpected shape [${modelName}]:`, JSON.stringify(review).slice(0, 200));
+                    continue;
+                }
+                return res.json(review);
+            } catch (error) {
+                const errorInfo = classifyGeminiError(error);
+                lastErrorInfo = errorInfo;
+                const cooldownMs = getGeminiCooldownMs(errorInfo);
+                if (cooldownMs > 0) {
+                    markGeminiKeyCooldown(apiKey, cooldownMs, errorInfo.code);
+                }
+                console.error(`Brand review error [${modelName}] key ${getMaskedKey(apiKey)}:`, error.message ?? error);
 
-            if (
-                errorInfo.isQuotaExhaustedError ||
-                errorInfo.isRateLimitError ||
-                errorInfo.isLeakedKeyError ||
-                errorInfo.isAuthError
-            ) {
-                continue;
+                if (
+                    errorInfo.isQuotaExhaustedError ||
+                    errorInfo.isRateLimitError ||
+                    errorInfo.isLeakedKeyError ||
+                    errorInfo.isAuthError
+                ) {
+                    continue;
+                }
+                // Non-quota error (bad request, network, etc.) — stop inner loop, try next model.
+                break;
             }
-            break;
         }
     }
 
     if (lastErrorInfo?.isQuotaExhaustedError || lastErrorInfo?.isRateLimitError) {
         return res.status(429).json({
-            error: "AI quota exhausted. Please try again later.",
+            error: "All AI keys have hit their free-tier quota. Quotas reset daily — please try again in a few minutes or after midnight.",
             code: lastErrorInfo.code,
         });
     }

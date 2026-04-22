@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
-  BookOpen,
   Download,
   Mail,
   ShieldCheck,
+  Sparkles,
   Layers,
   Zap,
 } from 'lucide-react';
@@ -21,6 +21,7 @@ const HEADLINE_PHRASES: HeadlinePhrase[] = [
 ];
 
 const HEADLINE_INTERVAL_MS = 3200;
+
 
 const QUICK_LINKS = [
   { label: 'Logo & marks', href: '/brand-guidelines/logo' },
@@ -53,6 +54,7 @@ export default function Home() {
       if (swapTimer !== null) window.clearTimeout(swapTimer);
     };
   }, []);
+
 
   const activePhrase = HEADLINE_PHRASES[phraseIndex];
 
@@ -131,7 +133,7 @@ export default function Home() {
 
             <div className="mt-8 grid max-w-[32rem] grid-cols-1 gap-3 sm:grid-cols-2">
               <Link
-                to="/brand-guidelines/logo"
+                to="/brand-guidelines/downloads"
                 className="group inline-flex h-12 w-full items-center justify-center gap-3 whitespace-nowrap rounded-[6px] px-5 text-[13.5px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_24px_-14px_rgba(54,66,155,0.55)] outline-none transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_16px_32px_-14px_rgba(54,66,155,0.65)] focus-visible:ring-2 focus-visible:ring-[var(--smvec-blue-300)] focus-visible:ring-offset-2 active:translate-y-0"
                 style={{ background: 'var(--smvec-blue)' }}
                 onMouseEnter={(e) => {
@@ -141,16 +143,16 @@ export default function Home() {
                   (e.currentTarget as HTMLElement).style.background = 'var(--smvec-blue)';
                 }}
               >
-                View Guidelines
-                <BookOpen className="h-4 w-4 shrink-0" strokeWidth={2.25} />
-              </Link>
-              <Link
-                to="/brand-guidelines/downloads"
-                className="group inline-flex h-12 w-full items-center justify-center gap-3 whitespace-nowrap rounded-[6px] border bg-white px-5 text-[13.5px] font-semibold text-[var(--smvec-ink)] outline-none transition-all duration-200 hover:-translate-y-[1px] hover:border-[var(--smvec-blue-500)] hover:bg-[var(--smvec-blue-050)] hover:text-[var(--smvec-blue)] focus-visible:ring-2 focus-visible:ring-[var(--smvec-blue-300)] focus-visible:ring-offset-2"
-                style={{ borderColor: 'var(--smvec-blue-100)' }}
-              >
                 Download Brand Assets
                 <Download className="h-4 w-4 shrink-0" strokeWidth={2.25} />
+              </Link>
+              <Link
+                to="/brand-guidelines/review"
+                className="ai-beam-btn group inline-flex h-12 w-full items-center justify-center gap-2.5 whitespace-nowrap rounded-[6px] border bg-white px-5 text-[13.5px] font-semibold text-[#36429B] outline-none transition-all duration-200 hover:-translate-y-[1px] hover:bg-[#EEF1FB] focus-visible:ring-2 focus-visible:ring-[var(--smvec-blue-300)] focus-visible:ring-offset-2 active:translate-y-0"
+                style={{ borderColor: 'transparent' }}
+              >
+                <Sparkles className="ai-review-btn__icon h-4 w-4 shrink-0 text-[#DBA328]" strokeWidth={2} />
+                AI Review
               </Link>
             </div>
 

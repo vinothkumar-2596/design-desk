@@ -18,6 +18,7 @@ import {
   Check,
   Mail,
   ShieldCheck,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import { BRAND_NAVIGATION, BRAND_ASSETS, type BrandNavIcon } from './assets';
@@ -148,13 +149,21 @@ export function BrandLayout({ children }: BrandLayoutProps) {
             >
               Applications
             </NavLink>
-            <Link
-              to="/brand-guidelines/downloads"
-              className="ml-2 inline-flex items-center gap-1.5 rounded-sm bg-[#36429B] px-3 py-1.5 text-[12.5px] font-medium text-white transition-colors hover:bg-[#2C3680]"
+            <NavLink
+              to="/brand-guidelines/review"
+              className={({ isActive }) =>
+                cn(
+                  'ml-2 inline-flex items-center gap-1.5 border px-3 py-1.5 text-[12.5px] font-semibold transition-colors duration-150',
+                  isActive
+                    ? 'border-[#36429B] bg-[#EEF1FB] text-[#36429B]'
+                    : 'border-[#DCE2F4] bg-white text-[#36429B] hover:border-[#36429B]/50 hover:bg-[#EEF1FB]'
+                )
+              }
+              style={{ borderRadius: '4px' }}
             >
-              <Download className="h-3.5 w-3.5" />
-              Downloads
-            </Link>
+              <Sparkles className="h-3.5 w-3.5 text-[#DBA328]" strokeWidth={2} />
+              AI Review
+            </NavLink>
           </nav>
           <button
             type="button"

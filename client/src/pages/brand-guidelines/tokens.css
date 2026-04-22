@@ -247,6 +247,90 @@ html:has(.brand-root)::-webkit-scrollbar {
   box-shadow: 0 24px 60px -28px rgba(31, 53, 114, 0.32);
 }
 
+/* ── AI Review — animated border beam ────────────────────────────── */
+
+@property --ai-beam-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes ai-beam-spin {
+  to { --ai-beam-angle: 360deg; }
+}
+
+.ai-beam-btn {
+  position: relative;
+  border-color: transparent !important;
+}
+
+.ai-beam-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--ai-beam-angle),
+    transparent 55%,
+    #DBA328 70%,
+    #7B8FD6 82%,
+    #36429B 91%,
+    rgba(54,66,155,0) 100%
+  );
+  animation: ai-beam-spin 2.8s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── AI Review nav button ─────────────────────────────────────────── */
+
+@keyframes ai-sparkle {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  35%       { transform: scale(1.35) rotate(14deg); }
+  65%       { transform: scale(0.85) rotate(-10deg); }
+}
+
+@keyframes ai-shimmer {
+  0%   { transform: translateX(-120%) skewX(-18deg); }
+  100% { transform: translateX(360%)  skewX(-18deg); }
+}
+
+@keyframes ai-label-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+
+.ai-review-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-review-btn__shimmer {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+  animation: ai-shimmer 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.ai-review-btn__icon {
+  animation: ai-sparkle 2.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.ai-review-btn__label {
+  background: linear-gradient(90deg, #36429B, #7B8FD6, #36429B);
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: ai-label-shift 4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .brand-hero-card,
   .brand-hero-card--float,
@@ -257,6 +341,16 @@ html:has(.brand-root)::-webkit-scrollbar {
   }
   .brand-hero-card-shell {
     transition: none !important;
+  }
+  .ai-review-btn__shimmer,
+  .ai-review-btn__icon,
+  .ai-review-btn__label {
+    animation: none !important;
+    background: unset !important;
+    -webkit-text-fill-color: unset !important;
+  }
+  .ai-beam-btn::after {
+    animation: none !important;
   }
 }
 
