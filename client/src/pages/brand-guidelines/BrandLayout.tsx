@@ -242,19 +242,22 @@ export function BrandLayout({ children }: BrandLayoutProps) {
       </div>
 
       {/* FOOTER */}
-      <footer className="border-t border-[#E4E7F1] bg-[#F8F9FE]">
-        <div className="mx-auto flex max-w-[1440px] flex-col gap-3 px-4 py-6 text-[12px] text-[#7A8299] md:flex-row md:items-center md:justify-between lg:pl-4 lg:pr-10">
-          <p>
-            &copy; {new Date().getFullYear()} Sri Manakula Vinayagar Engineering College. Brand
-            guidelines for internal teams and partner agencies.
-          </p>
-          <div className="flex items-center gap-4">
-            <Link to="/brand-guidelines/contact" className="hover:text-[#36429B]">
-              Contact brand team
-            </Link>
-            <Link to="/brand-guidelines/approval" className="hover:text-[#36429B]">
-              Approval workflow
-            </Link>
+      <footer className="border-t border-[#E4E7F1] bg-white">
+        <div className="mx-auto max-w-[1440px] px-4 py-5 lg:pl-[calc(15rem+5rem+1rem)] lg:pr-10">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2.5">
+              <img
+                src={BRAND_ASSETS.svg.frame42}
+                alt="SMVEC emblem"
+                className="h-6 w-6 object-contain"
+              />
+              <p className="text-[12px] text-[#7A8299]">
+                &copy; {new Date().getFullYear()} Sri Manakula Vinayagar Engineering College. Brand guidelines for internal teams and partner agencies.
+              </p>
+            </div>
+            <p className="text-[11px] font-medium text-[#C4C9DC]">
+              Brand Manual · v1.0
+            </p>
           </div>
         </div>
       </footer>
