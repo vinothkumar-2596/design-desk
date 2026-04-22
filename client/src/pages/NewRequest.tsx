@@ -117,11 +117,24 @@ type SubmitSuccessState = {
   taskTitle: string;
 };
 
+type AIDraftFile = {
+  id?: string;
+  name?: string;
+  size?: number;
+  url?: string;
+  driveId?: string;
+  webViewLink?: string;
+  webContentLink?: string;
+  thumbnailUrl?: string;
+};
+
 type NewRequestNavigationState = {
   restoreDraft?: boolean;
   editTaskId?: string;
   editTaskSnapshot?: Task;
   returnTo?: string;
+  aiDraft?: import('@/lib/ai').TaskDraft;
+  aiDraftFiles?: AIDraftFile[];
 };
 
 type QuickTaskEditAction = 'draft' | 'submit';
@@ -939,6 +952,7 @@ export default function NewRequest() {
   );
   const [editTaskLoadError, setEditTaskLoadError] = useState('');
   const [didHydrateEditTask, setDidHydrateEditTask] = useState(false);
+  const didHydrateAiDraftRef = useRef(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const [tourSpotlight, setTourSpotlight] = useState<TourSpotlight | null>(null);
@@ -1358,6 +1372,102 @@ export default function NewRequest() {
     user?.department,
     user?.email,
     user?.id,
+    user?.phone,
+  ]);
+
+  useEffect(() => {
+    if (didHydrateAiDraftRef.current) return;
+    if (isRequestEditMode) return;
+    const aiDraft = navigationState?.aiDraft;
+    if (!aiDraft) return;
+
+    const resolvedType: RequestType =
+      aiDraft.requestType || routeRequestType || 'single_task';
+
+    const draftTitle = aiDraft.title || '';
+    const draftDepartment = aiDraft.department || user?.department || '';
+    const draftPhone = formatIndianPhoneInput(aiDraft.phone || user?.phone);
+    const draftBrief = aiDraft.description || '';
+    const parsedDeadline = aiDraft.deadline ? new Date(aiDraft.deadline) : null;
+    const resolvedDeadline =
+      parsedDeadline && !Number.isNaN(parsedDeadline.getTime())
+        ? getNextAvailableDeadline(parsedDeadline)
+        : defaultDeadlineDate;
+
+    const mappedAttachments: BuilderAttachment[] = (navigationState?.aiDraftFiles || [])
+      .filter((file) => file && (file.id || file.name))
+      .map((file) => ({
+        id: String(file.id || crypto.randomUUID()),
+        name: String(file.name || 'attachment'),
+        size: Number(file.size || 0),
+        url: file.url,
+        driveId: file.driveId,
+        webViewLink: file.webViewLink,
+        webContentLink: file.webContentLink,
+        thumbnailUrl: file.thumbnailUrl,
+        uploading: false,
+      }));
+
+    setRequestTitle(draftTitle);
+    setDepartment(draftDepartment);
+    setRequesterPhone(draftPhone);
+    setOverallBrief(draftBrief);
+    setMasterAttachments(mappedAttachments);
+
+    if (resolvedType === 'single_task') {
+      const restoredCategory =
+        aiDraft.category && aiDraft.category !== 'campaign_or_others'
+          ? aiDraft.category
+          : '';
+      setSelectedRequestType('single_task');
+      setSingleCategory(restoredCategory);
+      setSingleUrgency(aiDraft.urgency || 'normal');
+      setSingleDeadline(resolvedDeadline);
+      setDeadlineMode('common');
+      setCommonDeadline(defaultDeadlineDate);
+      setCollaterals([]);
+      setCurrentStep('campaign');
+    } else {
+      setSelectedRequestType('campaign_request');
+      setDeadlineMode('common');
+      setCommonDeadline(resolvedDeadline);
+      setSingleCategory('');
+      setSingleUrgency('normal');
+      setSingleDeadline(defaultDeadlineDate);
+      setCollaterals([]);
+      setCurrentStep(
+        resolveWizardStep({
+          title: draftTitle,
+          department: draftDepartment,
+          requesterPhone: draftPhone,
+          brief: draftBrief,
+          deadlineMode: 'common',
+          commonDeadline: resolvedDeadline,
+          collaterals: [],
+          masterAttachments: mappedAttachments,
+        })
+      );
+    }
+
+    didHydrateAiDraftRef.current = true;
+    toast.message('AI draft loaded. Review and continue.');
+
+    navigate(location.pathname, {
+      replace: true,
+      state: {
+        restoreDraft: navigationState?.restoreDraft,
+        editTaskId: navigationState?.editTaskId,
+        editTaskSnapshot: navigationState?.editTaskSnapshot,
+        returnTo: navigationState?.returnTo,
+      },
+    });
+  }, [
+    isRequestEditMode,
+    location.pathname,
+    navigate,
+    navigationState,
+    routeRequestType,
+    user?.department,
     user?.phone,
   ]);
 

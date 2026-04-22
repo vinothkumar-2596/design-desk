@@ -253,22 +253,21 @@ export default function Typography() {
               style={{
                 fontFamily: 'var(--font-script)',
                 fontSize: 168,
-                fontStyle: 'italic',
-                letterSpacing: '-0.04em',
+                letterSpacing: '-0.02em',
                 color: 'var(--smvec-blue)',
               }}
             >
               26
             </span>
             <span
-              className="ml-1.5 mt-3 inline-flex flex-col items-start"
+              className="ml-2 mt-3 inline-flex flex-col items-start"
               style={{ color: 'var(--smvec-blue)' }}
             >
               <span
-                className="text-[14px] font-medium uppercase"
+                className="text-[13px] font-semibold uppercase"
                 style={{
                   fontFamily: 'var(--font-display)',
-                  letterSpacing: '0.18em',
+                  letterSpacing: '0.22em',
                   lineHeight: 1,
                   color: 'var(--smvec-blue)',
                 }}
@@ -276,7 +275,7 @@ export default function Typography() {
                 Years
               </span>
               <span
-                className="mt-1.5 inline-block h-[2px] w-10"
+                className="mt-1.5 inline-block h-[3px] w-11"
                 style={{ background: 'var(--smvec-gold)' }}
                 aria-hidden="true"
               />

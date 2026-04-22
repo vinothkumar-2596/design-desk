@@ -271,21 +271,30 @@ export default function Home() {
                   'translate3d(calc(var(--brand-px) * 12px), calc(var(--brand-py) * 12px), 0)',
               }}
             >
-              <p
-                className="absolute left-4 top-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50"
-              >
-                Anniversary
-              </p>
-              <span
-                className="text-[72px] font-bold leading-none tracking-tight"
-                style={{ color: 'var(--smvec-gold)', fontFamily: 'var(--font-display)' }}
-              >
-                26
-              </span>
-              <span
-                className="mt-1 text-[13px] font-semibold uppercase tracking-[0.3em] text-white/70"
-              >
-                Years
+              <span className="inline-flex items-start">
+                <span
+                  className="leading-[0.85]"
+                  style={{
+                    fontFamily: 'var(--font-script)',
+                    fontSize: 96,
+                    color: '#fff',
+                    letterSpacing: '-0.02em',
+                  }}
+                >
+                  26
+                </span>
+                <span className="ml-2 mt-2 inline-flex flex-col items-start">
+                  <span
+                    className="text-[11px] font-semibold uppercase"
+                    style={{ letterSpacing: '0.2em', lineHeight: 1, color: 'rgba(255,255,255,0.9)' }}
+                  >
+                    Years
+                  </span>
+                  <span
+                    className="mt-1.5 inline-block h-[3px] w-9"
+                    style={{ background: 'var(--smvec-gold)' }}
+                  />
+                </span>
               </span>
               <span
                 className="absolute bottom-3 right-4 inline-flex items-center gap-1 text-[10.5px] font-medium text-white/50 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-white/80"

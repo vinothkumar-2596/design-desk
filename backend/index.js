@@ -47,7 +47,7 @@ app.use(cors({
   ].filter(Boolean),
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 app.use(attachClientMeta);
 
 app.get('/healthz', (req, res) => {

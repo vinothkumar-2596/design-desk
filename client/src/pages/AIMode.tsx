@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { API_URL, authFetch, openDriveReconnectWindow } from '@/lib/api';
 import {
     Image as ImageIcon,
@@ -133,6 +133,7 @@ const shouldPromptDriveReconnect = (errorMessage?: string) => {
 
 export default function AIMode() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
     const [prompt, setPrompt] = useState('');
     const [messages, setMessages] = useState<Message[]>([]);
@@ -171,7 +172,12 @@ export default function AIMode() {
     const [lastUploadedFileId, setLastUploadedFileId] = useState<string | null>(null);
     const [allUploadedFiles, setAllUploadedFiles] = useState<any[]>([]);
     const [attachmentText, setAttachmentText] = useState<string>('');
-    const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(false);
+    const autoOpenFromNav = useMemo(() => {
+        const state = (location.state as { openTaskBuddy?: boolean } | null) ?? null;
+        return Boolean(state?.openTaskBuddy);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    const [isTaskBuddyOpen, setIsTaskBuddyOpen] = useState(autoOpenFromNav);
     const [taskBuddyInitialMessage, setTaskBuddyInitialMessage] = useState('');
 
     const attachmentContext = useMemo(() => {
@@ -197,8 +203,30 @@ export default function AIMode() {
         setView('initial');
     };
 
+    const autoOpenTaskBuddyHandledRef = useRef(autoOpenFromNav);
+    const arrivedViaAutoOpenRef = useRef(autoOpenFromNav);
+    useEffect(() => {
+        if (!autoOpenFromNav) return;
+        if (location.state) {
+            navigate(location.pathname, { replace: true, state: null });
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const handleTaskBuddyClose = () => {
+        setIsTaskBuddyOpen(false);
+        if (arrivedViaAutoOpenRef.current) {
+            arrivedViaAutoOpenRef.current = false;
+            navigate('/dashboard', { replace: true });
+        }
+    };
+
     const handleTaskBuddyDraftCreated = (draft: TaskDraft) => {
-        navigate('/new-request', {
+        const destination =
+            draft.requestType === 'campaign_request'
+                ? '/new-request/campaign-suite'
+                : '/new-request/quick-design';
+        navigate(destination, {
             state: {
                 aiDraft: draft,
                 aiDraftFiles: allUploadedFiles,
@@ -728,6 +756,26 @@ export default function AIMode() {
         }
     };
 
+    const hideAIModeLanding = autoOpenFromNav || arrivedViaAutoOpenRef.current || isTaskBuddyOpen;
+
+    if (hideAIModeLanding) {
+        return (
+            <div className="flex-1 h-full bg-[#0C1228]">
+                <TaskBuddyModal
+                    isOpen={isTaskBuddyOpen}
+                    onClose={handleTaskBuddyClose}
+                    onTaskCreated={handleTaskBuddyDraftCreated}
+                    initialMessage={taskBuddyInitialMessage}
+                    autoSendInitialMessage
+                    onOpenUploader={handleFileUpload}
+                    hasAttachments={allUploadedFiles.length > 0}
+                    attachmentContext={attachmentContext}
+                    attachmentFiles={allUploadedFiles}
+                />
+            </div>
+        );
+    }
+
     return (
         <div className="flex-1 h-full flex flex-col bg-gradient-to-b from-white to-[#F8FAFC]">
 
@@ -1069,13 +1117,14 @@ export default function AIMode() {
             </div>
             <TaskBuddyModal
                 isOpen={isTaskBuddyOpen}
-                onClose={() => setIsTaskBuddyOpen(false)}
+                onClose={handleTaskBuddyClose}
                 onTaskCreated={handleTaskBuddyDraftCreated}
                 initialMessage={taskBuddyInitialMessage}
                 autoSendInitialMessage
                 onOpenUploader={handleFileUpload}
                 hasAttachments={allUploadedFiles.length > 0}
                 attachmentContext={attachmentContext}
+                attachmentFiles={allUploadedFiles}
             />
         </div>
     );

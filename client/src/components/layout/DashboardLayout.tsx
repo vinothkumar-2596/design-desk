@@ -2507,7 +2507,7 @@ export function DashboardLayout({
                   </Link>
                 ) : (
                   <GeminiBlink
-                    onClick={() => navigate('/new-request', { state: { openTaskBuddy: true } })}
+                    onClick={() => navigate('/ai-mode', { state: { openTaskBuddy: true } })}
                     className="mr-2"
                   />
                 )

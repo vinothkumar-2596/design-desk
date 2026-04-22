@@ -32,6 +32,7 @@ STATUS: READY
   "category": "",
   "urgency": "",
   "deadline": "",
+  "department": "",
   "phone": ""
 }
 Do not include explanations.`;
@@ -287,7 +288,7 @@ const runGeminiWithKey = async ({ apiKey, recentMessages, systemPrompt, userMess
             temperature: 0.1,
             topP: 0.6,
             topK: 10,
-            maxOutputTokens: 320,
+            maxOutputTokens: 512,
         },
     });
 
@@ -617,6 +618,189 @@ router.post("/gemini", async (req, res) => {
                 error instanceof Error ? error.message : "Unknown Gemini route error"
             ));
     }
+});
+
+const BRAND_REVIEW_SYSTEM_PROMPT = `You are an expert Brand Compliance and Design Review AI for SMVEC (Sri Manakula Vinayagar Engineering College), an autonomous NAAC "A"-graded engineering institution in Puducherry, India.
+
+SMVEC OFFICIAL BRAND GUIDELINES — USE THESE AS YOUR REFERENCE:
+
+COLORS (MANDATORY):
+- Primary: Royal Blue #36429B
+- Accent: Golden Age #DBA328
+- Neutral: Black #000000, White #FFFFFF
+- Allowed backgrounds: White or Royal Blue only (Gold only as wordmark sublabel)
+- FORBIDDEN colors: Purple, pink, neon, bright red, green, orange, or any off-brand color
+
+TYPOGRAPHY:
+- Display/Headings: Google Sans Display (Regular weight preferred)
+- Body/UI: Google Sans Text 17pt
+- Anniversary script: Great Vibes (ONLY for the official "26 YEARS" lockup — forbidden elsewhere)
+- Forbidden: informal/decorative fonts, Comic Sans, script fonts other than the anniversary mark
+
+LOGO RULES:
+- SMVEC logo = botanical tree-and-lamp emblem + optional "26 YEARS" script + wordmark
+- Must maintain clear space (minimum = logo height ÷ 4 on all sides)
+- Must NOT be: distorted, stretched, rotated, recolored, shadowed, outlined, or placed on patterns/textures
+- Approved backgrounds only: white or royal blue
+- If logo is absent from a design that requires it, deduct all logo points
+
+BRAND TONE:
+- Institutional, professional, academic
+- Structured hierarchy, no decorative excess
+- Conservative layout; informal styles are non-compliant
+
+SCORING DIMENSIONS:
+1. BRAND COMPLIANCE (40 pts max):
+   - Logo presence, size, placement, clear space (10 pts)
+   - Color palette compliance with approved palette (10 pts)
+   - Typography — correct fonts and hierarchy (10 pts)
+   - Overall brand identity adherence (10 pts)
+
+2. DESIGN QUALITY (35 pts max):
+   - Visual hierarchy and layout structure (10 pts)
+   - Alignment, spacing, balance (10 pts)
+   - Readability and contrast (8 pts)
+   - Professional/institutional feel (7 pts)
+
+3. CONTENT ACCURACY (15 pts max):
+   - Text clarity, grammar, spelling (8 pts)
+   - Information completeness (7 pts)
+
+4. TECHNICAL QUALITY (10 pts max):
+   - Apparent image resolution quality (5 pts)
+   - Print/web readiness (5 pts)
+
+APPROVAL THRESHOLDS:
+- 90–100 → "Approved"
+- 75–89 → "Approved with Minor Corrections"
+- 55–74 → "Needs Revision"
+- Below 55 → "Rejected"
+
+Be rigorous. Penalize clearly. If logo is absent where required, score 0 for logo. If forbidden colors appear, deduct heavily.
+
+Respond with ONLY a valid JSON object — no markdown, no explanation, just JSON:
+{
+  "overallScore": 0,
+  "brandCompliance": {
+    "score": 0,
+    "logoUsage": {"score": 0, "max": 10, "notes": ""},
+    "colorPalette": {"score": 0, "max": 10, "notes": ""},
+    "typography": {"score": 0, "max": 10, "notes": ""},
+    "brandIdentity": {"score": 0, "max": 10, "notes": ""}
+  },
+  "designQuality": {
+    "score": 0,
+    "hierarchy": {"score": 0, "max": 10, "notes": ""},
+    "alignment": {"score": 0, "max": 10, "notes": ""},
+    "readability": {"score": 0, "max": 8, "notes": ""},
+    "professionalFeel": {"score": 0, "max": 7, "notes": ""}
+  },
+  "contentAccuracy": {
+    "score": 0,
+    "textClarity": {"score": 0, "max": 8, "notes": ""},
+    "completeness": {"score": 0, "max": 7, "notes": ""}
+  },
+  "technicalQuality": {
+    "score": 0,
+    "resolution": {"score": 0, "max": 5, "notes": ""},
+    "readiness": {"score": 0, "max": 5, "notes": ""}
+  },
+  "approvalStatus": "Approved",
+  "topIssues": [],
+  "suggestions": [],
+  "summary": ""
+}`;
+
+router.post("/brand-review", async (req, res) => {
+    const { imageBase64, mimeType, contextInfo } = req.body || {};
+
+    if (!imageBase64 || !mimeType) {
+        return res.status(400).json({ error: "imageBase64 and mimeType are required" });
+    }
+
+    const configuredKeys = getConfiguredGeminiKeys();
+    if (configuredKeys.length === 0) {
+        return res.status(503).json({ error: "AI service is temporarily unavailable.", code: "AI_KEY_MISSING" });
+    }
+
+    const keyPool = getGeminiKeyPool();
+    if (keyPool.keys.length === 0) {
+        const retryAfterSeconds = keyPool.nextRetryAt
+            ? Math.max(1, Math.ceil((keyPool.nextRetryAt - Date.now()) / 1000))
+            : 60;
+        return res.status(429).json({
+            error: `AI service is cooling down. Try again in ${retryAfterSeconds} seconds.`,
+            code: "AI_QUOTA_EXCEEDED",
+            retry_after_seconds: retryAfterSeconds,
+        });
+    }
+
+    let promptText = BRAND_REVIEW_SYSTEM_PROMPT;
+    if (contextInfo && String(contextInfo).trim()) {
+        promptText += `\n\nADDITIONAL CONTEXT:\n${String(contextInfo).trim()}`;
+    }
+
+    let lastErrorInfo = null;
+
+    for (const apiKey of keyPool.keys) {
+        try {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+
+            const result = await model.generateContent({
+                contents: [{
+                    parts: [
+                        { text: promptText },
+                        { inlineData: { mimeType: String(mimeType), data: String(imageBase64) } },
+                    ],
+                }],
+                generationConfig: {
+                    temperature: 0.1,
+                    maxOutputTokens: 1500,
+                },
+            });
+
+            const text = result.response.text();
+            const cleaned = text.replace(/```json\n?|\n?```/g, "").trim();
+            const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+                return res.status(500).json({ error: "AI did not return a valid review. Please try again." });
+            }
+            const review = JSON.parse(jsonMatch[0]);
+            advanceGeminiKeyCursor(apiKey);
+            return res.json(review);
+        } catch (error) {
+            const errorInfo = classifyGeminiError(error);
+            lastErrorInfo = errorInfo;
+            const cooldownMs = getGeminiCooldownMs(errorInfo);
+            if (cooldownMs > 0) {
+                markGeminiKeyCooldown(apiKey, cooldownMs, errorInfo.code);
+            }
+            console.error(`Brand review Gemini error for key ${getMaskedKey(apiKey)}:`, error);
+
+            if (
+                errorInfo.isQuotaExhaustedError ||
+                errorInfo.isRateLimitError ||
+                errorInfo.isLeakedKeyError ||
+                errorInfo.isAuthError
+            ) {
+                continue;
+            }
+            break;
+        }
+    }
+
+    if (lastErrorInfo?.isQuotaExhaustedError || lastErrorInfo?.isRateLimitError) {
+        return res.status(429).json({
+            error: "AI quota exhausted. Please try again later.",
+            code: lastErrorInfo.code,
+        });
+    }
+
+    return res.status(503).json(
+        withDevDetail(req, { error: "AI service is temporarily unavailable. Please try again later.", code: "AI_UNAVAILABLE" },
+            lastErrorInfo?.message)
+    );
 });
 
 export default router;

@@ -11,13 +11,21 @@ GOAL
 - Return READY as soon as the draft is usable.
 - Use the user's existing answers instead of re-checking them.
 
+REQUEST TYPE AWARENESS
+- The app has two request flows: "single_task" (one-off quick design) and "campaign_request" (a campaign suite with multiple deliverables).
+- The client will tell you the chosen type via a REQUEST TYPE line in context. If absent, assume single_task.
+- For single_task: capture ONE deliverable — title, brief, category, urgency, deadline.
+- For campaign_request: treat the overall brief as the CAMPAIGN BRIEF (objective, audience, message, tone), and capture the FIRST deliverable in detail (title, category, urgency, deadline). Additional deliverables are added by the user inside the form — you do not need to collect them.
+- Tailor the title for campaign_request to sound like a campaign name (e.g. "Diwali Campaign 2026"), not a single asset title.
+
 FORM FIELDS YOU MUST PREPARE
 - title
 - description
 - category
 - urgency
 - deadline
-- phone (optional)
+- department   (who is requesting this on behalf of)
+- phone        (10-digit Indian contact number for follow-ups)
 
 VALID CATEGORY VALUES
 - banner
@@ -42,12 +50,15 @@ MINIMUM DETAIL REQUIRED BEFORE READY
 - category or clear design type
 - urgency
 - deadline
+- department (use REQUESTER LOGIN DETAILS if present; otherwise ask once)
+- phone (use REQUESTER LOGIN DETAILS if present; otherwise ask once for a 10-digit Indian contact number)
 - enough detail for a short designer brief
 
 DEFAULTS AND INFERENCE
 - Infer category from the user's request only when it is obvious.
 - Default urgency to "normal" only if the user gives no preference after you ask once.
-- Never ask for phone unless the user asks for WhatsApp updates or gives it.
+- If REQUESTER LOGIN DETAILS already includes department and phone, DO NOT ask again — use them.
+- If either is missing, ask ONCE as its own short question (e.g. "Which department is this for?" / "Share a 10-digit contact number.").
 - If title is missing, create a short professional title yourself.
 
 DESCRIPTION RULES
@@ -79,10 +90,12 @@ QUESTION RULES
 - Ask once for short request details if the brief is too thin.
 - Ask category if it is not clear.
 - Ask urgency once if the user did not specify it.
+- Ask department exactly once — only if REQUESTER LOGIN DETAILS does not already include it.
+- Ask phone exactly once — only if REQUESTER LOGIN DETAILS does not already include it.
 - If enough info is already available, do not ask extra questions.
 - If the user already gave a rough answer, use it and continue.
 - Do not ask optional style, color, tone, tagline, copy, or size questions before READY.
-- Return READY only after deliverable, context/purpose, short details, category, urgency, deadline, and attachment status are known.
+- Return READY only after deliverable, context/purpose, short details, category, urgency, deadline, department, phone, and attachment status are known.
 
 READY RESPONSE
 Only when the draft is fully ready, respond ONLY in this format:
@@ -95,6 +108,7 @@ STATUS: READY
   "category": "",
   "urgency": "",
   "deadline": "",
+  "department": "",
   "phone": ""
 }
 
@@ -106,6 +120,8 @@ RULES
 - Do NOT add any extra text outside the required format.
 - Do NOT return SAVE_DRAFT or SUBMIT_REQUEST text. The UI will handle the draft action after READY.`;
 
+export type AIRequestType = 'single_task' | 'campaign_request';
+
 export interface TaskDraft {
     title: string;
     description: string;
@@ -115,7 +131,13 @@ export interface TaskDraft {
     whatsappNumbers?: string[];
     notes?: string;
     phone?: string;
+    department?: string;
     attachmentsNote?: string;
+    /**
+     * Which New Request form this draft should route to.
+     * Undefined = caller should default to single_task (backward compat).
+     */
+    requestType?: AIRequestType;
 }
 
 export interface TaskBuddyActionPayload {
@@ -135,6 +157,7 @@ export interface TaskBuddyReadyPayload {
     urgency: string;
     deadline: string;
     phone?: string;
+    department?: string;
 }
 
 export interface AIResponse {
@@ -243,8 +266,12 @@ export const mapActionPayloadToDraft = (payload: TaskBuddyActionPayload): TaskDr
     };
 };
 
-export const mapReadyPayloadToDraft = (payload: TaskBuddyReadyPayload): TaskDraft => {
+export const mapReadyPayloadToDraft = (
+    payload: TaskBuddyReadyPayload,
+    requestType?: AIRequestType
+): TaskDraft => {
     const normalizedPhone = payload.phone?.trim();
+    const normalizedDepartment = payload.department?.trim();
     return {
         title: payload.title || 'Design Request',
         description: payload.description || 'Design request details',
@@ -252,7 +279,9 @@ export const mapReadyPayloadToDraft = (payload: TaskBuddyReadyPayload): TaskDraf
         urgency: mapActionUrgencyToTaskDraft(payload.urgency || ''),
         deadline: payload.deadline ? toIsoDate(payload.deadline) : '',
         whatsappNumbers: normalizedPhone ? [normalizedPhone] : undefined,
-        phone: normalizedPhone
+        phone: normalizedPhone,
+        department: normalizedDepartment,
+        requestType
     };
 };
 
@@ -320,8 +349,9 @@ export async function sendMessageToAI(
         throw new Error('AI endpoint is not configured. Please set VITE_API_URL or run the backend locally.');
     }
 
+    let response: Response;
     try {
-        const response = await authFetch(AI_ENDPOINT, {
+        response = await authFetch(AI_ENDPOINT, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -332,6 +362,18 @@ export async function sendMessageToAI(
                 systemPrompt: TASK_BUDDY_SYSTEM_PROMPT
             })
         });
+    } catch (networkError) {
+        const reason = networkError instanceof Error ? networkError.message : String(networkError);
+        console.error('[TaskBuddy] AI request failed at network layer.', {
+            url: AI_ENDPOINT,
+            reason,
+        });
+        throw new Error(
+            `AI backend unreachable at ${AI_ENDPOINT}. Is the API server running? (network error: ${reason})`
+        );
+    }
+
+    try {
 
         if (!response.ok) {
             let errorMessage = response.statusText;

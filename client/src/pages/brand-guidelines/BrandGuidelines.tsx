@@ -18,6 +18,7 @@ const Applications = lazy(() => import('./sections/Applications'));
 const Downloads = lazy(() => import('./sections/Downloads'));
 const Blog = lazy(() => import('./sections/Blog'));
 const BlogPost = lazy(() => import('./sections/BlogPost'));
+const Review = lazy(() => import('./sections/Review'));
 
 function SectionFallback() {
   return (
@@ -46,6 +47,7 @@ export default function BrandGuidelines() {
           <Route path="spacing" element={<Spacing />} />
           <Route path="approval" element={<ApprovalWorkflow />} />
           <Route path="contact" element={<Contact />} />
+          <Route path="review" element={<Review />} />
         </Routes>
       </Suspense>
     </BrandLayout>
