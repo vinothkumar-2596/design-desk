@@ -123,6 +123,7 @@ export const BRAND_NAVIGATION: Array<{
     group: 'Visual Identity',
     items: [
       { label: 'Logo & marks', href: '/brand-guidelines/logo', icon: 'logo' },
+      { label: 'Logo usage guidelines', href: '/brand-guidelines/applications', icon: 'image' },
       { label: 'Color palette', href: '/brand-guidelines/colors', icon: 'palette' },
       { label: 'Typography', href: '/brand-guidelines/typography', icon: 'type' },
     ],
@@ -135,15 +136,9 @@ export const BRAND_NAVIGATION: Array<{
     ],
   },
   {
-    group: 'Applied',
+    group: 'Resources',
     items: [
-      { label: 'Collateral applications', href: '/brand-guidelines/applications', icon: 'image' },
       { label: 'Downloads', href: '/brand-guidelines/downloads', icon: 'download' },
-    ],
-  },
-  {
-    group: 'Editorial',
-    items: [
       { label: 'Blog', href: '/brand-guidelines/blog', icon: 'blog' },
     ],
   },

@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
+import { toJpeg } from 'html-to-image';
 
 type Step = { name: string; var: string; light?: boolean };
 
@@ -128,7 +129,6 @@ function CoreSwatch({
         style={{ borderColor: 'var(--border)', color: 'var(--fg-3)' }}
       >
         <CopyButton value={hex} label={name} />
-        <CopyButton value={varName} label={name} />
       </div>
     </div>
   );
@@ -196,9 +196,34 @@ function TintStrip({ steps }: { steps: Step[] }) {
   );
 }
 
+export const colorPaletteRef = { current: null as HTMLDivElement | null };
+
+export async function downloadColorPaletteJPEG() {
+  const node = colorPaletteRef.current;
+  if (!node) {
+    toast.error('Color palette section not found');
+    return;
+  }
+  try {
+    toast.loading('Exporting color palette...', { id: 'palette-export' });
+    const dataUrl = await toJpeg(node, {
+      quality: 0.95,
+      backgroundColor: '#ffffff',
+      pixelRatio: 2,
+    });
+    const link = document.createElement('a');
+    link.download = 'SMVEC_Color_Palette.jpg';
+    link.href = dataUrl;
+    link.click();
+    toast.success('Color palette saved as JPEG', { id: 'palette-export' });
+  } catch {
+    toast.error('Failed to export color palette', { id: 'palette-export' });
+  }
+}
+
 export default function Colors() {
   return (
-    <div className="brand-card">
+    <div className="brand-card" ref={(el) => { colorPaletteRef.current = el; }}>
       <header className="brand-card__header">
         <div>
           <div className="brand-card__eyebrow">01 · Foundations</div>

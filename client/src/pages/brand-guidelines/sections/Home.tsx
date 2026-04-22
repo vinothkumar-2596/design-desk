@@ -26,7 +26,7 @@ const QUICK_LINKS = [
   { label: 'Logo & marks', href: '/brand-guidelines/logo' },
   { label: 'Color palette', href: '/brand-guidelines/colors' },
   { label: 'Typography', href: '/brand-guidelines/typography' },
-  { label: 'Collateral applications', href: '/brand-guidelines/applications' },
+  { label: 'Logo usage guidelines', href: '/brand-guidelines/applications' },
   { label: 'Downloads', href: '/brand-guidelines/downloads' },
   { label: 'Approval workflow', href: '/brand-guidelines/approval' },
 ];
@@ -74,8 +74,8 @@ export default function Home() {
   };
 
   return (
-    <div className="space-y-24">
-      <section className="space-y-8">
+    <div className="space-y-14">
+      <section className="space-y-8 pt-10 lg:pt-16">
         {/* FULL-WIDTH HEADLINE */}
         <div className="brand-hero-card" style={{ animationDelay: '60ms' }}>
           <div className="flex items-center gap-3">
@@ -217,7 +217,7 @@ export default function Home() {
           <div className="relative grid grid-cols-12 grid-rows-[repeat(8,1fr)] gap-4 aspect-[5/4] min-h-[440px]">
             {/* Hero feature card — full lockup */}
             <Link
-              to="/brand-guidelines/logo"
+              to="/brand-guidelines/applications"
               className="brand-hero-card brand-hero-card-shell group col-span-7 row-span-5 col-start-1 row-start-1 flex flex-col overflow-hidden rounded-[14px] outline-none"
               style={{
                 animationDelay: '120ms',
@@ -232,7 +232,7 @@ export default function Home() {
               </div>
               <div className="relative flex flex-1 items-center justify-center px-6 py-3">
                 <img
-                  src={BRAND_ASSETS.svg.group}
+                  src="https://res.cloudinary.com/dofapr3pk/image/upload/v1776859477/df_mhoxbm.png"
                   alt="SMVEC primary lockup"
                   className="h-full max-h-[160px] w-auto object-contain"
                   loading="lazy"
@@ -260,9 +260,9 @@ export default function Home() {
               </div>
             </Link>
 
-            {/* Anniversary mark — accent */}
+            {/* Anniversary accent card */}
             <Link
-              to="/brand-guidelines/logo"
+              to="/brand-guidelines/overview"
               className="brand-hero-card brand-hero-card--float-alt brand-hero-card-shell group col-span-5 row-span-5 col-start-8 row-start-1 relative flex flex-col items-center justify-center overflow-hidden rounded-[14px] text-center outline-none"
               style={{
                 animationDelay: '220ms',
@@ -272,36 +272,23 @@ export default function Home() {
               }}
             >
               <p
-                className="absolute left-4 top-3 text-[10px] font-semibold uppercase tracking-[0.18em]"
-                style={{ color: 'rgba(255,255,255,0.62)' }}
+                className="absolute left-4 top-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50"
               >
                 Anniversary
               </p>
-              <div
-                className="leading-[0.85]"
-                style={{
-                  fontFamily: 'var(--font-script)',
-                  fontSize: 'clamp(96px, 11vw, 132px)',
-                  fontStyle: 'italic',
-                  letterSpacing: '-0.04em',
-                  color: 'var(--smvec-gold)',
-                }}
+              <span
+                className="text-[72px] font-bold leading-none tracking-tight"
+                style={{ color: 'var(--smvec-gold)', fontFamily: 'var(--font-display)' }}
               >
                 26
-              </div>
+              </span>
               <span
-                className="mt-1 text-[12px] font-medium uppercase"
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  letterSpacing: '0.32em',
-                  color: 'var(--smvec-gold)',
-                }}
+                className="mt-1 text-[13px] font-semibold uppercase tracking-[0.3em] text-white/70"
               >
                 Years
               </span>
               <span
-                className="absolute bottom-3 right-4 inline-flex items-center gap-1 text-[10.5px] font-medium opacity-60 transition-all duration-200 group-hover:translate-x-0.5 group-hover:opacity-100"
-                style={{ color: 'var(--smvec-gold)' }}
+                className="absolute bottom-3 right-4 inline-flex items-center gap-1 text-[10.5px] font-medium text-white/50 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-white/80"
               >
                 Story
                 <ArrowRight className="h-3 w-3" />

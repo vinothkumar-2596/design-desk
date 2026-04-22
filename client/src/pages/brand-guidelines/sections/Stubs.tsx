@@ -1,9 +1,42 @@
 import { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Mail } from 'lucide-react';
+import { ArrowRight, Mail, Users, Briefcase, Printer, GraduationCap, Building2, Globe } from 'lucide-react';
 import { SectionTitle } from '../components/SectionTitle';
 import { Callout } from '../components/Callout';
 import { DoDontGrid } from '../components/DoDontGrid';
+
+const AUDIENCE_CARDS = [
+  {
+    icon: Users,
+    title: 'For staff & departments',
+    body: 'A single reference for marketing, admissions, departments, events, and communications teams when producing any official material — from posters to presentations.',
+  },
+  {
+    icon: Briefcase,
+    title: 'For agencies & freelancers',
+    body: 'A reliable handoff document so vendors design correctly the first time, reducing approval cycles, reprints, and misaligned deliverables.',
+  },
+  {
+    icon: Printer,
+    title: 'For printers & fabricators',
+    body: 'Exact Pantone, CMYK, and HEX values, logo files in every format, and approved specifications — preventing on-press surprises and color drift.',
+  },
+  {
+    icon: GraduationCap,
+    title: 'For student bodies',
+    body: 'Clear guidelines for club posters, event banners, and social media — ensuring student-created materials uphold institutional standards.',
+  },
+  {
+    icon: Building2,
+    title: 'For campus signage',
+    body: 'Specifications for wayfinding, building names, department boards, and permanent installations that reflect the institutional identity.',
+  },
+  {
+    icon: Globe,
+    title: 'For digital platforms',
+    body: 'Web, app, and social media guidelines — profile images, cover photos, email signatures, and digital ad formats with correct asset usage.',
+  },
+];
 
 export function WhyExists() {
   return (
@@ -14,26 +47,19 @@ export function WhyExists() {
         emphasis="exists"
         description="SMVEC has a defined brand system. Every brochure, social post, admission poster, departmental banner, presentation, certificate, standee, hoarding, and digital creative should align with the official identity."
       />
-      <div className="grid gap-6 md:grid-cols-3">
-        {[
-          {
-            title: 'For staff',
-            body: 'A single reference for marketing, admissions, departments, events, and communications teams when producing any official material.',
-          },
-          {
-            title: 'For agencies & freelancers',
-            body: 'A reliable handoff document so vendors design correctly the first time, reducing approval cycles and reprints.',
-          },
-          {
-            title: 'For printers',
-            body: 'Exact color values, logo files, and approved formats — preventing on-press surprises and color drift.',
-          },
-        ].map((card) => (
-          <article key={card.title} className="rounded-md border border-[#E4E7F1] bg-white p-5">
-            <h3 className="text-[16px] font-medium text-[#0B1024]">{card.title}</h3>
-            <p className="mt-2 text-[13px] leading-6 text-[#48506B]">{card.body}</p>
-          </article>
-        ))}
+      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        {AUDIENCE_CARDS.map((card) => {
+          const Icon = card.icon;
+          return (
+            <article key={card.title} className="rounded-md border border-[#E4E7F1] bg-white p-5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-[#F2F4FB] text-[#36429B]">
+                <Icon className="h-4 w-4" />
+              </span>
+              <h3 className="mt-3 text-[15px] font-medium text-[#0B1024]">{card.title}</h3>
+              <p className="mt-2 text-[13px] leading-6 text-[#48506B]">{card.body}</p>
+            </article>
+          );
+        })}
       </div>
       <Callout variant="info" title="One source of truth">
         This site replaces ad-hoc emails, slack files, and old artwork copies. If something here

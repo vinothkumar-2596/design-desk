@@ -8,25 +8,31 @@ import {
 } from '@/lib/driveFolderPreview';
 import { API_URL } from '@/lib/api';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { downloadColorPaletteJPEG } from './Colors';
 
 const LOGO_PACK_DRIVE_URL =
   'https://drive.google.com/drive/folders/1HG5Cm0s2EOeSq2xzTf-GIAocU2g8T6VZ?usp=sharing';
 const LOGO_PACK_FOLDER_ID = extractDriveFolderId(LOGO_PACK_DRIVE_URL);
 
+const BRAND_MANUAL_DRIVE_URL =
+  'https://drive.google.com/file/d/1b5EzVfapS6cPa6VpfvDdyZSuwfcXOgEi/view?usp=sharing';
+const BRAND_MANUAL_FILE_ID = (() => {
+  const m = BRAND_MANUAL_DRIVE_URL.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : '';
+})();
+const BRAND_MANUAL_THUMBNAIL = `https://lh3.googleusercontent.com/d/${BRAND_MANUAL_FILE_ID}=w800`;
+
 const RESOURCES = [
-  {
-    title: 'Brand manual (PDF)',
-    description: 'Full institutional manual including print specifications and approval process.',
-    icon: FileText,
-    href: '#',
-    label: 'Download PDF',
-  },
   {
     title: 'Color palette files',
     description: 'ASE swatches for Adobe apps, ACO for Photoshop, JSON tokens for digital.',
     icon: Palette,
     href: '#',
-    label: 'Download swatches',
+    label: 'Save as JPEG',
+    onClick: (e: React.MouseEvent) => {
+      e.preventDefault();
+      downloadColorPaletteJPEG();
+    },
   },
   {
     title: 'Presentation template',
@@ -124,6 +130,79 @@ export default function Downloads() {
           </HoverCardContent>
         </HoverCard>
 
+        <HoverCard openDelay={120} closeDelay={120}>
+          <HoverCardTrigger asChild>
+            <a
+              href={BRAND_MANUAL_DRIVE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex h-full flex-col rounded-md border border-[#E4E7F1] bg-white p-5 transition-colors hover:border-[#36429B]/35 hover:bg-[#F8F9FE]"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-[#F2F4FB] text-[#36429B]">
+                <FileText className="h-4 w-4" />
+              </span>
+              <h3 className="mt-4 text-[15px] font-medium text-[#0B1024]">Brand manual (PDF)</h3>
+              <p className="mt-1.5 flex-1 text-[12.5px] leading-5 text-[#48506B]">
+                Full institutional manual including print specifications and approval process.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[#36429B]">
+                <Download className="h-3.5 w-3.5" />
+                Download PDF
+              </span>
+            </a>
+          </HoverCardTrigger>
+          <HoverCardContent
+            side="right"
+            align="start"
+            sideOffset={12}
+            className="w-[24rem] max-w-[calc(100vw-2rem)] border-[#E4E7F1] bg-white p-3 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.22)]"
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7A8299]">
+                Live Preview
+              </p>
+            </div>
+            <div className="mb-2 flex items-center gap-2">
+              <img
+                src="/google-drive.ico"
+                alt=""
+                aria-hidden="true"
+                className="h-4 w-4 shrink-0 object-contain opacity-90"
+                onError={(event) => {
+                  event.currentTarget.style.display = 'none';
+                }}
+              />
+              <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+                Brand Manual — PDF
+              </p>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-[#D9E6FF] bg-[#F8F9FE]">
+              <img
+                src={BRAND_MANUAL_THUMBNAIL}
+                alt="Brand manual preview"
+                className="h-auto w-full object-contain"
+                referrerPolicy="no-referrer"
+                onError={(event) => {
+                  event.currentTarget.parentElement!.innerHTML =
+                    '<div class="flex h-32 items-center justify-center text-xs text-[#7A8299]">Preview unavailable</div>';
+                }}
+              />
+            </div>
+            <p className="mt-3 truncate text-[11px] text-muted-foreground">
+              {BRAND_MANUAL_DRIVE_URL}
+            </p>
+            <a
+              href={BRAND_MANUAL_DRIVE_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-[#3D5A9E] hover:text-[#27427E] hover:underline"
+            >
+              Open link
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </HoverCardContent>
+        </HoverCard>
+
         {RESOURCES.map((resource) => {
           const Icon = resource.icon;
           return (
@@ -132,7 +211,8 @@ export default function Downloads() {
               href={resource.href}
               target={resource.href.startsWith('http') ? '_blank' : undefined}
               rel={resource.href.startsWith('http') ? 'noopener noreferrer' : undefined}
-              className="group flex h-full flex-col rounded-md border border-[#E4E7F1] bg-white p-5 transition-colors hover:border-[#36429B]/35 hover:bg-[#F8F9FE]"
+              onClick={resource.onClick}
+              className="group flex h-full cursor-pointer flex-col rounded-md border border-[#E4E7F1] bg-white p-5 transition-colors hover:border-[#36429B]/35 hover:bg-[#F8F9FE]"
             >
               <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-[#F2F4FB] text-[#36429B]">
                 <Icon className="h-4 w-4" />
