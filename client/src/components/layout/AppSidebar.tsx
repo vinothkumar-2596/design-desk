@@ -31,7 +31,6 @@ import {
   Share2,
   MessageCircle,
   Check,
-  BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -175,12 +174,6 @@ const navItems: NavItem[] = [
     href: '/approvals',
     icon: CheckSquare,
     roles: ['admin', 'designer'],
-  },
-  {
-    title: 'Brand Guidelines',
-    href: '/brand-guidelines',
-    icon: BookOpen,
-    roles: ['admin', 'designer', 'staff', 'treasurer'],
   },
 ];
 

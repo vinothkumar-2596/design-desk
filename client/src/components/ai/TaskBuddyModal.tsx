@@ -1009,6 +1009,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
     const { user } = useAuth();
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
+    const [animatedPlaceholder, setAnimatedPlaceholder] = useState('Ask me anything…');
     const [isLoading, setIsLoading] = useState(false);
     const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -1165,6 +1166,54 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
             hasInitializedScrollRef.current = false;
         }
     }, [isOpen, initialMessage]);
+
+    useEffect(() => {
+        if (!isOpen || input.length > 0) return;
+        const phrases = [
+            'Ask me anything…',
+            'Create a new task…',
+            'Summarise my pending work…',
+            'Draft an email to the team…',
+            'Plan tomorrow’s schedule…',
+            'Find that file I uploaded…',
+        ];
+        let phraseIdx = 0;
+        let charIdx = phrases[0].length;
+        let mode: 'pause' | 'deleting' | 'typing' = 'pause';
+        let timer: number | null = null;
+        const tick = () => {
+            const current = phrases[phraseIdx];
+            if (mode === 'pause') {
+                mode = 'deleting';
+                timer = window.setTimeout(tick, 30);
+            } else if (mode === 'deleting') {
+                charIdx -= 1;
+                setAnimatedPlaceholder(current.slice(0, Math.max(0, charIdx)));
+                if (charIdx <= 0) {
+                    mode = 'typing';
+                    phraseIdx = (phraseIdx + 1) % phrases.length;
+                    charIdx = 0;
+                    timer = window.setTimeout(tick, 280);
+                    return;
+                }
+                timer = window.setTimeout(tick, 25);
+            } else {
+                const next = phrases[phraseIdx];
+                charIdx += 1;
+                setAnimatedPlaceholder(next.slice(0, charIdx));
+                if (charIdx >= next.length) {
+                    mode = 'pause';
+                    timer = window.setTimeout(tick, 1600);
+                    return;
+                }
+                timer = window.setTimeout(tick, 55);
+            }
+        };
+        timer = window.setTimeout(tick, 1600);
+        return () => {
+            if (timer !== null) window.clearTimeout(timer);
+        };
+    }, [isOpen, input.length]);
 
     useEffect(() => {
         if (messages.length > 0) {
@@ -2311,7 +2360,7 @@ export function TaskBuddyModal({ isOpen, onClose, onTaskCreated, initialMessage,
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyPress={handleKeyPress}
-                                placeholder="Ask me anything..."
+                                placeholder={animatedPlaceholder}
                                 className="w-full pl-11 pr-24"
                                 disabled={isLoading}
                             />

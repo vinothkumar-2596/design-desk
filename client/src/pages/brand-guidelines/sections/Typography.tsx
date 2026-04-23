@@ -253,7 +253,8 @@ export default function Typography() {
               style={{
                 fontFamily: 'var(--font-display)',
                 fontSize: 168,
-                fontWeight: 300,
+                fontWeight: 400,
+                fontStyle: 'normal',
                 letterSpacing: '-0.04em',
                 color: 'var(--smvec-blue)',
               }}

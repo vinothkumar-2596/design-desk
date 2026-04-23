@@ -32,6 +32,7 @@ import {
   CircleCheckBig,
   ClipboardCheck,
   Plus,
+  BookOpen,
 } from 'lucide-react';
 import { useGlobalSearch } from '@/contexts/GlobalSearchContext';
 import { Link, useLocation } from 'react-router-dom';
@@ -2512,6 +2513,48 @@ export function DashboardLayout({
                   />
                 )
               )}
+              <Tooltip delayDuration={150}>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/brand-guidelines"
+                    className="brand-header-pill mr-2 inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold transition-colors"
+                  >
+                    <BookOpen className="h-3.5 w-3.5" style={{ color: '#DBA328' }} strokeWidth={2} />
+                    <span className="hidden sm:inline">BrandDesk Studio</span>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  align="end"
+                  sideOffset={8}
+                  className="max-w-[280px] p-0 shadow-[0_6px_18px_-12px_rgba(37,99,235,0.3)] dark:shadow-[0_8px_20px_-14px_rgba(2,8,23,0.7)]"
+                >
+                  <div className="px-3.5 py-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#D9E6FF] bg-[#EEF3FF] dark:border-white/10 dark:bg-white/5"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" style={{ color: '#36429B' }} strokeWidth={2} />
+                      </span>
+                      <p className="text-[12.5px] font-semibold tracking-[-0.005em]">
+                        BrandDesk · Studio
+                      </p>
+                    </div>
+                    <p className="mt-1.5 text-[11.5px] leading-[1.55] opacity-80">
+                      Official identity, colour, typography, logo lockups, and
+                      brand-compliance AI Tools for every team.
+                    </p>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <span className="text-[10px] font-medium uppercase tracking-[0.14em] opacity-60">
+                        v1.0 · Internal
+                      </span>
+                      <span aria-hidden="true" className="h-1 w-1 rounded-full" style={{ background: '#DBA328' }} />
+                      <span className="text-[10px] font-medium opacity-60">Open manual ↗</span>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
               <ThemeToggle className="mr-2" />
               {headerPresenceAction}
               {notificationAction}

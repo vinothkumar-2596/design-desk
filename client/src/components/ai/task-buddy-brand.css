@@ -102,7 +102,7 @@
   border-color: rgba(255, 255, 255, 0.10);
 }
 
-/* ── Title with gold underline on emphasis ──────────────────────────────── */
+/* ── Title ──────────────────────────────────────────────────────────────── */
 .task-buddy-brand-title {
   font-family: var(--tb-font-display);
   font-size: 34px;
@@ -114,9 +114,7 @@
 }
 .task-buddy-brand-title b,
 .task-buddy-brand-title .mark {
-  display: inline-block;
-  border-bottom: 3px solid var(--smvec-gold);
-  padding-bottom: 3px;
+  display: inline;
   font-weight: inherit;
 }
 

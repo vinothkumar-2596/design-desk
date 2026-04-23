@@ -94,14 +94,17 @@ export function BrandLayout({ children }: BrandLayoutProps) {
                   className="h-full w-full object-contain"
                 />
               </span>
-              <div className="flex flex-col leading-tight">
-                <p className="brand-header-wordmark text-[13px] font-semibold tracking-[-0.01em]">
-                  SMVEC
-                  <span aria-hidden="true" className="mx-1.5 font-normal" style={{ color: 'var(--fg-3)', opacity: 0.55 }}>×</span>
-                  DesignDesk
+              <div className="flex flex-col leading-tight" style={{ width: 'max-content' }}>
+                <p
+                  className="brand-header-wordmark text-[13px] font-semibold tracking-[-0.01em] w-full"
+                  style={{ display: 'flex', justifyContent: 'space-between' }}
+                >
+                  <span>SMVEC</span>
+                  <span aria-hidden="true" className="font-normal" style={{ color: 'var(--fg-3)', opacity: 0.55 }}>×</span>
+                  <span>DesignDesk</span>
                 </p>
                 <p
-                  className="text-[10px] font-medium uppercase tracking-[0.22em]"
+                  className="text-[10px] font-medium uppercase tracking-[0.22em] whitespace-nowrap"
                   style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}
                 >
                   BrandDesk · Studio

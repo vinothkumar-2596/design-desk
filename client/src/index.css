@@ -1806,6 +1806,28 @@
   }
 }
 
+/* ── BrandDesk Studio header pill · brand-analyser-pill styling ──────── */
+.brand-header-pill {
+  background: #ffffff;
+  border: 1px solid #D5DDF5;
+  color: hsl(var(--muted-foreground));
+  box-shadow: none;
+}
+.brand-header-pill:hover {
+  border-color: rgba(54, 66, 155, 0.5);
+  background: #EEF1FB;
+}
+.dark .brand-header-pill {
+  background: #131D35;
+  border-color: #3A4E80;
+  color: hsl(var(--muted-foreground));
+}
+.dark .brand-header-pill:hover {
+  border-color: #5566B7;
+  background: #1A2645;
+  color: hsl(var(--foreground));
+}
+
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;

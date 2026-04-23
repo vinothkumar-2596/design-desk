@@ -912,6 +912,31 @@ export const sendFinalFilesEmail = async ({
     default:
       break;
   }
+
+  const isApprovedStatus = email_type.endsWith("_APPROVED");
+  const isRejectedStatus = email_type.endsWith("_REJECTED");
+  const isClarificationStatus = email_type === "CLARIFICATION_REQUIRED";
+  let statusAccentColor = brandColor;
+  let statusAccentSoft = brandSoft;
+  let statusAccentBorder = "#D5DDF5";
+  let statusBadgeLabel = emailEyebrow;
+  if (isApprovedStatus) {
+    statusAccentColor = "#047857";
+    statusAccentSoft = "#ECFDF5";
+    statusAccentBorder = "#A7F3D0";
+    statusBadgeLabel = "Approved";
+  } else if (isRejectedStatus) {
+    statusAccentColor = "#B91C1C";
+    statusAccentSoft = "#FEF2F2";
+    statusAccentBorder = "#FECACA";
+    statusBadgeLabel = "Rejected";
+  } else if (isClarificationStatus) {
+    statusAccentColor = "#B45309";
+    statusAccentSoft = "#FFFBEB";
+    statusAccentBorder = "#FDE68A";
+    statusBadgeLabel = "Clarification needed";
+  }
+
   const deadlineLabel = isAssignmentLifecycleEmail
     ? formatDeadlineDateTime(taskDetails?.deadline)
     : formatDate(taskDetails?.deadline);
@@ -1104,39 +1129,53 @@ export const sendFinalFilesEmail = async ({
           <td>
             <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ffffff;border-radius:20px;border:1px solid #e6e9f2;">
               <tr>
-                <td style="padding:24px 32px 8px;text-align:right;">
-                  <div style="display:inline-block;background:#f8faff;border-radius:14px;padding:10px 14px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td style="vertical-align:middle;padding-right:10px;">
-                          ${logoMark}
-                        </td>
-                        <td style="vertical-align:middle;text-align:left;">
-                          <div style="font-weight:700;font-size:18px;color:${brandColor};letter-spacing:0.2px;line-height:1.2;">
-                            ${brandName}
-                          </div>
-                        </td>
-                      </tr>
-                    </table>
-                  </div>
+                <td style="padding:22px 28px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                    <tr>
+                      <td style="vertical-align:middle;text-align:left;">
+                        <table role="presentation" cellpadding="0" cellspacing="0">
+                          <tr>
+                            <td style="vertical-align:middle;padding-right:10px;">
+                              ${logoMark}
+                            </td>
+                            <td style="vertical-align:middle;text-align:left;">
+                              <div style="font-weight:700;font-size:17px;color:${brandColor};letter-spacing:-0.2px;line-height:1.1;font-family:${PROJECT_SANS_FONT_FAMILY};">
+                                ${brandName}
+                              </div>
+                              <div style="margin-top:2px;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:#98a2b3;font-family:${PROJECT_SANS_FONT_FAMILY};">
+                                BrandDesk · Studio
+                              </div>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                      <td style="vertical-align:middle;text-align:right;">
+                        <div style="display:inline-block;background:${statusAccentSoft};border:1px solid ${statusAccentBorder};border-radius:999px;padding:6px 12px 6px 10px;font-size:11px;font-weight:700;color:${statusAccentColor};letter-spacing:0.4px;text-transform:uppercase;line-height:1;font-family:${PROJECT_SANS_FONT_FAMILY};">
+                          <span style="display:inline-block;width:6px;height:6px;border-radius:999px;background:${statusAccentColor};vertical-align:middle;margin-right:6px;"></span>
+                          <span style="vertical-align:middle;">${statusBadgeLabel}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  </table>
+                  <div style="height:1px;background:linear-gradient(90deg,transparent,#e6e9f2 18%,#e6e9f2 82%,transparent);margin-top:18px;"></div>
                 </td>
               </tr>
               <tr>
-                <td style="padding:12px 32px 16px;${isTaskAssignedEmail ? "text-align:left;" : "text-align:center;"}">
+                <td style="padding:24px 32px 20px;${isTaskAssignedEmail ? "text-align:left;" : "text-align:center;"}">
                   ${isTaskAssignedEmail ? assignedHeaderHtml : `
-                  <div style="font-size:12px;text-transform:uppercase;letter-spacing:2px;color:${brandColor};font-weight:700;">
+                  <div style="font-size:12px;text-transform:uppercase;letter-spacing:2.4px;color:${brandColor};font-weight:700;font-family:${PROJECT_SANS_FONT_FAMILY};">
                     ${emailEyebrow}
                   </div>
-                  <div style="font-size:26px;font-weight:700;color:#111827;line-height:1.2;">
+                  <div style="margin-top:8px;font-size:28px;font-weight:700;color:#0f172a;line-height:1.18;letter-spacing:-0.6px;font-family:${PROJECT_SANS_FONT_FAMILY};">
                     ${emailHeadline}
                   </div>
-                  <div style="margin-top:6px;font-size:16px;font-weight:600;color:${brandColor};">
+                  <div style="margin-top:14px;display:inline-block;background:${brandSoft};border:1px solid #D5DDF5;border-radius:10px;padding:8px 14px;font-size:13.5px;font-weight:600;color:${brandColor};letter-spacing:-0.1px;font-family:${PROJECT_SANS_FONT_FAMILY};max-width:100%;">
                     ${safeTitle}
                   </div>
-                  <p style="margin:12px auto 0;max-width:460px;font-size:15px;color:#475467;line-height:1.5;">
+                  <p style="margin:16px auto 0;max-width:480px;font-size:14.5px;color:#475467;line-height:1.6;font-family:${PROJECT_SANS_FONT_FAMILY};">
                     ${emailDescription}
                   </p>
-                  <div style="margin-top:20px;">
+                  <div style="margin-top:22px;">
                     ${taskCta}
                   </div>
                   `}

@@ -488,7 +488,7 @@ const CRITERIA_SECTIONS = [
     color: '#36429B',
     items: [
       { title: 'Logo · 10 pts', desc: 'SMVEC botanical emblem present, correct proportions, clear space maintained. Approved backgrounds: Royal Blue, white, cream. Never on photos or textured surfaces.' },
-      { title: 'Color palette · 10 pts', desc: 'Approved backgrounds: Royal Blue #36429B · White · Cream. Forbidden backgrounds: red, magenta, wine, teal, violet, purple, orange. Forbidden text colors: same list. Gold #DBA328 is correct for date text, subtitles, and accent lines.' },
+      { title: 'Color palette · 10 pts', desc: 'Approved backgrounds: Royal Blue #36429B · White · Cream/Warm Ivory #FAF5EC · Light Grey · Dark Navy. Forbidden: dark green, teal, red, magenta, wine, violet, purple, orange, lime, maroon, brown. Gold #DBA328 is correct for date text, subtitles, and accent lines.' },
       { title: 'Typography · 10 pts', desc: 'A1: Google Sans only. A2: one premium serif (Cormorant, Playfair, Garamond) for the event title is allowed — clean font for all body text. More than 3–4 mixed font families = violation.' },
       { title: 'Brand identity · 10 pts', desc: 'Does the design unmistakably look like SMVEC? Correct colors + logo + institutional tone = high score. Generic or off-brand = low score.' },
     ],
@@ -623,7 +623,6 @@ export default function Review() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [creativeType, setCreativeType] = useState('');
-  const [campaignName, setCampaignName] = useState('');
   const [targetAudience, setTargetAudience] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [critiqueResult, setCritiqueResult] = useState<CritiqueResult | null>(null);
@@ -797,7 +796,6 @@ export default function Review() {
       const { base64, mimeType: compressedMime } = await toBase64(file);
       const contextInfo = [
         creativeType ? `Creative type: ${creativeType}` : '',
-        campaignName ? `Campaign name: ${campaignName}` : '',
         targetAudience ? `Target audience: ${targetAudience}` : '',
       ].filter(Boolean).join('\n');
 
@@ -834,7 +832,6 @@ export default function Review() {
       const { base64, mimeType: compressedMime } = await toBase64(file);
       const contextInfo = [
         creativeType ? `Design type: ${creativeType}` : '',
-        campaignName ? `Campaign/event: ${campaignName}` : '',
         targetAudience ? `Target audience: ${targetAudience}` : '',
       ].filter(Boolean).join('\n');
 
@@ -863,7 +860,6 @@ export default function Review() {
     setCritiqueResult(null);
     setError(null);
     setCreativeType('');
-    setCampaignName('');
     setTargetAudience('');
   };
 
@@ -1130,29 +1126,21 @@ export default function Review() {
           {/* Optional fields */}
           <div className="space-y-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--fg-3)' }}>Optional context</p>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-[11.5px] font-medium" style={{ color: 'var(--fg-2)' }}>Creative type</label>
-                <select
-                  value={creativeType}
-                  onChange={e => setCreativeType(e.target.value)}
-                  className="w-full rounded-[8px] border px-3 py-2 text-[12.5px] outline-none"
-                  style={{ borderColor: 'var(--border)', background: isDark ? '#1A2342' : 'var(--bg-1)', color: 'var(--fg-1)' }}
-                >
-                  <option value="">Select…</option>
-                  {CREATIVE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-[11.5px] font-medium" style={{ color: 'var(--fg-2)' }}>Campaign name</label>
-                <input
-                  type="text"
-                  value={campaignName}
-                  onChange={e => setCampaignName(e.target.value)}
-                  placeholder="e.g. Diwali 2026"
-                  className="w-full rounded-[8px] border px-3 py-2 text-[12.5px] outline-none"
-                  style={{ borderColor: 'var(--border)', background: isDark ? '#1A2342' : 'var(--bg-1)', color: 'var(--fg-1)' }}
-                />
+                <div className="relative">
+                  <select
+                    value={creativeType}
+                    onChange={e => setCreativeType(e.target.value)}
+                    className="w-full appearance-none rounded-[8px] border pl-3 pr-10 py-2 text-[12.5px] outline-none"
+                    style={{ borderColor: 'var(--border)', background: isDark ? '#1A2342' : 'var(--bg-1)', color: 'var(--fg-1)' }}
+                  >
+                    <option value="">Select…</option>
+                    {CREATIVE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--fg-3)' }} />
+                </div>
               </div>
               <div>
                 <label className="mb-1 block text-[11.5px] font-medium" style={{ color: 'var(--fg-2)' }}>Target audience</label>

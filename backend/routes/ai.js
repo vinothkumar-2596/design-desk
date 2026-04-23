@@ -631,7 +631,7 @@ STEP 0 — VISUAL STYLE FILTER (HARD GATE)
 Before doing anything else, check whether this design matches the "Visual Noise Poster Pattern".
 
 A design is Visual Noise if it shows 4 or more of these traits:
-□ Primary background is NOT Royal Blue (#36429B), White/Off-white, Light Grey, or Dark Navy — instead uses dark green, forest green, olive, teal, red, orange, purple, maroon, brown, magenta, lime, or any other completely non-SMVEC background color
+□ Primary background is NOT Royal Blue (#36429B), White/Off-white, Cream/Warm Ivory (#FAF5EC), Light Grey, or Dark Navy — instead uses dark green, forest green, olive, teal, red, orange, purple, maroon, brown, magenta, lime, or any other completely non-SMVEC background color
 □ 4+ unrelated colors used prominently (beyond Royal Blue, White, Gold, and a neutral)
 □ Multiple gradient panels, colorful capsule shapes, or multi-colored decorative blocks
 □ 3+ distinct font styles/families with no consistent hierarchy
@@ -672,7 +672,7 @@ Check each item and record YES/NO before scoring.
 
 COLOR VIOLATIONS (check every color used in text, backgrounds, blocks, borders):
 □ V1. Is red, coral, pink, or salmon used for text or as a dominant element? (forbidden text/highlight color)
-□ V2. Is the background ANY color that is not Royal Blue (#36429B), White/Off-white, Light Grey, or Dark Navy? This includes: dark green, forest green, olive, teal, red, magenta, wine, violet, purple, orange, lime, maroon, brown, yellow-green, or any other non-SMVEC color. (forbidden background — wrong brand foundation, automatic rejection trigger)
+□ V2. Is the background ANY color that is not Royal Blue (#36429B), White/Off-white, Cream/Warm Ivory (#FAF5EC), Light Grey, or Dark Navy? This includes: dark green, forest green, olive, teal, red, magenta, wine, violet, purple, orange, lime, maroon, brown, yellow-green, or any other non-SMVEC color. (forbidden background — wrong brand foundation, automatic rejection trigger)
 □ V3. Are 4+ distinct non-brand colors used without a system? (color noise)
 □ V4. Do multiple colors (red, blue, green, purple, orange) compete equally without hierarchy? (no color system)
 
@@ -754,7 +754,7 @@ FLOOR RULE: If the design is readable at a glance and event details (name, date,
     0–3=everything same size/weight, no dominant focal point
 
   Alignment & Spacing (10):
-    9–10=consistent grid, even margins, breathing room
+    9–10=consistent grid, even margins, generous breathing room — award full 10 for intentionally minimal layouts with deliberate whitespace
     6–8=mostly aligned, minor inconsistency
     3–5=mixed alignment (center+left+right in same design)
     0–2=no grid, random placement
@@ -766,10 +766,12 @@ FLOOR RULE: If the design is readable at a glance and event details (name, date,
     0–2=photo background with NO overlay (V11 confirmed) OR multiple illegible text blocks
 
   Professional Feel (7):
-    7=clean, structured, institutional, print-ready
+    7=clean, structured, institutional, print-ready — intentionally sparse/minimal editorial layouts with strong whitespace discipline score full 7; restraint is a design virtue, not a deficiency
     5–6=mostly professional, minor clutter
     3–4=cluttered, inconsistent styling, feels assembled not designed
     0–2=visually noisy, amateurish, multiple competing styles
+
+  MINIMALIST DESIGN RULE: A design that uses generous whitespace, a single focal element, limited typography (1–2 typefaces), and a clean cream/white background is displaying intentional editorial restraint — this is the SMVEC institutional standard. Do NOT penalise emptiness. Award full marks for Alignment & Spacing and Professional Feel when the layout is deliberately minimal and all elements are well-placed.
 
 STEP 3F — CONTENT ACCURACY (15 pts)
   Text Clarity (8): grammar, no spelling errors, clear message
@@ -792,6 +794,7 @@ SCORING BENCHMARKS (use as calibration — apply the FIRST matching row):
   V8 alone (slight hierarchy softness, all else correct) → typically 76–83/100 → Approved with Minor Corrections
   0–1 minor violations, functional layout and readable hierarchy → typically 82–90/100 → Approved with Minor Corrections
   Zero confirmed violations, strong hierarchy, full brand compliance → 90–100/100 → Approved
+  Intentionally minimal design (cream/white bg, single focal point, generous whitespace, 1–2 typefaces, correct logo, Royal Blue + Gold palette) → treat as zero violations; score 78–92/100 → Approved or Approved with Minor Corrections
 
 THRESHOLDS: 90–100=Approved · 75–89=Approved with Minor Corrections · 55–74=Needs Revision · <55=Rejected
 
@@ -800,7 +803,7 @@ STEP 4 — ISSUE TIERS
 ════════════════════════════════
 
 CRITICAL (≥8 pt deduction, must fix before any use — design cannot be approved):
-  - V2: non-SMVEC background color (dark green, teal, magenta, orange, maroon, purple, etc.)
+  - V2: non-SMVEC background color (dark green, teal, magenta, orange, maroon, purple, etc. — cream/warm ivory #FAF5EC IS approved)
   - V9: SMVEC emblem/lockup completely absent or wholly unrecognizable at viewing distance
   - VISUAL_NOISE: mosaic of unrelated colors/shapes/fonts with no coherent brand system
   - V1+V8 together: forbidden accent color + complete hierarchy collapse → illegible and off-brand

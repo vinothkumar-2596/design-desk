@@ -39,6 +39,7 @@ const CORE = [
   { name: 'Golden age', hex: '#DBA328', var: '--smvec-gold', light: false },
   { name: 'Black', hex: '#000000', var: '--smvec-black', light: false },
   { name: 'White', hex: '#FFFFFF', var: '--smvec-white', light: true },
+  { name: 'Cream', hex: '#FAF5EC', var: '--smvec-cream', light: true },
 ];
 
 function CopyButton({ value, label }: { value: string; label: string }) {
@@ -232,15 +233,16 @@ export default function Colors() {
           </h1>
         </div>
         <p className="brand-card__intro">
-          A strict four-color brand: Royal Blue, Golden age, black, white. Tints are engineered
-          extensions used only for page-background watermarks and soft UI fills — never for running
-          text.
+          Five core colours: Royal Blue, Golden Age, Black, White, and Cream. Cream is the approved
+          warm background for ceremonial print — invitations, certificates, and formal event collateral.
+          Tints are engineered extensions used only for page-background watermarks and soft UI fills —
+          never for running text.
         </p>
       </header>
 
       <section className="mt-2">
         <div className="brand-section-title">Brand core · published in the manual</div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-5 sm:grid-cols-3 lg:grid-cols-5">
           {CORE.map((swatch) => (
             <CoreSwatch
               key={swatch.var}
