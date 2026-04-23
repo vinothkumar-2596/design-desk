@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, Component, ReactNode } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { BrandLayout } from './BrandLayout';
 import {
@@ -8,6 +8,26 @@ import {
   ApprovalWorkflow,
   Contact,
 } from './sections/Stubs';
+
+class SectionErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: '40px 32px', fontFamily: 'system-ui, sans-serif' }}>
+          <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.15em', color: '#B91C1C', textTransform: 'uppercase', marginBottom: 8 }}>Section failed to render</p>
+          <pre style={{ fontSize: 12, color: '#374151', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: 16, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {(this.state.error as Error).message}
+            {'\n\n'}
+            {(this.state.error as Error).stack}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const Home = lazy(() => import('./sections/Home'));
 const Logo = lazy(() => import('./sections/Logo'));
@@ -31,6 +51,7 @@ function SectionFallback() {
 export default function BrandGuidelines() {
   return (
     <BrandLayout>
+      <SectionErrorBoundary>
       <Suspense fallback={<SectionFallback />}>
         <Routes>
           <Route index element={<Home />} />
@@ -50,6 +71,7 @@ export default function BrandGuidelines() {
           <Route path="review" element={<Review />} />
         </Routes>
       </Suspense>
+      </SectionErrorBoundary>
     </BrandLayout>
   );
 }

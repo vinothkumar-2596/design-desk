@@ -95,6 +95,9 @@ const getRequestOrigin = (req) => {
 };
 
 const getGoogleRedirectUri = (req) => {
+  if (process.env.GOOGLE_OAUTH_REDIRECT_URI) {
+    return process.env.GOOGLE_OAUTH_REDIRECT_URI;
+  }
   return new URL("/api/auth/google/callback", getRequestOrigin(req)).toString();
 };
 
