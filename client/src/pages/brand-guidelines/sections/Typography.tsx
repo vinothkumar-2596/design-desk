@@ -251,9 +251,10 @@ export default function Typography() {
             <span
               className="leading-[0.85]"
               style={{
-                fontFamily: 'var(--font-script)',
+                fontFamily: 'var(--font-display)',
                 fontSize: 168,
-                letterSpacing: '-0.02em',
+                fontWeight: 300,
+                letterSpacing: '-0.04em',
                 color: 'var(--smvec-blue)',
               }}
             >
@@ -285,7 +286,7 @@ export default function Typography() {
             className="text-[12px] leading-5"
             style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}
           >
-            168 / italic · reserved for
+            168 / light · reserved for
             <br />
             the 26-year mark only
           </div>

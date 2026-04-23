@@ -39,6 +39,7 @@ const Downloads = lazy(() => import('./sections/Downloads'));
 const Blog = lazy(() => import('./sections/Blog'));
 const BlogPost = lazy(() => import('./sections/BlogPost'));
 const Review = lazy(() => import('./sections/Review'));
+const DesignDesk = lazy(() => import('./sections/DesignDesk'));
 
 function SectionFallback() {
   return (
@@ -69,6 +70,7 @@ export default function BrandGuidelines() {
           <Route path="approval" element={<ApprovalWorkflow />} />
           <Route path="contact" element={<Contact />} />
           <Route path="review" element={<Review />} />
+          <Route path="designdesk" element={<DesignDesk />} />
         </Routes>
       </Suspense>
       </SectionErrorBoundary>

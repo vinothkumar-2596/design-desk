@@ -234,7 +234,7 @@ export function Contact() {
         </ContactCard>
         <ContactCard
           title="Approval submissions"
-          email="approvals@smvec.ac.in"
+          email="design@smvec.ac.in"
           body="Submit final artwork for sign-off before print or publish. Include all source files."
         >
           <ArrowRight className="h-4 w-4" />

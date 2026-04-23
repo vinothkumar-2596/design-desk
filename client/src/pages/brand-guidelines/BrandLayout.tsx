@@ -18,6 +18,7 @@ import {
   Check,
   Mail,
   Sparkles,
+  MonitorSmartphone,
   type LucideIcon,
 } from 'lucide-react';
 import { BRAND_NAVIGATION, BRAND_ASSETS, type BrandNavIcon } from './assets';
@@ -37,6 +38,7 @@ const NAV_ICON_MAP: Record<BrandNavIcon, LucideIcon> = {
   workflow: Check,
   mail: Mail,
   review: Sparkles,
+  designdesk: MonitorSmartphone,
 };
 import { cn } from '@/lib/utils';
 import './fonts.css';
@@ -103,20 +105,7 @@ export function BrandLayout({ children }: BrandLayoutProps) {
           </div>
           <nav className="hidden items-center gap-1 md:flex">
             <NavLink
-              to="/brand-guidelines/logo"
-              className={({ isActive }) =>
-                cn(
-                  'rounded px-2.5 py-1.5 text-[12.5px] font-medium transition-colors',
-                  isActive
-                    ? 'text-[#36429B]'
-                    : 'text-[#48506B] hover:text-[#0B1024]'
-                )
-              }
-            >
-              Logo
-            </NavLink>
-            <NavLink
-              to="/brand-guidelines/colors"
+              to="/brand-guidelines/designdesk"
               className={({ isActive }) =>
                 cn(
                   'rounded px-2.5 py-1.5 text-[12.5px] font-medium transition-colors',
@@ -124,35 +113,13 @@ export function BrandLayout({ children }: BrandLayoutProps) {
                 )
               }
             >
-              Colors
-            </NavLink>
-            <NavLink
-              to="/brand-guidelines/typography"
-              className={({ isActive }) =>
-                cn(
-                  'rounded px-2.5 py-1.5 text-[12.5px] font-medium transition-colors',
-                  isActive ? 'text-[#36429B]' : 'text-[#48506B] hover:text-[#0B1024]'
-                )
-              }
-            >
-              Typography
-            </NavLink>
-            <NavLink
-              to="/brand-guidelines/applications"
-              className={({ isActive }) =>
-                cn(
-                  'rounded px-2.5 py-1.5 text-[12.5px] font-medium transition-colors',
-                  isActive ? 'text-[#36429B]' : 'text-[#48506B] hover:text-[#0B1024]'
-                )
-              }
-            >
-              Applications
+              DesignDesk
             </NavLink>
             <NavLink
               to="/brand-guidelines/review"
               className={({ isActive }) =>
                 cn(
-                  'ml-2 inline-flex items-center gap-1.5 border px-3 py-1.5 text-[12.5px] font-semibold transition-colors duration-150',
+                  'inline-flex items-center gap-1.5 border px-3 py-1.5 text-[12.5px] font-semibold transition-colors duration-150',
                   isActive
                     ? 'border-[#36429B] bg-[#EEF1FB] text-[#36429B]'
                     : 'border-[#DCE2F4] bg-white text-[#36429B] hover:border-[#36429B]/50 hover:bg-[#EEF1FB]'
@@ -161,7 +128,7 @@ export function BrandLayout({ children }: BrandLayoutProps) {
               style={{ borderRadius: '4px' }}
             >
               <Sparkles className="h-3.5 w-3.5 text-[#DBA328]" strokeWidth={2} />
-              AI Review
+              Brand Compliance Analyser
             </NavLink>
           </nav>
           <button

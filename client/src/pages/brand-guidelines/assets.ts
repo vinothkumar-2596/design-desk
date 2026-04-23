@@ -100,7 +100,8 @@ export type BrandNavIcon =
   | 'blog'
   | 'workflow'
   | 'mail'
-  | 'review';
+  | 'review'
+  | 'designdesk';
 
 export const BRAND_NAVIGATION: Array<{
   group: string;
@@ -153,7 +154,8 @@ export const BRAND_NAVIGATION: Array<{
   {
     group: 'AI Tools',
     items: [
-      { label: 'Brand compliance review', href: '/brand-guidelines/review', icon: 'review', description: 'AI-powered design audit against SMVEC brand guidelines' },
+      { label: 'DesignDesk', href: '/brand-guidelines/designdesk', icon: 'designdesk', description: 'Platform overview — workflows, roles, and submission standards' },
+      { label: 'Brand Compliance Analyser', href: '/brand-guidelines/review', icon: 'review', description: 'AI-powered design audit against SMVEC brand guidelines' },
     ],
   },
 ];

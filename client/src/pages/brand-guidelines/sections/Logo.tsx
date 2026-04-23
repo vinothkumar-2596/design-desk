@@ -93,16 +93,18 @@ function ChapterDemo({
           fontWeight: 400,
         }}
       >
-        {title}{' '}
-        <b
-          className="inline-block pb-1"
-          style={{
-            borderBottom: `4px solid ${isBlue ? 'var(--smvec-gold)' : 'currentColor'}`,
-            fontWeight: 'inherit',
-          }}
-        >
-          {emphasis}
-        </b>
+        {title}{title && emphasis ? ' ' : ''}
+        {emphasis && (
+          <b
+            className="inline-block pb-1"
+            style={{
+              borderBottom: `4px solid ${isBlue ? 'var(--smvec-gold)' : 'currentColor'}`,
+              fontWeight: 'inherit',
+            }}
+          >
+            {emphasis}
+          </b>
+        )}
       </h3>
     </div>
   );
@@ -157,12 +159,12 @@ export default function Logo() {
         <div className="brand-section-title">Lockups</div>
         <div className="grid gap-5 md:grid-cols-2">
           <Lockup
-            label="Primary · full lockup"
+            label="Primary · 26 Years Edition"
             src={BRAND_ASSETS.svg.group}
             alt="SMVEC full logo"
           />
           <Lockup
-            label="Emblem · icon + 26 Years"
+            label="Emblem · alone"
             src={BRAND_ASSETS.svg.frame42}
             alt="SMVEC emblem"
           />
@@ -225,7 +227,7 @@ export default function Logo() {
       <section className="mt-12">
         <div className="brand-section-title">Section-title architecture · keyline + gold rule</div>
         <div className="grid gap-5 md:grid-cols-2">
-          <ChapterDemo variant="blue" chapter="Chapter 01" title="Introduc" emphasis="tion" />
+          <ChapterDemo variant="blue" chapter="Chapter 01" title="" emphasis="Introduction" />
           <ChapterDemo variant="gold" chapter="Chapter 03" title="Our" emphasis="Values" />
         </div>
         <p
