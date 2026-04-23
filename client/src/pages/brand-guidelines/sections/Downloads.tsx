@@ -1,3 +1,4 @@
+import { useTheme } from 'next-themes';
 import { Download, FileText, Palette, Image as ImageIcon, Layout, Mail, Type, ExternalLink } from 'lucide-react';
 import { SectionTitle } from '../components/SectionTitle';
 import { Callout } from '../components/Callout';
@@ -58,6 +59,17 @@ const RESOURCES = [
 ];
 
 export default function Downloads() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const cardStyle = {
+    borderColor: isDark ? '#2A3860' : 'var(--border)',
+    background: isDark ? '#111827' : 'var(--bg-1)',
+  };
+  const iconStyle = {
+    background: isDark ? '#1E2D55' : 'var(--smvec-blue-050)',
+    color: isDark ? '#ffffff' : 'var(--smvec-blue)',
+  };
+  const linkColor = { color: isDark ? '#A8B2DC' : 'var(--smvec-blue)' };
   return (
     <div className="space-y-12">
       <SectionTitle
@@ -74,16 +86,20 @@ export default function Downloads() {
               href={LOGO_PACK_DRIVE_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="group flex h-full flex-col rounded-md border border-[#E4E7F1] bg-white p-5 transition-colors hover:border-[#36429B]/35 hover:bg-[#F8F9FE]"
+              className="group flex h-full flex-col rounded-md border p-5 transition-colors hover:border-[#36429B]/35"
+              style={cardStyle}
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-[#F2F4FB] text-[#36429B]">
+              <span
+                className="flex h-9 w-9 items-center justify-center rounded-sm"
+                style={iconStyle}
+              >
                 <ImageIcon className="h-4 w-4" />
               </span>
-              <h3 className="mt-4 text-[15px] font-medium text-[#0B1024]">Logo pack</h3>
-              <p className="mt-1.5 flex-1 text-[12.5px] leading-5 text-[#48506B]">
+              <h3 className="mt-4 text-[15px] font-medium" style={{ color: 'var(--fg-1)' }}>Logo pack</h3>
+              <p className="mt-1.5 flex-1 text-[12.5px] leading-5" style={{ color: 'var(--fg-2)' }}>
                 Primary lockup, emblem, reverse, mono — SVG, PNG @2x, EPS for print.
               </p>
-              <span className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[#36429B]">
+              <span className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-medium" style={linkColor}>
                 <ExternalLink className="h-3.5 w-3.5" />
                 Open Drive folder
               </span>
@@ -93,10 +109,11 @@ export default function Downloads() {
             side="right"
             align="start"
             sideOffset={12}
-            className="w-[24rem] max-w-[calc(100vw-2rem)] border-[#E4E7F1] bg-white p-3 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.22)]"
+            className="w-[24rem] max-w-[calc(100vw-2rem)] p-3 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.22)]"
+            style={cardStyle}
           >
             <div className="mb-2 flex items-center gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7A8299]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--fg-3)' }}>
                 Live Preview
               </p>
             </div>
@@ -122,7 +139,8 @@ export default function Downloads() {
               href={LOGO_PACK_DRIVE_URL}
               target="_blank"
               rel="noreferrer"
-              className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-[#3D5A9E] hover:text-[#27427E] hover:underline"
+              className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium hover:underline"
+              style={linkColor}
             >
               Open link
               <ExternalLink className="h-3.5 w-3.5" />
@@ -136,16 +154,20 @@ export default function Downloads() {
               href={BRAND_MANUAL_DRIVE_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="group flex h-full flex-col rounded-md border border-[#E4E7F1] bg-white p-5 transition-colors hover:border-[#36429B]/35 hover:bg-[#F8F9FE]"
+              className="group flex h-full flex-col rounded-md border p-5 transition-colors hover:border-[#36429B]/35"
+              style={cardStyle}
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-[#F2F4FB] text-[#36429B]">
+              <span
+                className="flex h-9 w-9 items-center justify-center rounded-sm"
+                style={iconStyle}
+              >
                 <FileText className="h-4 w-4" />
               </span>
-              <h3 className="mt-4 text-[15px] font-medium text-[#0B1024]">Brand manual (PDF)</h3>
-              <p className="mt-1.5 flex-1 text-[12.5px] leading-5 text-[#48506B]">
+              <h3 className="mt-4 text-[15px] font-medium" style={{ color: 'var(--fg-1)' }}>Brand manual (PDF)</h3>
+              <p className="mt-1.5 flex-1 text-[12.5px] leading-5" style={{ color: 'var(--fg-2)' }}>
                 Full institutional manual including print specifications and approval process.
               </p>
-              <span className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[#36429B]">
+              <span className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-medium" style={linkColor}>
                 <Download className="h-3.5 w-3.5" />
                 Download PDF
               </span>
@@ -155,10 +177,11 @@ export default function Downloads() {
             side="right"
             align="start"
             sideOffset={12}
-            className="w-[24rem] max-w-[calc(100vw-2rem)] border-[#E4E7F1] bg-white p-3 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.22)]"
+            className="w-[24rem] max-w-[calc(100vw-2rem)] p-3 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.22)]"
+            style={cardStyle}
           >
             <div className="mb-2 flex items-center gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7A8299]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--fg-3)' }}>
                 Live Preview
               </p>
             </div>
@@ -176,7 +199,10 @@ export default function Downloads() {
                 Brand Manual — PDF
               </p>
             </div>
-            <div className="overflow-hidden rounded-lg border border-[#D9E6FF] bg-[#F8F9FE]">
+            <div
+              className="overflow-hidden rounded-lg border"
+              style={{ borderColor: 'var(--smvec-blue-100)', background: 'var(--smvec-blue-050)' }}
+            >
               <img
                 src={BRAND_MANUAL_THUMBNAIL}
                 alt="Brand manual preview"
@@ -184,7 +210,7 @@ export default function Downloads() {
                 referrerPolicy="no-referrer"
                 onError={(event) => {
                   event.currentTarget.parentElement!.innerHTML =
-                    '<div class="flex h-32 items-center justify-center text-xs text-[#7A8299]">Preview unavailable</div>';
+                    '<div class="flex h-32 items-center justify-center text-xs" style="color:var(--fg-3)">Preview unavailable</div>';
                 }}
               />
             </div>
@@ -195,7 +221,8 @@ export default function Downloads() {
               href={BRAND_MANUAL_DRIVE_URL}
               target="_blank"
               rel="noreferrer"
-              className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-[#3D5A9E] hover:text-[#27427E] hover:underline"
+              className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium hover:underline"
+              style={linkColor}
             >
               Open link
               <ExternalLink className="h-3.5 w-3.5" />
@@ -212,18 +239,22 @@ export default function Downloads() {
               target={resource.href.startsWith('http') ? '_blank' : undefined}
               rel={resource.href.startsWith('http') ? 'noopener noreferrer' : undefined}
               onClick={resource.onClick}
-              className="group flex h-full cursor-pointer flex-col rounded-md border border-[#E4E7F1] bg-white p-5 transition-colors hover:border-[#36429B]/35 hover:bg-[#F8F9FE]"
+              className="group flex h-full cursor-pointer flex-col rounded-md border p-5 transition-colors hover:border-[#36429B]/35"
+              style={cardStyle}
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-[#F2F4FB] text-[#36429B]">
+              <span
+                className="flex h-9 w-9 items-center justify-center rounded-sm"
+                style={iconStyle}
+              >
                 <Icon className="h-4 w-4" />
               </span>
-              <h3 className="mt-4 text-[15px] font-medium text-[#0B1024]">
+              <h3 className="mt-4 text-[15px] font-medium" style={{ color: 'var(--fg-1)' }}>
                 <span dangerouslySetInnerHTML={{ __html: resource.title }} />
               </h3>
-              <p className="mt-1.5 flex-1 text-[12.5px] leading-5 text-[#48506B]">
+              <p className="mt-1.5 flex-1 text-[12.5px] leading-5" style={{ color: 'var(--fg-2)' }}>
                 <span dangerouslySetInnerHTML={{ __html: resource.description }} />
               </p>
-              <span className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[#36429B]">
+              <span className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-medium" style={linkColor}>
                 <Download className="h-3.5 w-3.5" />
                 {resource.label}
               </span>
@@ -234,11 +265,11 @@ export default function Downloads() {
 
       <section className="space-y-5">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#36429B]">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em]" style={linkColor}>
             Typography
           </p>
-          <h2 className="mt-1 text-[20px] font-medium text-[#0B1024]">Google Sans font package</h2>
-          <p className="mt-1.5 text-[13px] leading-6 text-[#48506B]">
+          <h2 className="mt-1 text-[20px] font-medium" style={{ color: 'var(--fg-1)' }}>Google Sans font package</h2>
+          <p className="mt-1.5 text-[13px] leading-6" style={{ color: 'var(--fg-2)' }}>
             Self-hosted TTF files. Install locally for Office and Adobe apps, or link directly in
             web projects. Two optical sizes — Display for large headlines, Text 17pt for body and UI.
           </p>
@@ -247,15 +278,19 @@ export default function Downloads() {
           {BRAND_FONT_DOWNLOADS.map((family) => (
             <div
               key={family.family}
-              className="rounded-md border border-[#E4E7F1] bg-white p-5"
+              className="rounded-md border p-5"
+              style={cardStyle}
             >
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-[#F2F4FB] text-[#36429B]">
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm"
+                  style={iconStyle}
+                >
                   <Type className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-[15px] font-medium text-[#0B1024]">{family.family}</h3>
-                  <p className="mt-0.5 text-[12.5px] leading-5 text-[#48506B]">{family.note}</p>
+                  <h3 className="text-[15px] font-medium" style={{ color: 'var(--fg-1)' }}>{family.family}</h3>
+                  <p className="mt-0.5 text-[12.5px] leading-5" style={{ color: 'var(--fg-2)' }}>{family.note}</p>
                 </div>
               </div>
               <ul className="mt-4 grid grid-cols-2 gap-1">
@@ -264,10 +299,11 @@ export default function Downloads() {
                     <a
                       href={file.url}
                       download
-                      className="group flex items-center justify-between gap-2 rounded-sm border border-transparent px-2 py-1.5 text-[12px] text-[#48506B] transition-colors hover:border-[#E4E7F1] hover:bg-[#F8F9FE] hover:text-[#36429B]"
+                      className="group flex items-center justify-between gap-2 rounded-sm border border-transparent px-2 py-1.5 text-[12px] transition-colors hover:border-[#36429B]/20 hover:text-[#36429B]"
+                      style={{ color: 'var(--fg-2)' }}
                     >
                       <span className="truncate">
-                        <span className="font-medium text-[#0B1024]">{file.weight}</span>{' '}
+                        <span className="font-medium" style={{ color: 'var(--fg-1)' }}>{file.weight}</span>{' '}
                         <span>{file.label}</span>
                       </span>
                       <Download className="h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -282,7 +318,7 @@ export default function Downloads() {
 
       <Callout variant="gold" title="Missing a file?">
         If a resource you need isn't listed here, reach out to the brand team — see{' '}
-        <a href="/brand-guidelines/contact" className="font-medium text-[#36429B] hover:underline">
+        <a href="/brand-guidelines/contact" className="font-medium hover:underline" style={linkColor}>
           Contact
         </a>
         . Do not export your own from screenshots or third-party sources.

@@ -17,7 +17,7 @@ class SectionErrorBoundary extends Component<{ children: ReactNode }, { error: E
       return (
         <div style={{ padding: '40px 32px', fontFamily: 'system-ui, sans-serif' }}>
           <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.15em', color: '#B91C1C', textTransform: 'uppercase', marginBottom: 8 }}>Section failed to render</p>
-          <pre style={{ fontSize: 12, color: '#374151', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: 16, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          <pre style={{ fontSize: 12, color: 'var(--fg-1)', background: 'var(--status-rejected-bg)', border: '1px solid var(--status-rejected-bd)', borderRadius: 8, padding: 16, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {(this.state.error as Error).message}
             {'\n\n'}
             {(this.state.error as Error).stack}

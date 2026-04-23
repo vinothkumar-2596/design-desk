@@ -12,13 +12,16 @@ export function SectionTitle({ eyebrow, title, emphasis, description, align = 'l
   return (
     <header className={align === 'center' ? 'text-center' : 'text-left'}>
       {eyebrow ? (
-        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#36429B]/80">
+        <p
+          className="text-[11px] font-medium uppercase tracking-[0.22em]"
+          style={{ color: 'var(--smvec-blue)', opacity: 0.85 }}
+        >
           {eyebrow}
         </p>
       ) : null}
       <h1
-        className="mt-2 text-[32px] font-normal leading-[1.1] tracking-[-0.01em] text-[var(--smvec-ink)] md:text-[40px]"
-        style={{ fontFamily: 'var(--font-display)' }}
+        className="mt-2 text-[32px] font-normal leading-[1.1] tracking-[-0.01em] md:text-[40px]"
+        style={{ color: 'var(--fg-1)', fontFamily: 'var(--font-display)' }}
       >
         {title}
         {emphasis ? (
@@ -32,7 +35,7 @@ export function SectionTitle({ eyebrow, title, emphasis, description, align = 'l
         ) : null}
       </h1>
       {description ? (
-        <p className="mt-4 max-w-3xl text-[15px] leading-7 text-[#48506B]">{description}</p>
+        <p className="mt-4 max-w-3xl text-[15px] leading-7" style={{ color: 'var(--fg-2)' }}>{description}</p>
       ) : null}
     </header>
   );

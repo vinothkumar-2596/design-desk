@@ -1,3 +1,4 @@
+import { useTheme } from 'next-themes';
 import { Link } from 'react-router-dom';
 import {
   Sparkles,
@@ -12,6 +13,18 @@ import {
   MessageSquare,
   CheckCircle2,
   Clock,
+  FilePlus,
+  Activity,
+  History,
+  Upload,
+  HelpCircle,
+  Eye,
+  ThumbsUp,
+  ArrowLeftRight,
+  KeyRound,
+  FileSearch,
+  Download,
+  type LucideIcon,
 } from 'lucide-react';
 import { SectionTitle } from '../components/SectionTitle';
 
@@ -75,14 +88,63 @@ const WORKFLOW_STEPS = [
   },
 ];
 
-const ROLES = [
-  { role: 'Staff', color: '#36429B', bg: '#EEF1FB', actions: ['Submit requests', 'Track status', 'View history', 'Comment on tasks'] },
-  { role: 'Designer', color: '#0E7490', bg: '#ECFEFF', actions: ['Accept & work tasks', 'Upload deliverables', 'Request clarification', 'Mark complete'] },
-  { role: 'Design Lead', color: '#7C3AED', bg: '#F5F3FF', actions: ['Review all submissions', 'Approve or reject', 'Reassign tasks', 'Full dashboard access'] },
-  { role: 'Treasurer', color: '#B45309', bg: '#FFFBEB', actions: ['View all tasks', 'Authorise revisions', 'Audit activity log', 'Export reports'] },
+const ROLES: Array<{
+  role: string;
+  color: string;
+  darkColor: string;
+  badgeCls: string;
+  actions: Array<{ icon: LucideIcon; label: string }>;
+}> = [
+  {
+    role: 'Staff', color: '#36429B', darkColor: '#8B96D6', badgeCls: 'brand-role-staff',
+    actions: [
+      { icon: FilePlus,      label: 'Submit requests' },
+      { icon: Activity,      label: 'Track status' },
+      { icon: History,       label: 'View history' },
+      { icon: MessageSquare, label: 'Comment on tasks' },
+    ],
+  },
+  {
+    role: 'Designer', color: '#0E7490', darkColor: '#22D3EE', badgeCls: 'brand-role-designer',
+    actions: [
+      { icon: CheckCircle2,  label: 'Accept & work tasks' },
+      { icon: Upload,        label: 'Upload deliverables' },
+      { icon: HelpCircle,    label: 'Request clarification' },
+      { icon: CheckCircle2,  label: 'Mark complete' },
+    ],
+  },
+  {
+    role: 'Design Lead', color: '#7C3AED', darkColor: '#A78BFA', badgeCls: 'brand-role-lead',
+    actions: [
+      { icon: Eye,           label: 'Review all submissions' },
+      { icon: ThumbsUp,      label: 'Approve or reject' },
+      { icon: ArrowLeftRight,label: 'Reassign tasks' },
+      { icon: LayoutDashboard, label: 'Full dashboard access' },
+    ],
+  },
+  {
+    role: 'Treasurer', color: '#B45309', darkColor: '#FCD34D', badgeCls: 'brand-role-treasurer',
+    actions: [
+      { icon: Eye,           label: 'View all tasks' },
+      { icon: KeyRound,      label: 'Authorise revisions' },
+      { icon: FileSearch,    label: 'Audit activity log' },
+      { icon: Download,      label: 'Export reports' },
+    ],
+  },
 ];
 
 export default function DesignDesk() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const iconContainerStyle = {
+    background: isDark ? '#1E2D55' : 'var(--smvec-blue-050)',
+  };
+  const iconColor = { color: isDark ? '#ffffff' : 'var(--smvec-blue)' };
+  const accentColor = { color: isDark ? '#A8B2DC' : 'var(--smvec-blue)' };
+  const cardStyle = {
+    borderColor: isDark ? '#2A3860' : 'var(--border)',
+    background: isDark ? '#111827' : 'var(--surface)',
+  };
   return (
     <div className="space-y-20">
 
@@ -131,10 +193,9 @@ export default function DesignDesk() {
             </a>
             <Link
               to="/brand-guidelines/review"
-              className="inline-flex items-center gap-1.5 border border-[#DCE2F4] bg-white px-3 py-1.5 text-[12.5px] font-semibold text-[#36429B] transition-colors duration-150 hover:border-[#36429B]/50 hover:bg-[#EEF1FB]"
-              style={{ borderRadius: '4px' }}
+              className="brand-analyser-pill"
             >
-              <Sparkles className="h-3.5 w-3.5 text-[#DBA328]" strokeWidth={2} />
+              <Sparkles className="h-3.5 w-3.5" style={{ color: 'var(--smvec-gold)' }} strokeWidth={2} />
               Brand Compliance Analyser
             </Link>
           </div>
@@ -145,21 +206,21 @@ export default function DesignDesk() {
       <section className="space-y-8">
         <SectionTitle
           eyebrow="Platform"
-          heading="Everything the design team needs"
-          body="Six core capabilities that cover the full lifecycle of a design request — from first brief to final approval."
+          title="Everything the design team needs"
+          description="Six core capabilities that cover the full lifecycle of a design request — from first brief to final approval."
         />
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map(({ icon: Icon, title, desc }) => (
             <div
               key={title}
               className="rounded-[10px] border p-6"
-              style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+              style={cardStyle}
             >
               <div
                 className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-[8px]"
-                style={{ background: '#EEF1FB' }}
+                style={iconContainerStyle}
               >
-                <Icon className="h-5 w-5" style={{ color: 'var(--smvec-blue)' }} strokeWidth={1.8} />
+                <Icon className="h-5 w-5" style={iconColor} strokeWidth={1.8} />
               </div>
               <p
                 className="mb-1.5 text-[14px] font-semibold"
@@ -179,8 +240,8 @@ export default function DesignDesk() {
       <section className="space-y-8">
         <SectionTitle
           eyebrow="How it works"
-          heading="From brief to approved — in four steps"
-          body="A structured workflow ensures no request is lost, every revision is tracked, and only compliant work reaches publication."
+          title="From brief to approved — in four steps"
+          description="A structured workflow ensures no request is lost, every revision is tracked, and only compliant work reaches publication."
         />
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {WORKFLOW_STEPS.map(({ icon: Icon, step, title, desc }, i) => (
@@ -193,7 +254,7 @@ export default function DesignDesk() {
               )}
               <div
                 className="rounded-[10px] border p-6 h-full"
-                style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+                style={cardStyle}
               >
                 <div className="mb-4 flex items-center gap-3">
                   <span
@@ -223,34 +284,34 @@ export default function DesignDesk() {
       <section className="space-y-8">
         <SectionTitle
           eyebrow="Access control"
-          heading="Role-based permissions"
-          body="Each role has a precise set of actions. Permissions are enforced server-side — roles cannot be self-escalated."
+          title="Role-based permissions"
+          description="Each role has a precise set of actions. Permissions are enforced server-side — roles cannot be self-escalated."
         />
         <div className="grid gap-5 sm:grid-cols-2">
-          {ROLES.map(({ role, color, bg, actions }) => (
+          {ROLES.map(({ role, color, darkColor, badgeCls, actions }) => (
             <div
               key={role}
               className="rounded-[10px] border p-6"
-              style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+              style={cardStyle}
             >
               <div className="mb-4 flex items-center gap-2.5">
                 <span
-                  className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                  style={{ background: bg, color }}
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${badgeCls}`}
+                  style={{ color: isDark ? darkColor : color }}
                 >
                   {role}
                 </span>
               </div>
               <ul className="space-y-2">
-                {actions.map((action) => (
-                  <li key={action} className="flex items-center gap-2.5">
-                    <CheckCircle2
+                {actions.map(({ icon: Icon, label }) => (
+                  <li key={label} className="flex items-center gap-2.5">
+                    <Icon
                       className="h-3.5 w-3.5 shrink-0"
-                      style={{ color: 'var(--smvec-blue)' }}
-                      strokeWidth={2}
+                      style={accentColor}
+                      strokeWidth={1.8}
                     />
                     <span className="text-[13px]" style={{ color: 'var(--fg-2)' }}>
-                      {action}
+                      {label}
                     </span>
                   </li>
                 ))}
@@ -264,8 +325,8 @@ export default function DesignDesk() {
       <section className="space-y-8">
         <SectionTitle
           eyebrow="Standards"
-          heading="Submission & turnaround standards"
-          body="All requests must meet these minimum standards before the design team begins work."
+          title="Submission & turnaround standards"
+          description="All requests must meet these minimum standards before the design team begins work."
         />
         <div className="grid gap-5 sm:grid-cols-3">
           {[
@@ -276,11 +337,11 @@ export default function DesignDesk() {
             <div
               key={label}
               className="rounded-[10px] border p-6"
-              style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+              style={cardStyle}
             >
               <Icon
                 className="mb-3 h-5 w-5"
-                style={{ color: 'var(--smvec-blue)' }}
+                style={accentColor}
                 strokeWidth={1.8}
               />
               <p
@@ -340,7 +401,8 @@ export default function DesignDesk() {
             </a>
             <Link
               to="/brand-guidelines/contact"
-              className="inline-flex h-10 items-center gap-2 rounded-[6px] border border-white/30 px-5 text-[13px] font-medium text-white transition-colors hover:border-white/60"
+              className="inline-flex h-10 items-center gap-2 rounded-[6px] px-5 text-[13px] font-medium text-white transition-colors hover:border-white/60"
+              style={{ border: '1px solid rgba(255,255,255,0.30)' }}
             >
               Contact brand team
             </Link>

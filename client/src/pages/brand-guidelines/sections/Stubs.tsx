@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { useTheme } from 'next-themes';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Mail, Users, Briefcase, Printer, GraduationCap, Building2, Globe } from 'lucide-react';
 import { SectionTitle } from '../components/SectionTitle';
@@ -39,6 +40,8 @@ const AUDIENCE_CARDS = [
 ];
 
 export function WhyExists() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   return (
     <div className="space-y-10">
       <SectionTitle
@@ -51,12 +54,25 @@ export function WhyExists() {
         {AUDIENCE_CARDS.map((card) => {
           const Icon = card.icon;
           return (
-            <article key={card.title} className="rounded-md border border-[#E4E7F1] bg-white p-5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-[#F2F4FB] text-[#36429B]">
+            <article
+              key={card.title}
+              className="rounded-md border p-5"
+              style={{
+                borderColor: isDark ? '#2A3860' : 'var(--border)',
+                background: isDark ? '#111827' : 'var(--bg-1)',
+              }}
+            >
+              <span
+                className="flex h-9 w-9 items-center justify-center rounded-sm"
+                style={{
+                  background: isDark ? '#1E2D55' : 'var(--smvec-blue-050)',
+                  color: isDark ? '#ffffff' : 'var(--smvec-blue)',
+                }}
+              >
                 <Icon className="h-4 w-4" />
               </span>
-              <h3 className="mt-3 text-[15px] font-medium text-[#0B1024]">{card.title}</h3>
-              <p className="mt-2 text-[13px] leading-6 text-[#48506B]">{card.body}</p>
+              <h3 className="mt-3 text-[15px] font-medium" style={{ color: 'var(--fg-1)' }}>{card.title}</h3>
+              <p className="mt-2 text-[13px] leading-6" style={{ color: 'var(--fg-2)' }}>{card.body}</p>
             </article>
           );
         })}
@@ -79,7 +95,7 @@ export function Overview() {
         description="An academic, authoritative, and trustworthy identity built for clarity, longevity, and disciplined application across every touchpoint."
       />
       <section>
-        <h2 className="text-[20px] font-medium text-[#0B1024]">Brand values</h2>
+        <h2 className="text-[20px] font-medium" style={{ color: 'var(--fg-1)' }}>Brand values</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
             { label: 'Communication', body: 'Clear, structured, and respectful in every message.' },
@@ -87,18 +103,25 @@ export function Overview() {
             { label: 'Reliable', body: 'Consistent, accountable, and trusted by students and partners.' },
             { label: 'Creative', body: 'Inventive in solutions while disciplined in execution.' },
           ].map((value) => (
-            <div key={value.label} className="rounded-md border border-[#E4E7F1] bg-white p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#36429B]">
+            <div
+              key={value.label}
+              className="rounded-md border p-4"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--smvec-blue)' }}>
                 {value.label}
               </p>
-              <p className="mt-1.5 text-[13px] leading-5 text-[#48506B]">{value.body}</p>
+              <p className="mt-1.5 text-[13px] leading-5" style={{ color: 'var(--fg-2)' }}>{value.body}</p>
             </div>
           ))}
         </div>
       </section>
-      <section className="rounded-md border border-[#E4E7F1] bg-[#F8F9FE] p-6">
-        <h3 className="text-[16px] font-medium text-[#0B1024]">Visual philosophy</h3>
-        <p className="mt-2 max-w-3xl text-[13.5px] leading-6 text-[#48506B]">
+      <section
+        className="rounded-md border p-6"
+        style={{ borderColor: 'var(--border)', background: 'var(--smvec-blue-050)' }}
+      >
+        <h3 className="text-[16px] font-medium" style={{ color: 'var(--fg-1)' }}>Visual philosophy</h3>
+        <p className="mt-2 max-w-3xl text-[13.5px] leading-6" style={{ color: 'var(--fg-2)' }}>
           Royal Blue carries authority. Golden Age signals heritage and emphasis. Generous whitespace
           and editorial typography set a calm, collegiate tone. The system is print-first and
           rectangular by default — applied with discipline rather than decoration.
@@ -119,11 +142,11 @@ export function Spacing() {
         description="A 4px-based spacing scale keeps every layout calm and rhythmic. Use these tokens in CSS, design files, and print artwork."
       />
       <section>
-        <h2 className="text-[20px] font-medium text-[#0B1024]">Spacing scale</h2>
+        <h2 className="text-[20px] font-medium" style={{ color: 'var(--fg-1)' }}>Spacing scale</h2>
         <div className="mt-5 space-y-2">
           {SPACING.map((value) => (
             <div key={value} className="flex items-center gap-4">
-              <span className="w-12 font-mono text-[12px] text-[#48506B]">{value}px</span>
+              <span className="w-12 font-mono text-[12px]" style={{ color: 'var(--fg-2)' }}>{value}px</span>
               <span className="block h-3 bg-[#36429B]" style={{ width: value * 2 }} />
             </div>
           ))}
@@ -135,9 +158,13 @@ export function Spacing() {
           { label: 'Shadow', body: 'Soft, downward, low-opacity. Avoid coloured glow shadows.' },
           { label: 'Motion', body: 'Subtle fades, 150–220ms. No bounce, no parallax, no spring.' },
         ].map((card) => (
-          <div key={card.label} className="rounded-md border border-[#E4E7F1] bg-white p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#36429B]">{card.label}</p>
-            <p className="mt-1.5 text-[13px] leading-5 text-[#48506B]">{card.body}</p>
+          <div
+            key={card.label}
+            className="rounded-md border p-4"
+            style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--smvec-blue)' }}>{card.label}</p>
+            <p className="mt-1.5 text-[13px] leading-5" style={{ color: 'var(--fg-2)' }}>{card.body}</p>
           </div>
         ))}
       </section>
@@ -185,10 +212,10 @@ export function ApprovalWorkflow() {
       </div>
       <Callout variant="info" title="Need a sign-off?">
         Submit your draft in DesignDesk under{' '}
-        <Link to="/new-request" className="font-medium text-[#36429B] hover:underline">
+        <Link to="/new-request" className="font-medium hover:underline" style={{ color: 'var(--smvec-blue)' }}>
           New Request
         </Link>{' '}
-        with the “brand approval” label. Average turnaround is 24 working hours.
+        with the "brand approval" label. Average turnaround is 24 working hours.
       </Callout>
     </div>
   );
@@ -196,13 +223,16 @@ export function ApprovalWorkflow() {
 
 function ChecklistCard({ title, items }: { title: string; items: string[] }) {
   return (
-    <div className="rounded-md border border-[#E4E7F1] bg-white p-5">
-      <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-[#36429B]">
+    <div
+      className="rounded-md border p-5"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}
+    >
+      <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--smvec-blue)' }}>
         {title}
       </p>
       <ul className="mt-3 space-y-2">
         {items.map((item) => (
-          <li key={item} className="flex items-start gap-2 text-[13px] leading-5 text-[#0B1024]">
+          <li key={item} className="flex items-start gap-2 text-[13px] leading-5" style={{ color: 'var(--fg-1)' }}>
             <span
               className="mt-2 inline-block h-1 w-3 shrink-0 bg-[#DBA328]"
               aria-hidden="true"
@@ -216,6 +246,8 @@ function ChecklistCard({ title, items }: { title: string; items: string[] }) {
 }
 
 export function Contact() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   return (
     <div className="space-y-10">
       <SectionTitle
@@ -229,6 +261,7 @@ export function Contact() {
           title="Brand & Communications Cell"
           email="brand@smvec.ac.in"
           body="General questions, source file requests, and template support."
+          isDark={isDark}
         >
           <Mail className="h-4 w-4" />
         </ContactCard>
@@ -236,13 +269,14 @@ export function Contact() {
           title="Approval submissions"
           email="design@smvec.ac.in"
           body="Submit final artwork for sign-off before print or publish. Include all source files."
+          isDark={isDark}
         >
           <ArrowRight className="h-4 w-4" />
         </ContactCard>
       </div>
       <Callout variant="gold" title="Working inside DesignDesk?">
         Use the{' '}
-        <Link to="/new-request" className="font-medium text-[#36429B] hover:underline">
+        <Link to="/new-request" className="font-medium hover:underline" style={{ color: 'var(--smvec-blue)' }}>
           New Request
         </Link>{' '}
         flow with the brand-approval category — your request is automatically routed to the brand
@@ -256,23 +290,38 @@ function ContactCard({
   title,
   email,
   body,
+  isDark,
   children,
 }: {
   title: string;
   email: string;
   body: string;
+  isDark?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-md border border-[#E4E7F1] bg-white p-5">
-      <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-[#F2F4FB] text-[#36429B]">
+    <div
+      className="rounded-md border p-5"
+      style={{
+        borderColor: isDark ? '#2A3860' : 'var(--border)',
+        background: isDark ? '#111827' : 'var(--bg-1)',
+      }}
+    >
+      <span
+        className="flex h-9 w-9 items-center justify-center rounded-sm"
+        style={{
+          background: isDark ? '#1E2D55' : 'var(--smvec-blue-050)',
+          color: isDark ? '#ffffff' : 'var(--smvec-blue)',
+        }}
+      >
         {children}
       </span>
-      <h3 className="mt-4 text-[15px] font-medium text-[#0B1024]">{title}</h3>
-      <p className="mt-1.5 text-[12.5px] leading-5 text-[#48506B]">{body}</p>
+      <h3 className="mt-4 text-[15px] font-medium" style={{ color: 'var(--fg-1)' }}>{title}</h3>
+      <p className="mt-1.5 text-[12.5px] leading-5" style={{ color: 'var(--fg-2)' }}>{body}</p>
       <a
         href={`mailto:${email}`}
-        className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-[#36429B] hover:underline"
+        className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium hover:underline"
+        style={{ color: isDark ? '#A8B2DC' : 'var(--smvec-blue)' }}
       >
         {email}
       </a>

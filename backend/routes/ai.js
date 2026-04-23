@@ -779,11 +779,19 @@ STEP 3G — TECHNICAL QUALITY (10 pts)
   Resolution (5): sharp, not pixelated
   Print/Web Readiness (5): adequate margins, no bleed issues
 
-SCORING BENCHMARKS (use as calibration):
-  Design with V1+V4+V6+V8+V11 all confirmed → typically 45–55/100 → Rejected
-  Design with V1+V6+V8 confirmed but no V2/V11 → typically 55–65/100 → Needs Revision
-  Design with only V7+V8 confirmed → typically 65–75/100 → Needs Revision
-  Design with 0–1 minor violations → typically 80–90/100 → Approved/Minor Corrections
+SCORING BENCHMARKS (use as calibration — apply the FIRST matching row):
+  VISUAL_NOISE = TRUE (4+ traits confirmed) → hard cap 48 max → Rejected
+  V2 confirmed (forbidden background color) → hard cap 54 max → Rejected
+  V9 confirmed (logo completely absent) + V1 or V6 → typically 28–44/100 → Rejected
+  V1+V4+V6+V8+V11 all confirmed → typically 44–54/100 → Rejected
+  V10+V11 confirmed (logo on photo + body text on photo, no overlay) → typically 50–62/100 → Needs Revision or Rejected
+  V1+V6+V8 confirmed, no V2/V11 → typically 55–65/100 → Needs Revision
+  V6+V8 confirmed (3 font families + hierarchy collapse, no color violations) → typically 60–70/100 → Needs Revision
+  V7+V8 confirmed (script in A1 + weak hierarchy, no other violations) → typically 65–72/100 → Needs Revision
+  V7 alone (script or wrong font in A1, hierarchy otherwise intact) → typically 72–80/100 → Approved with Minor Corrections
+  V8 alone (slight hierarchy softness, all else correct) → typically 76–83/100 → Approved with Minor Corrections
+  0–1 minor violations, functional layout and readable hierarchy → typically 82–90/100 → Approved with Minor Corrections
+  Zero confirmed violations, strong hierarchy, full brand compliance → 90–100/100 → Approved
 
 THRESHOLDS: 90–100=Approved · 75–89=Approved with Minor Corrections · 55–74=Needs Revision · <55=Rejected
 
@@ -791,9 +799,28 @@ THRESHOLDS: 90–100=Approved · 75–89=Approved with Minor Corrections · 55�
 STEP 4 — ISSUE TIERS
 ════════════════════════════════
 
-CRITICAL (must fix before use): forbidden color as text/bg · no brand identity · logo missing · all-equal visual weight with no hierarchy
-MAJOR (fix before next version): 3+ font families · photo bg without overlay · no grid · V4 color noise
-MINOR (polish): spacing inconsistency · minor alignment drift · small font tweaks
+CRITICAL (≥8 pt deduction, must fix before any use — design cannot be approved):
+  - V2: non-SMVEC background color (dark green, teal, magenta, orange, maroon, purple, etc.)
+  - V9: SMVEC emblem/lockup completely absent or wholly unrecognizable at viewing distance
+  - VISUAL_NOISE: mosaic of unrelated colors/shapes/fonts with no coherent brand system
+  - V1+V8 together: forbidden accent color + complete hierarchy collapse → illegible and off-brand
+  - V11 severe: body text / speaker credentials sit on unobstructed photo with zero overlay — unreadable
+
+MAJOR (4–7 pt deduction, fix before next version — causes Needs Revision or Approved with Minor Corrections):
+  - V5/V6: 3+ distinct font families with no clear hierarchy system
+  - V10+V11 partial: logo or key text on photo background with insufficient overlay
+  - V4: two or more unrelated colors share equal visual weight — no dominant accent
+  - V8: all major text blocks (college name, dept, event title) share the same approximate size/weight
+  - V3: 4+ colors used without a palette logic — color noise across the layout
+  - V13: 5+ distinct text colors scattered through the design
+  - Mismatch: A1 academic event rendered in festival/cultural visual style
+
+MINOR (1–3 pt deduction, polish before final print):
+  - V7: italic, decorative, or script typeface used for secondary headings in an A1 design
+  - Gold vs near-yellow confusion: accent color is warm yellow but not #DBA328
+  - Spacing inconsistency: padding between sections varies without a clear rhythm
+  - Minor alignment drift: 1–2 secondary elements sit slightly off the implied grid
+  - Small size adjustment: event details or footer text slightly too small for comfortable reading at display size
 
 ════════════════════════════════
 STEP 5 — EVIDENCE-BASED NOTES (MANDATORY)
@@ -1078,6 +1105,36 @@ const calibrateReview = (review) => {
     else if (review.overallScore >= 75) review.approvalStatus = "Approved with Minor Corrections";
     else if (review.overallScore >= 55) review.approvalStatus = "Needs Revision";
     else review.approvalStatus = "Rejected";
+
+    return review;
+};
+
+// Post-processing calibration for design critique: recomputes sum, fixes contradictions, guards low scores.
+const calibrateDesignCritique = (review) => {
+    if (!review || typeof review !== "object") return review;
+
+    const s = review.scores;
+    if (s) {
+        review.overallScore =
+            (s.visualHierarchy?.score ?? 0) +
+            (s.typography?.score ?? 0) +
+            (s.colorTheory?.score ?? 0) +
+            (s.layoutGrid?.score ?? 0) +
+            (s.readability?.score ?? 0) +
+            (s.contrast?.score ?? 0) +
+            (s.institutionalTone?.score ?? 0) +
+            (s.practicalImpact?.score ?? 0);
+    }
+
+    // Contradiction: critical fixes present means score must be < 75
+    if (review.overallScore >= 75 && (review.criticalFixes?.length ?? 0) > 0) {
+        review.overallScore = Math.min(review.overallScore, 74);
+    }
+
+    // Low score guard: < 50 requires ≥ 2 confirmed critical issues
+    if (review.overallScore < 50 && (review.criticalFixes?.length ?? 0) < 2) {
+        review.overallScore = Math.max(review.overallScore, 52);
+    }
 
     return review;
 };
@@ -1439,7 +1496,7 @@ router.post("/design-critique", async (req, res) => {
 
     // Try Groq first
     const groqFirst = await tryGroqBrandReview(imageBase64, mimeType, promptText);
-    if (groqFirst && typeof groqFirst.overallScore === "number") return res.json(groqFirst);
+    if (groqFirst && typeof groqFirst.overallScore === "number") return res.json(calibrateDesignCritique(groqFirst));
 
     let lastErrorInfo = null;
     for (const modelName of BRAND_REVIEW_VISION_MODELS) {
@@ -1449,7 +1506,7 @@ router.post("/design-critique", async (req, res) => {
                 const model = genAI.getGenerativeModel({ model: modelName });
                 const result = await model.generateContent({
                     contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: String(mimeType), data: String(imageBase64) } }] }],
-                    generationConfig: { temperature: 0.1, maxOutputTokens: 1500 },
+                    generationConfig: { temperature: 0.1, maxOutputTokens: 2500 },
                 });
                 const text = result.response.text();
                 const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
@@ -1458,7 +1515,7 @@ router.post("/design-critique", async (req, res) => {
                 let review;
                 try { review = JSON.parse(jsonMatch[0]); } catch { continue; }
                 if (typeof review.overallScore !== "number") { continue; }
-                return res.json(review);
+                return res.json(calibrateDesignCritique(review));
             } catch (error) {
                 const errorInfo = classifyGeminiError(error);
                 lastErrorInfo = errorInfo;

@@ -1,7 +1,7 @@
 import { BRAND_ASSETS, BRAND_COLORS } from '../assets';
 import { SectionTitle } from '../components/SectionTitle';
 import { Callout } from '../components/Callout';
-import { XCircle, CheckCircle2 } from 'lucide-react';
+import { XCircle } from 'lucide-react';
 
 /* ================================================================
    LOGO VARIATIONS
@@ -145,9 +145,13 @@ export default function Applications() {
           {VARIATIONS.map((v) => (
             <div
               key={v.label}
-              className="overflow-hidden rounded-md border border-[#E4E7F1] bg-white"
+              className="overflow-hidden rounded-md border"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}
             >
-              <div className="flex h-64 items-center justify-center border-b border-[#E4E7F1] p-8" style={{ background: v.bg }}>
+              <div
+                className="flex h-64 items-center justify-center border-b p-8"
+                style={{ background: v.bg, borderColor: 'var(--border)' }}
+              >
                 <img
                   src={v.image}
                   alt={`SMVEC logo — ${v.label}`}
@@ -157,12 +161,15 @@ export default function Applications() {
               </div>
               <div className="px-5 py-4">
                 <div className="flex items-center gap-3">
-                  <span className="text-[15px] font-medium text-[#0B1024]">{v.label}</span>
-                  <span className="rounded-full border border-dashed border-[#36429B]/30 px-2 py-0.5 text-[10px] font-medium uppercase tracking-widest text-[#36429B]">
+                  <span className="text-[15px] font-medium" style={{ color: 'var(--fg-1)' }}>{v.label}</span>
+                  <span
+                    className="rounded-full border border-dashed px-2 py-0.5 text-[10px] font-medium uppercase tracking-widest"
+                    style={{ borderColor: 'rgba(54,66,155,0.30)', color: 'var(--smvec-blue)' }}
+                  >
                     {v.variant}
                   </span>
                 </div>
-                <p className="mt-1.5 text-[12.5px] leading-5 text-[#48506B]">{v.description}</p>
+                <p className="mt-1.5 text-[12.5px] leading-5" style={{ color: 'var(--fg-2)' }}>{v.description}</p>
               </div>
             </div>
           ))}
@@ -182,13 +189,13 @@ export default function Applications() {
           {PROPER_USAGE.map((rule, idx) => {
             const bgColors = [BRAND_COLORS.white, BRAND_COLORS.royalBlue, '#252525'];
             const bg = bgColors[idx] || BRAND_COLORS.white;
-            const isLight = bg === BRAND_COLORS.white;
             const logoVariants = [SMVEC_LOGO, SMVEC_LOGO_WHITE, SMVEC_LOGO_GOLD];
             const cardLogo = logoVariants[idx] || SMVEC_LOGO;
             return (
               <div
                 key={rule}
-                className="overflow-hidden rounded-md border border-[#E4E7F1]"
+                className="overflow-hidden rounded-md border"
+                style={{ borderColor: 'var(--border)' }}
               >
                 <div
                   className="flex h-48 items-center justify-center p-8"
@@ -201,9 +208,11 @@ export default function Applications() {
                     loading="lazy"
                   />
                 </div>
-                <div className="flex items-center gap-2 bg-white px-4 py-3 border-t border-[#E4E7F1]">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                  <span className="text-[12.5px] leading-5 text-[#0B1024]">{rule}</span>
+                <div
+                  className="flex items-center gap-2 border-t px-4 py-3"
+                  style={{ background: 'var(--bg-1)', borderColor: 'var(--border)' }}
+                >
+                  <span className="text-[12.5px] leading-5" style={{ color: 'var(--fg-1)' }}>{rule}</span>
                 </div>
               </div>
             );
@@ -224,9 +233,13 @@ export default function Applications() {
           {IMPROPER_USAGE.map((item) => (
             <div
               key={item.rule}
-              className="overflow-hidden rounded-md border border-[#E4E7F1] bg-white"
+              className="overflow-hidden rounded-md border"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}
             >
-              <div className="relative flex h-36 items-center justify-center overflow-hidden bg-[#FAFBFE] p-6">
+              <div
+                className="relative flex h-36 items-center justify-center overflow-hidden p-6"
+                style={{ background: 'var(--bg-2)' }}
+              >
                 {/* Diagonal hatch overlay */}
                 <div
                   className="absolute inset-0 opacity-[0.06]"
@@ -243,9 +256,12 @@ export default function Applications() {
                   loading="lazy"
                 />
               </div>
-              <div className="flex items-start gap-2 border-t border-[#E4E7F1] px-4 py-3">
+              <div
+                className="flex items-start gap-2 border-t px-4 py-3"
+                style={{ borderColor: 'var(--border)' }}
+              >
                 <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                <span className="text-[12.5px] leading-5 text-[#48506B]">{item.rule}</span>
+                <span className="text-[12.5px] leading-5" style={{ color: 'var(--fg-2)' }}>{item.rule}</span>
               </div>
             </div>
           ))}
@@ -255,7 +271,7 @@ export default function Applications() {
       <Callout variant="info" title="Unsure about a logo application?">
         Always use the supplied artwork — never recreate, screenshot, or retype the logo. If your
         use case isn't covered above, reach out to the brand team for guidance before publishing. See{' '}
-        <a href="/brand-guidelines/contact" className="font-medium text-[#36429B] hover:underline">
+        <a href="/brand-guidelines/contact" className="font-medium hover:underline" style={{ color: 'var(--smvec-blue)' }}>
           Contact
         </a>
         .

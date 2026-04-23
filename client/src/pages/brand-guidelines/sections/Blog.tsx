@@ -47,7 +47,7 @@ function FeaturedCard({ post }: { post: BlogPost }) {
     <Link
       to={`/brand-guidelines/blog/${post.slug}`}
       className="group grid overflow-hidden rounded-[14px] outline-none lg:h-[360px] lg:grid-cols-[1.05fr,1fr]"
-      style={{ background: 'rgba(54, 66, 155, 0.05)' }}
+      style={{ background: 'var(--smvec-blue-tint)' }}
     >
       <div className="relative h-56 overflow-hidden md:h-72 lg:h-full">
         <div className="h-full w-full transition-transform duration-500 group-hover:scale-[1.03]">
@@ -121,8 +121,8 @@ function PostCard({ post }: { post: BlogPost }) {
   return (
     <Link
       to={`/brand-guidelines/blog/${post.slug}`}
-      className="group flex h-full flex-col overflow-hidden rounded-[12px] border bg-white outline-none transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_18px_38px_-24px_rgba(54,66,155,0.18)]"
-      style={{ borderColor: 'var(--smvec-blue-100)' }}
+      className="group flex h-full flex-col overflow-hidden rounded-[12px] border outline-none transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_18px_38px_-24px_rgba(54,66,155,0.18)]"
+      style={{ borderColor: 'var(--smvec-blue-100)', background: 'var(--bg-1)' }}
     >
       <div className="h-44 overflow-hidden">
         <div className="h-full w-full transition-transform duration-300 group-hover:scale-[1.04]">
@@ -204,8 +204,8 @@ export default function Blog() {
 
         {filteredPosts.length === 0 ? (
           <div
-            className="rounded-[12px] border bg-white px-6 py-12 text-center"
-            style={{ borderColor: 'var(--smvec-blue-100)' }}
+            className="rounded-[12px] border px-6 py-12 text-center"
+            style={{ borderColor: 'var(--smvec-blue-100)', background: 'var(--bg-1)' }}
           >
             <p className="text-[14px]" style={{ color: 'var(--fg-3)' }}>
               No articles in this category yet.
@@ -230,7 +230,7 @@ export default function Blog() {
 
       <section
         className="overflow-hidden rounded-[14px] px-7 py-10 lg:px-12 lg:py-12"
-        style={{ background: 'rgba(54, 66, 155, 0.05)' }}
+        style={{ background: 'var(--smvec-blue-tint)' }}
       >
         <div className="grid items-center gap-6 lg:grid-cols-[1.4fr,1fr]">
           <div className="space-y-3">

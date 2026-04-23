@@ -101,7 +101,7 @@ function renderBlock(block: BlogBlock, key: number) {
         <div
           key={key}
           className="rounded-[10px] px-5 py-4"
-          style={{ background: 'rgba(54, 66, 155, 0.05)' }}
+          style={{ background: 'var(--smvec-blue-tint)' }}
         >
           <p
             className="text-[10.5px] font-semibold uppercase tracking-[0.22em]"
@@ -200,7 +200,7 @@ export default function BlogPost() {
 
       <div
         className="overflow-hidden rounded-[14px]"
-        style={{ background: 'rgba(54, 66, 155, 0.05)', aspectRatio: '21 / 9' }}
+        style={{ background: 'var(--smvec-blue-tint)', aspectRatio: '21 / 9' }}
       >
         <BlogCover category={post.category} slug={post.slug} />
       </div>

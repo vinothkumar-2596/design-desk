@@ -110,8 +110,8 @@ function CoreSwatch({
 }) {
   return (
     <div
-      className="group flex min-h-[200px] flex-col overflow-hidden rounded-[10px] border bg-white transition-shadow duration-200 hover:shadow-[var(--shadow-2)]"
-      style={{ borderColor: 'var(--border)' }}
+      className="group flex min-h-[200px] flex-col overflow-hidden rounded-[10px] border transition-shadow duration-200 hover:shadow-[var(--shadow-2)]"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}
     >
       <div
         className="flex flex-1 items-end p-4"

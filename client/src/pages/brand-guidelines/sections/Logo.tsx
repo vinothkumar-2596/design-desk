@@ -1,3 +1,4 @@
+import { useTheme } from 'next-themes';
 import { BRAND_ASSETS } from '../assets';
 
 const VALUES = [
@@ -28,19 +29,21 @@ function Lockup({
   src,
   variant = 'white',
   alt,
+  isDark,
 }: {
   label: string;
   src: string;
   variant?: 'white' | 'blue';
   alt: string;
+  isDark: boolean;
 }) {
   const isBlue = variant === 'blue';
   return (
     <div
       className="relative flex min-h-[300px] flex-col items-center justify-center rounded-[10px] border p-10"
       style={{
-        background: isBlue ? 'var(--smvec-blue)' : '#fff',
-        borderColor: isBlue ? 'var(--smvec-blue)' : 'var(--border)',
+        background: isBlue ? 'var(--smvec-blue)' : isDark ? '#111827' : '#fff',
+        borderColor: isDark ? '#2A3860' : isBlue ? 'var(--smvec-blue)' : 'var(--border)',
       }}
     >
       <span
@@ -119,12 +122,12 @@ function Dont({
 }) {
   return (
     <div
-      className="relative rounded-[10px] border bg-white p-6"
-      style={{ borderColor: 'var(--border)' }}
+      className="relative rounded-[10px] border p-6"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}
     >
       <span
         className="absolute right-3 top-3 rounded-[3px] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em]"
-        style={{ background: '#FEE9EA', color: '#B00020' }}
+        style={{ background: 'var(--status-rejected-bg)', color: 'var(--status-rejected-fg)' }}
       >
         Don't
       </span>
@@ -139,6 +142,8 @@ function Dont({
 }
 
 export default function Logo() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   return (
     <div className="brand-card">
       <header className="brand-card__header">
@@ -162,11 +167,13 @@ export default function Logo() {
             label="Primary · 26 Years Edition"
             src={BRAND_ASSETS.svg.group}
             alt="SMVEC full logo"
+            isDark={isDark}
           />
           <Lockup
             label="Emblem · alone"
             src={BRAND_ASSETS.svg.frame42}
             alt="SMVEC emblem"
+            isDark={isDark}
           />
         </div>
         <p
@@ -191,8 +198,11 @@ export default function Logo() {
           {VALUES.map((value) => (
             <div
               key={value.num}
-              className="relative overflow-hidden rounded-[10px] border bg-white p-6"
-              style={{ borderColor: 'var(--border)' }}
+              className="relative overflow-hidden rounded-[10px] border p-6"
+              style={{
+                borderColor: isDark ? '#2A3860' : 'var(--border)',
+                background: isDark ? '#111827' : '#fff',
+              }}
             >
               <div
                 className="mb-1.5 leading-none"
@@ -211,7 +221,7 @@ export default function Logo() {
                 style={{
                   fontFamily: 'var(--font-display)',
                   fontWeight: 500,
-                  color: 'var(--smvec-blue)',
+                  color: isDark ? '#A8B2DC' : 'var(--smvec-blue)',
                 }}
               >
                 {value.name}
@@ -268,8 +278,9 @@ export default function Logo() {
             <div
               className="flex h-[100px] w-full items-center justify-center"
               style={{
-                backgroundImage:
-                  'repeating-linear-gradient(45deg, #E5E5EC 0 6px, #fff 6px 12px)',
+                backgroundImage: isDark
+                  ? 'repeating-linear-gradient(45deg, #1A2440 0 6px, #111827 6px 12px)'
+                  : 'repeating-linear-gradient(45deg, #E5E5EC 0 6px, #fff 6px 12px)',
               }}
             >
               <img

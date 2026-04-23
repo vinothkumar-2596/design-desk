@@ -1,4 +1,5 @@
 ﻿import { useState, useRef, useCallback, useEffect } from 'react';
+import { useTheme } from 'next-themes';
 import { createPortal } from 'react-dom';
 import { Sparkles, Upload, X, Loader2, CheckCircle2, AlertTriangle, XCircle, Info, ChevronDown, ChevronUp, FileImage, Download, ChevronRight } from 'lucide-react';
 import { API_URL, authFetch } from '@/lib/api';
@@ -217,10 +218,10 @@ interface ReviewResult {
 
 const getStatusStyle = (status: ReviewResult['approvalStatus']) => {
   switch (status) {
-    case 'Approved': return { bg: '#ECFDF3', text: '#15803D', border: '#BBF7D0', icon: CheckCircle2 };
-    case 'Approved with Minor Corrections': return { bg: '#FFFBEB', text: '#92400E', border: '#FDE68A', icon: AlertTriangle };
-    case 'Needs Revision': return { bg: '#FFF7ED', text: '#C2410C', border: '#FDBA74', icon: AlertTriangle };
-    case 'Rejected': return { bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA', icon: XCircle };
+    case 'Approved': return { bg: 'var(--status-approved-bg)', text: 'var(--status-approved-fg)', border: 'var(--status-approved-bd)', icon: CheckCircle2 };
+    case 'Approved with Minor Corrections': return { bg: 'var(--status-amend-bg)', text: 'var(--status-amend-fg)', border: 'var(--status-amend-bd)', icon: AlertTriangle };
+    case 'Needs Revision': return { bg: 'var(--status-revision-bg)', text: 'var(--status-revision-fg)', border: 'var(--status-revision-bd)', icon: AlertTriangle };
+    case 'Rejected': return { bg: 'var(--status-rejected-bg)', text: 'var(--status-rejected-fg)', border: 'var(--status-rejected-bd)', icon: XCircle };
   }
 };
 
@@ -240,20 +241,20 @@ const ScoreRow = ({ score, max, label, notes }: SubScore & { label: string }) =>
         className="w-full text-left flex items-center justify-between py-2.5 gap-4 group"
         onClick={() => notes ? setOpen(o => !o) : undefined}
       >
-        <span className="text-[12.5px]" style={{ color: '#374151' }}>{label}</span>
+        <span className="text-[12.5px]" style={{ color: 'var(--fg-1)' }}>{label}</span>
         <div className="flex items-center gap-1 shrink-0">
-          <span className="text-[12px] font-medium tabular-nums" style={{ color: '#6B7280' }}>
-            {score}<span style={{ color: '#D1D5DB' }}>/{max}</span>
+          <span className="text-[12px] font-medium tabular-nums" style={{ color: 'var(--fg-2)' }}>
+            {score}<span style={{ color: 'var(--fg-3)' }}>/{max}</span>
           </span>
           {notes && (
             open
-              ? <ChevronUp className="h-3 w-3 ml-0.5" style={{ color: '#9CA3AF' }} />
-              : <ChevronDown className="h-3 w-3 ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: '#9CA3AF' }} />
+              ? <ChevronUp className="h-3 w-3 ml-0.5" style={{ color: 'var(--fg-3)' }} />
+              : <ChevronDown className="h-3 w-3 ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--fg-3)' }} />
           )}
         </div>
       </button>
       {open && notes && (
-        <p className="pb-3 text-[11.5px] leading-[1.65]" style={{ color: '#6B7280' }}>{notes}</p>
+        <p className="pb-3 text-[11.5px] leading-[1.65]" style={{ color: 'var(--fg-2)' }}>{notes}</p>
       )}
     </div>
   );
@@ -262,17 +263,19 @@ const ScoreRow = ({ score, max, label, notes }: SubScore & { label: string }) =>
 const CategoryCard = ({
   title, score, max, children,
 }: { title: string; score: number; max: number; children: React.ReactNode }) => {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const pct = Math.round((score / max) * 100);
   const color = getScoreColor(score, max);
   return (
-    <div className="rounded-[14px]" style={{ border: '1px solid #F3F4F6', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+    <div className="rounded-[14px]" style={{ border: '1px solid var(--border)', background: isDark ? '#111827' : 'var(--bg-1)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
       <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
-        <span className="text-[13px] font-semibold" style={{ color: '#111827' }}>{title}</span>
+        <span className="text-[13px] font-semibold" style={{ color: 'var(--fg-1)' }}>{title}</span>
         <span className="text-[13px] font-semibold tabular-nums" style={{ color }}>
-          {score}<span className="text-[11px] font-normal" style={{ color: '#9CA3AF' }}>/{max}</span>
+          {score}<span className="text-[11px] font-normal" style={{ color: 'var(--fg-3)' }}>/{max}</span>
         </span>
       </div>
-      <div className="mx-5 mb-1 h-[3px] rounded-full overflow-hidden" style={{ background: '#F3F4F6' }}>
+      <div className="mx-5 mb-1 h-[3px] rounded-full overflow-hidden" style={{ background: 'var(--score-track)' }}>
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color, transition: 'width 0.8s cubic-bezier(0.22,0.61,0.36,1)' }} />
       </div>
       <div className="px-5 pb-2" style={{ borderTop: 'none' }}>
@@ -533,13 +536,15 @@ const CRITERIA_SECTIONS = [
 function CriteriaPanel() {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   return (
     <div className="rounded-[10px] border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
       <button
         onClick={() => setOpen(o => !o)}
         className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[var(--bg-2)]"
-        style={{ background: 'var(--bg-1)' }}
+        style={{ background: isDark ? '#111827' : 'var(--bg-1)' }}
       >
         <div className="flex items-center gap-2">
           <Info className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--smvec-blue)' }} />
@@ -578,7 +583,7 @@ function CriteriaPanel() {
 
           <div className="space-y-px border-t" style={{ borderColor: 'var(--border)' }}>
             {CRITERIA_SECTIONS.map((section, si) => (
-              <div key={si} style={{ background: 'var(--bg-1)' }}>
+              <div key={si} style={{ background: isDark ? '#111827' : 'var(--bg-1)' }}>
                 <button
                   onClick={() => setExpanded(expanded === si ? null : si)}
                   className="flex w-full items-center justify-between px-4 py-2.5 text-left"
@@ -612,6 +617,8 @@ function CriteriaPanel() {
 }
 
 export default function Review() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const [mode, setMode] = useState<'brand' | 'critique'>('brand');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -884,21 +891,43 @@ export default function Review() {
       {/* Mode toggle */}
       <div className="mb-6 inline-flex rounded-[10px] border p-1" style={{ borderColor: 'var(--border)', background: 'var(--bg-2)' }}>
         {([
-          { value: 'brand',   label: 'Brand Compliance',  sub: 'vs SMVEC guidelines' },
-          { value: 'critique', label: 'Design Critique',   sub: 'universal principles' },
+          {
+            value: 'brand',
+            label: 'Brand Compliance',
+            sub: 'vs SMVEC guidelines',
+            tooltipTitle: 'SMVEC Brand Audit',
+            tooltipPoints: ['Logo placement & proportions', 'Royal Blue & Gold palette', 'Typography standards', 'Institutional identity score'],
+            tooltipScore: '100-pt score · Approval status',
+          },
+          {
+            value: 'critique',
+            label: 'Design Critique',
+            sub: 'universal principles',
+            tooltipTitle: '8-Framework Evaluation',
+            tooltipPoints: ['Visual hierarchy & grid', 'Typography & colour theory', 'Readability & contrast', 'Institutional tone & impact'],
+            tooltipScore: '100-pt score · Brand-neutral',
+          },
         ] as const).map(opt => (
           <button
             key={opt.value}
             onClick={() => { setMode(opt.value); setResult(null); setCritiqueResult(null); setError(null); }}
-            className="flex flex-col items-start rounded-[7px] px-4 py-2.5 text-left transition-colors"
+            className="group relative flex flex-col items-start rounded-[7px] px-4 py-2.5 text-left transition-colors"
             style={{
-              background: mode === opt.value ? 'var(--bg-1)' : 'transparent',
+              background: mode === opt.value ? (isDark ? '#1A2342' : 'var(--bg-1)') : 'transparent',
               boxShadow: mode === opt.value ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
               border: mode === opt.value ? '1px solid var(--border)' : '1px solid transparent',
             }}
           >
             <span className="text-[12.5px] font-semibold" style={{ color: mode === opt.value ? 'var(--smvec-blue)' : 'var(--fg-3)' }}>{opt.label}</span>
             <span className="text-[10.5px]" style={{ color: 'var(--fg-3)' }}>{opt.sub}</span>
+            {/* Hover tooltip */}
+            <span
+              className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-max max-w-[190px] rounded-[5px] border px-2.5 py-1.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+              style={{ background: isDark ? '#111827' : 'var(--bg-1)', borderColor: 'var(--border)' }}
+            >
+              <span className="block text-[11px] font-semibold leading-snug" style={{ color: 'var(--fg-1)' }}>{opt.tooltipTitle}</span>
+              <span className="block text-[10.5px] leading-snug" style={{ color: 'var(--fg-3)' }}>{opt.tooltipScore}</span>
+            </span>
           </button>
         ))}
       </div>
@@ -912,7 +941,7 @@ export default function Review() {
               className="relative flex min-h-[220px] cursor-pointer flex-col items-center justify-center gap-3 rounded-[12px] border-2 border-dashed transition-colors"
               style={{
                 borderColor: isDragging ? 'var(--smvec-blue)' : 'var(--border)',
-                background: isDragging ? 'var(--smvec-blue-050)' : 'var(--bg-2)',
+                background: isDragging ? (isDark ? 'rgba(54,66,155,0.25)' : 'var(--smvec-blue-050)') : 'var(--bg-2)',
               }}
               onClick={() => fileInputRef.current?.click()}
               onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
@@ -921,9 +950,9 @@ export default function Review() {
             >
               <div
                 className="flex h-14 w-14 items-center justify-center rounded-full"
-                style={{ background: 'var(--smvec-blue-100)' }}
+                style={{ background: isDark ? '#1E2D55' : 'var(--smvec-blue-100)' }}
               >
-                <Upload className="h-6 w-6" style={{ color: 'var(--smvec-blue)' }} />
+                <Upload className="h-6 w-6" style={{ color: isDark ? '#ffffff' : 'var(--smvec-blue)' }} />
               </div>
               <div className="text-center">
                 <p className="text-[14px] font-medium" style={{ color: 'var(--fg-1)' }}>
@@ -940,11 +969,11 @@ export default function Review() {
                 <span className="text-[11px]" style={{ color: 'var(--fg-3)' }}>or</span>
                 <span
                   className="inline-flex items-center gap-1 rounded-[5px] border px-2 py-0.5 text-[11px] font-medium"
-                  style={{ borderColor: 'var(--smvec-blue-100)', color: 'var(--smvec-blue)', background: 'var(--smvec-blue-050)' }}
+                  style={{ borderColor: isDark ? 'rgba(54,66,155,0.40)' : 'var(--smvec-blue-100)', color: isDark ? '#A8B2DC' : 'var(--smvec-blue)', background: isDark ? 'rgba(54,66,155,0.15)' : 'var(--smvec-blue-050)' }}
                 >
-                  <kbd className="font-mono text-[10px] rounded px-1" style={{ background: 'var(--smvec-blue-100)' }}>Ctrl</kbd>
+                  <kbd className="font-mono text-[10px] rounded px-1" style={{ background: isDark ? 'rgba(54,66,155,0.30)' : 'var(--smvec-blue-100)' }}>Ctrl</kbd>
                   <span className="text-[10px]" style={{ color: 'var(--fg-3)' }}>+</span>
-                  <kbd className="font-mono text-[10px] rounded px-1" style={{ background: 'var(--smvec-blue-100)' }}>V</kbd>
+                  <kbd className="font-mono text-[10px] rounded px-1" style={{ background: isDark ? 'rgba(54,66,155,0.30)' : 'var(--smvec-blue-100)' }}>V</kbd>
                   <span className="ml-0.5">to paste</span>
                 </span>
               </div>
@@ -962,7 +991,7 @@ export default function Review() {
           {!file && (
             <div
               className="flex items-center gap-2 rounded-[10px] border px-3 py-2"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}
+              style={{ borderColor: 'var(--border)', background: isDark ? '#1A2342' : 'var(--bg-1)' }}
               onClick={e => e.stopPropagation()}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--fg-3)', flexShrink: 0 }}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -996,7 +1025,7 @@ export default function Review() {
           {file && (
             <div className="rounded-[12px] border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
               {preview ? (
-                <div className="relative" style={{ background: '#F1F3F9' }}>
+                <div className="relative" style={{ background: 'var(--bg-2)' }}>
                   <style>{`
                     @keyframes scan-line {
                       0%   { top: 0%;   opacity: 0; }
@@ -1075,8 +1104,8 @@ export default function Review() {
               ) : (
                 <div className="flex items-center justify-between p-4" style={{ background: 'var(--bg-2)' }}>
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-[8px]" style={{ background: 'var(--smvec-blue-100)' }}>
-                      <FileImage className="h-5 w-5" style={{ color: 'var(--smvec-blue)' }} />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-[8px]" style={{ background: isDark ? '#1E2D55' : 'var(--smvec-blue-100)' }}>
+                      <FileImage className="h-5 w-5" style={{ color: isDark ? '#ffffff' : 'var(--smvec-blue)' }} />
                     </div>
                     <div>
                       <p className="text-[13px] font-medium" style={{ color: 'var(--fg-1)' }}>{file.name}</p>
@@ -1092,9 +1121,9 @@ export default function Review() {
           )}
 
           {error && (
-            <div className="flex items-start gap-2 rounded-[8px] p-3" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
-              <XCircle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: '#B91C1C' }} />
-              <p className="text-[12.5px]" style={{ color: '#B91C1C' }}>{error}</p>
+            <div className="flex items-start gap-2 rounded-[8px] p-3" style={{ background: 'var(--status-rejected-bg)', border: '1px solid var(--status-rejected-bd)' }}>
+              <XCircle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--status-rejected-fg)' }} />
+              <p className="text-[12.5px]" style={{ color: 'var(--status-rejected-fg)' }}>{error}</p>
             </div>
           )}
 
@@ -1108,7 +1137,7 @@ export default function Review() {
                   value={creativeType}
                   onChange={e => setCreativeType(e.target.value)}
                   className="w-full rounded-[8px] border px-3 py-2 text-[12.5px] outline-none"
-                  style={{ borderColor: 'var(--border)', background: 'var(--bg-1)', color: 'var(--fg-1)' }}
+                  style={{ borderColor: 'var(--border)', background: isDark ? '#1A2342' : 'var(--bg-1)', color: 'var(--fg-1)' }}
                 >
                   <option value="">Select…</option>
                   {CREATIVE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1122,7 +1151,7 @@ export default function Review() {
                   onChange={e => setCampaignName(e.target.value)}
                   placeholder="e.g. Diwali 2026"
                   className="w-full rounded-[8px] border px-3 py-2 text-[12.5px] outline-none"
-                  style={{ borderColor: 'var(--border)', background: 'var(--bg-1)', color: 'var(--fg-1)' }}
+                  style={{ borderColor: 'var(--border)', background: isDark ? '#1A2342' : 'var(--bg-1)', color: 'var(--fg-1)' }}
                 />
               </div>
               <div>
@@ -1133,7 +1162,7 @@ export default function Review() {
                   onChange={e => setTargetAudience(e.target.value)}
                   placeholder="e.g. Students, Staff"
                   className="w-full rounded-[8px] border px-3 py-2 text-[12.5px] outline-none"
-                  style={{ borderColor: 'var(--border)', background: 'var(--bg-1)', color: 'var(--fg-1)' }}
+                  style={{ borderColor: 'var(--border)', background: isDark ? '#1A2342' : 'var(--bg-1)', color: 'var(--fg-1)' }}
                 />
               </div>
             </div>
@@ -1159,9 +1188,9 @@ export default function Review() {
           </button>
 
           {/* Info note */}
-          <div className="flex items-start gap-2 rounded-[8px] p-3" style={{ background: 'var(--smvec-blue-050)', border: '1px solid var(--smvec-blue-100)' }}>
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: 'var(--smvec-blue)' }} />
-            <p className="text-[11.5px] leading-[1.55]" style={{ color: 'var(--smvec-blue)' }}>
+          <div className="flex items-start gap-2 rounded-[8px] p-3" style={{ background: isDark ? 'rgba(54,66,155,0.15)' : 'var(--smvec-blue-050)', border: isDark ? '1px solid rgba(54,66,155,0.35)' : '1px solid var(--smvec-blue-100)' }}>
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: isDark ? '#A8B2DC' : 'var(--smvec-blue)' }} />
+            <p className="text-[11.5px] leading-[1.55]" style={{ color: isDark ? '#A8B2DC' : 'var(--smvec-blue)' }}>
               Files are processed server-side via Gemini Vision and are not stored. The review is advisory — final approval still requires the Brand & Communications Cell.
             </p>
           </div>
@@ -1209,7 +1238,7 @@ export default function Review() {
                       { label: 'Color harmony & balance', icon: '✦' },
                     ]
                 ).map(({ label, icon }) => (
-                  <div key={label} className="flex items-center gap-2.5 rounded-[8px] px-3 py-2" style={{ background: 'var(--bg-1)', border: '1px solid var(--border)' }}>
+                  <div key={label} className="flex items-center gap-2.5 rounded-[8px] px-3 py-2" style={{ background: isDark ? '#1A2342' : 'var(--bg-1)', border: '1px solid var(--border)' }}>
                     <span className="text-[11px] font-semibold w-5 text-center" style={{ color: 'var(--fg-3)' }}>{icon}</span>
                     <span className="text-[12px]" style={{ color: 'var(--fg-2)' }}>{label}</span>
                   </div>
@@ -1288,7 +1317,7 @@ export default function Review() {
 
           {critiqueResult && (
             <div className="space-y-4">
-              <div className="flex flex-col items-center rounded-[12px] border p-6" style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}>
+              <div className="flex flex-col items-center rounded-[12px] border p-6" style={{ borderColor: 'var(--border)', background: isDark ? '#111827' : 'var(--bg-1)' }}>
                 <ScoreGauge score={critiqueResult.overallScore} />
                 <p className="mt-2 text-[12px] font-medium uppercase tracking-[0.1em]" style={{ color: 'var(--fg-3)' }}>Design score</p>
                 {critiqueResult.designType && (
@@ -1319,12 +1348,12 @@ export default function Review() {
           {result && statusStyle && StatusIcon && (
             <div className="space-y-4">
               {/* Score gauge */}
-              <div className="flex flex-col items-center rounded-[12px] border p-6" style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}>
+              <div className="flex flex-col items-center rounded-[12px] border p-6" style={{ borderColor: 'var(--border)', background: isDark ? '#111827' : 'var(--bg-1)' }}>
                 <ScoreGauge score={result.overallScore} />
                 <p className="mt-2 text-[12px] font-medium uppercase tracking-[0.1em]" style={{ color: 'var(--fg-3)' }}>Overall score</p>
                 {result.category && (
                   <span className="mt-2 rounded-[5px] px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.1em]"
-                    style={{ background: 'var(--smvec-blue-050)', color: 'var(--smvec-blue)', border: '1px solid var(--smvec-blue-100)' }}>
+                    style={{ background: isDark ? 'rgba(54,66,155,0.20)' : 'var(--smvec-blue-050)', color: isDark ? '#A8B2DC' : 'var(--smvec-blue)', border: isDark ? '1px solid rgba(54,66,155,0.35)' : '1px solid var(--smvec-blue-100)' }}>
                     Category {result.category}
                   </span>
                 )}
@@ -1379,14 +1408,14 @@ export default function Review() {
                   </span>
                 )}
                 {critiqueResult.purpose && (
-                  <span className="rounded-[4px] px-2 py-0.5 text-[10.5px] font-semibold" style={{ background: 'var(--smvec-blue-050)', color: 'var(--smvec-blue)', border: '1px solid var(--smvec-blue-100)' }}>
+                  <span className="rounded-[4px] px-2 py-0.5 text-[10.5px] font-semibold" style={{ background: isDark ? 'rgba(54,66,155,0.20)' : 'var(--smvec-blue-050)', color: isDark ? '#A8B2DC' : 'var(--smvec-blue)', border: isDark ? '1px solid rgba(54,66,155,0.35)' : '1px solid var(--smvec-blue-100)' }}>
                     {critiqueResult.purpose}
                   </span>
                 )}
               </div>
             </div>
             {critiqueResult.summary && (
-              <div className="px-5 py-4" style={{ background: 'var(--bg-1)' }}>
+              <div className="px-5 py-4" style={{ background: isDark ? '#111827' : 'var(--bg-1)' }}>
                 <p className="text-[13px] leading-[1.7]" style={{ color: 'var(--fg-2)' }}>{critiqueResult.summary}</p>
               </div>
             )}
@@ -1408,7 +1437,7 @@ export default function Review() {
               const dim = critiqueResult.scores[key];
               if (!dim) return null;
               return (
-                <div key={key} className="rounded-[12px] border" style={{ borderColor: 'var(--border)', background: 'var(--bg-1)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                <div key={key} className="rounded-[12px] border" style={{ borderColor: 'var(--border)', background: isDark ? '#111827' : 'var(--bg-1)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                   <div className="flex items-center justify-between px-4 pt-3.5 pb-1.5">
                     <div>
                       <span className="text-[12.5px] font-semibold" style={{ color: 'var(--fg-1)' }}>{label}</span>
@@ -1434,7 +1463,7 @@ export default function Review() {
                 <span className="h-[3px] w-5 rounded-full" style={{ background: 'var(--smvec-gold)' }} />
                 <p className="text-[10.5px] font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--fg-3)' }}>Critique findings</p>
               </div>
-              <div className="divide-y" style={{ background: 'var(--bg-1)', borderColor: 'var(--border)' }}>
+              <div className="divide-y" style={{ background: isDark ? '#111827' : 'var(--bg-1)', borderColor: 'var(--border)' }}>
                 {critiqueResult.criticalFixes.length > 0 && (
                   <div className="flex">
                     <div className="w-1 shrink-0" style={{ background: '#DC2626' }} />
@@ -1442,7 +1471,7 @@ export default function Review() {
                       <div className="flex items-center gap-2 mb-3">
                         <span className="h-2 w-2 rounded-full" style={{ background: '#DC2626' }} />
                         <p className="text-[10.5px] font-bold uppercase tracking-[0.2em]" style={{ color: '#DC2626' }}>Critical fixes</p>
-                        <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: '#FEE2E2', color: '#B91C1C' }}>{critiqueResult.criticalFixes.length}</span>
+                        <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--status-rejected-bg)', color: 'var(--status-rejected-fg)' }}>{critiqueResult.criticalFixes.length}</span>
                       </div>
                       <ul className="space-y-2.5">{critiqueResult.criticalFixes.map((f, i) => (
                         <li key={i} className="flex items-start gap-3"><span className="mt-[6px] h-[4px] w-[4px] shrink-0 rounded-full" style={{ background: '#DC2626' }} /><span className="text-[12.5px] leading-[1.6]" style={{ color: 'var(--fg-1)' }}>{f}</span></li>
@@ -1456,8 +1485,8 @@ export default function Review() {
                     <div className="flex-1 px-5 py-4">
                       <div className="flex items-center gap-2 mb-3">
                         <span className="h-2 w-2 rounded-full" style={{ background: 'var(--smvec-gold)' }} />
-                        <p className="text-[10.5px] font-bold uppercase tracking-[0.2em]" style={{ color: '#92400E' }}>Major improvements</p>
-                        <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: '#FEF3C7', color: '#92400E' }}>{critiqueResult.majorImprovements.length}</span>
+                        <p className="text-[10.5px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--status-amend-fg)' }}>Major improvements</p>
+                        <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--status-amend-bg)', color: 'var(--status-amend-fg)' }}>{critiqueResult.majorImprovements.length}</span>
                       </div>
                       <ul className="space-y-2.5">{critiqueResult.majorImprovements.map((f, i) => (
                         <li key={i} className="flex items-start gap-3"><span className="mt-[6px] h-[4px] w-[4px] shrink-0 rounded-full" style={{ background: 'var(--smvec-gold)' }} /><span className="text-[12.5px] leading-[1.6]" style={{ color: 'var(--fg-1)' }}>{f}</span></li>
@@ -1472,7 +1501,7 @@ export default function Review() {
                       <div className="flex items-center gap-2 mb-3">
                         <span className="h-2 w-2 rounded-full" style={{ background: 'var(--smvec-blue-300)' }} />
                         <p className="text-[10.5px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--smvec-blue)' }}>Minor enhancements</p>
-                        <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'var(--smvec-blue-050)', color: 'var(--smvec-blue)' }}>{critiqueResult.minorEnhancements.length}</span>
+                        <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: isDark ? 'rgba(54,66,155,0.20)' : 'var(--smvec-blue-050)', color: isDark ? '#A8B2DC' : 'var(--smvec-blue)' }}>{critiqueResult.minorEnhancements.length}</span>
                       </div>
                       <ul className="space-y-2.5">{critiqueResult.minorEnhancements.map((f, i) => (
                         <li key={i} className="flex items-start gap-3"><span className="mt-[6px] h-[4px] w-[4px] shrink-0 rounded-full" style={{ background: 'var(--smvec-blue-300)' }} /><span className="text-[12.5px] leading-[1.6]" style={{ color: 'var(--fg-1)' }}>{f}</span></li>
@@ -1497,14 +1526,14 @@ export default function Review() {
                   { key: 'colors',     label: 'Colors' },
                   { key: 'layout',     label: 'Layout' },
                 ].filter(({ key }) => critiqueResult.designSuggestions[key as keyof typeof critiqueResult.designSuggestions]).map(({ key, label }) => (
-                  <div key={key} className="px-5 py-3.5" style={{ background: 'var(--bg-1)' }}>
+                  <div key={key} className="px-5 py-3.5" style={{ background: isDark ? '#111827' : 'var(--bg-1)' }}>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] mb-1" style={{ color: 'var(--smvec-gold)' }}>{label}</p>
                     <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--fg-1)' }}>{critiqueResult.designSuggestions[key as keyof typeof critiqueResult.designSuggestions]}</p>
                   </div>
                 ))}
               </div>
               {critiqueResult.suggestedLayoutFlow && (
-                <div className="px-5 py-3.5 border-t" style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}>
+                <div className="px-5 py-3.5 border-t" style={{ borderColor: 'var(--border)', background: isDark ? '#111827' : 'var(--bg-1)' }}>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] mb-1" style={{ color: 'var(--smvec-gold)' }}>Suggested layout flow</p>
                   <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--fg-1)' }}>{critiqueResult.suggestedLayoutFlow}</p>
                 </div>
@@ -1532,8 +1561,8 @@ export default function Review() {
         const designStrong = result.designQuality.score >= Math.round(35 * 0.68);
         const brandWeak = result.brandCompliance.score < Math.round(40 * 0.62);
         const tierDot: Record<string, string> = { critical: '#DC2626', major: '#DBA328', minor: '#36429B' };
-        const tierBg:  Record<string, string> = { critical: '#FEE2E2', major: '#FEF3C7', minor: 'var(--smvec-blue-050)' };
-        const tierTxt: Record<string, string> = { critical: '#B91C1C', major: '#92400E', minor: 'var(--smvec-blue)' };
+        const tierBg:  Record<string, string> = { critical: 'var(--status-rejected-bg)', major: 'var(--status-amend-bg)', minor: isDark ? 'rgba(54,66,155,0.20)' : 'var(--smvec-blue-050)' };
+        const tierTxt: Record<string, string> = { critical: 'var(--status-rejected-fg)', major: 'var(--status-amend-fg)', minor: isDark ? '#A8B2DC' : 'var(--smvec-blue)' };
         return (
           <div className="mt-8 space-y-3">
 
@@ -1552,9 +1581,9 @@ export default function Review() {
                   )}
                   {result.intentCheck && (
                     <span className="rounded-[4px] px-2 py-0.5 text-[10px] font-semibold" style={{
-                      background: result.intentCheck.toLowerCase().startsWith('mismatch') ? '#FEF3C7' : 'var(--smvec-blue-050)',
-                      color: result.intentCheck.toLowerCase().startsWith('mismatch') ? '#92400E' : 'var(--smvec-blue)',
-                      border: `1px solid ${result.intentCheck.toLowerCase().startsWith('mismatch') ? '#FDE68A' : 'var(--smvec-blue-100)'}`,
+                      background: result.intentCheck.toLowerCase().startsWith('mismatch') ? 'var(--status-amend-bg)' : (isDark ? 'rgba(54,66,155,0.20)' : 'var(--smvec-blue-050)'),
+                      color: result.intentCheck.toLowerCase().startsWith('mismatch') ? 'var(--status-amend-fg)' : (isDark ? '#A8B2DC' : 'var(--smvec-blue)'),
+                      border: `1px solid ${result.intentCheck.toLowerCase().startsWith('mismatch') ? 'var(--status-amend-bd)' : (isDark ? 'rgba(54,66,155,0.35)' : 'var(--smvec-blue-100)')}`,
                     }}>
                       {result.intentCheck.toLowerCase().startsWith('mismatch') ? '⚠ ' : '✓ '}{result.intentCheck}
                     </span>
@@ -1564,16 +1593,16 @@ export default function Review() {
 
               {/* Summary text */}
               {result.summary && (
-                <div className="px-4 py-3" style={{ background: 'var(--bg-1)' }}>
+                <div className="px-4 py-3" style={{ background: isDark ? '#111827' : 'var(--bg-1)' }}>
                   <p className="text-[12.5px] leading-[1.6]" style={{ color: 'var(--fg-2)' }}>{result.summary}</p>
                 </div>
               )}
 
               {/* Strength note — inline */}
               {designStrong && brandWeak && (
-                <div className="flex gap-2 border-t px-4 py-2.5" style={{ borderColor: 'var(--border)', background: '#FFFBEB' }}>
-                  <span className="shrink-0 text-[11px] mt-0.5">✦</span>
-                  <p className="text-[12px] leading-[1.5]" style={{ color: '#78350F' }}>Strong design execution — apply SMVEC brand colors, logo &amp; typography to reach approval.</p>
+                <div className="flex gap-2 border-t px-4 py-2.5" style={{ borderColor: 'var(--border)', background: 'var(--smvec-gold-050)' }}>
+                  <span className="shrink-0 text-[11px] mt-0.5" style={{ color: 'var(--smvec-gold)' }}>✦</span>
+                  <p className="text-[12px] leading-[1.5]" style={{ color: 'var(--fg-1)' }}>Strong design execution — apply SMVEC brand colors, logo &amp; typography to reach approval.</p>
                 </div>
               )}
 
@@ -1592,7 +1621,7 @@ export default function Review() {
                       );
                     })}
                   </div>
-                  <ul className="px-4" style={{ background: 'var(--bg-1)' }}>
+                  <ul className="px-4" style={{ background: isDark ? '#111827' : 'var(--bg-1)' }}>
                     {allFixes.map((item, i) => (
                       <li key={i} className="flex items-start gap-2.5 py-2.5" style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                         <span className="mt-[7px] h-[4px] w-[4px] shrink-0 rounded-full" style={{ background: tierDot[item.tier] }} />
@@ -1607,12 +1636,12 @@ export default function Review() {
               {!hasTiers && (result.topIssues.length > 0 || result.suggestions.length > 0) && (
                 <div className="border-t grid gap-px sm:grid-cols-2" style={{ borderColor: 'var(--border)', background: 'var(--border)' }}>
                   {result.topIssues.length > 0 && (
-                    <div className="px-4 py-3" style={{ background: 'var(--bg-1)' }}>
-                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: '#B91C1C' }}>Issues</p>
+                    <div className="px-4 py-3" style={{ background: isDark ? '#111827' : 'var(--bg-1)' }}>
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--status-rejected-fg)' }}>Issues</p>
                       <ul className="space-y-1.5">
                         {result.topIssues.map((issue, i) => (
                           <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[6px] h-[4px] w-[4px] shrink-0 rounded-full bg-[#EF4444]" />
+                            <span className="mt-[6px] h-[4px] w-[4px] shrink-0 rounded-full" style={{ background: 'var(--status-rejected-fg)' }} />
                             <span className="text-[12px] leading-[1.5]" style={{ color: 'var(--fg-2)' }}>{issue}</span>
                           </li>
                         ))}
@@ -1620,7 +1649,7 @@ export default function Review() {
                     </div>
                   )}
                   {result.suggestions.length > 0 && (
-                    <div className="px-4 py-3" style={{ background: 'var(--bg-1)' }}>
+                    <div className="px-4 py-3" style={{ background: isDark ? '#111827' : 'var(--bg-1)' }}>
                       <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--smvec-blue)' }}>Recommendations</p>
                       <ul className="space-y-1.5">
                         {result.suggestions.map((s, i) => (
@@ -1649,7 +1678,7 @@ export default function Review() {
                       { key: 'subtitleFont', label: 'Subtitle' },
                       { key: 'accent',     label: 'Accent' },
                     ] as const).filter(({ key }) => result.autoCorrections![key]).map(({ key, label }) => (
-                      <div key={key} className="px-4 py-3" style={{ background: 'var(--bg-1)' }}>
+                      <div key={key} className="px-4 py-3" style={{ background: isDark ? '#111827' : 'var(--bg-1)' }}>
                         <p className="text-[9.5px] font-semibold uppercase tracking-[0.14em] mb-1" style={{ color: 'var(--smvec-gold)' }}>{label}</p>
                         <p className="text-[12px] leading-[1.45]" style={{ color: 'var(--fg-1)' }}>{result.autoCorrections![key]}</p>
                       </div>
@@ -1702,7 +1731,7 @@ export default function Review() {
                 const pct = Math.round((section.score / section.max) * 100);
                 const color = getScoreColor(section.score, section.max);
                 return (
-                  <div key={si} className={si < arr.length - 1 ? 'border-b' : ''} style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}>
+                  <div key={si} className={si < arr.length - 1 ? 'border-b' : ''} style={{ borderColor: 'var(--border)', background: isDark ? '#111827' : 'var(--bg-1)' }}>
                     <div className="flex items-center justify-between px-4 py-2.5">
                       <span className="text-[12.5px] font-semibold" style={{ color: 'var(--fg-1)' }}>{section.title}</span>
                       <div className="flex items-center gap-3 shrink-0">

@@ -1,4 +1,5 @@
 import { CSSProperties, ReactNode, useState } from 'react';
+import { useTheme } from 'next-themes';
 
 const btnBase: CSSProperties = {
   fontFamily: 'var(--font-display)',
@@ -21,11 +22,13 @@ function Btn({
   variant,
   pill,
   disabled,
+  isDark,
   children,
 }: {
   variant: 'primary' | 'secondary' | 'outline' | 'ghost';
   pill?: boolean;
   disabled?: boolean;
+  isDark?: boolean;
   children: ReactNode;
 }) {
   const stylesByVariant: Record<string, CSSProperties> = {
@@ -33,10 +36,10 @@ function Btn({
     secondary: { background: 'var(--smvec-gold)', color: '#000' },
     outline: {
       borderColor: 'var(--smvec-blue)',
-      color: 'var(--smvec-blue)',
-      background: '#fff',
+      color: isDark ? '#A8B2DC' : 'var(--smvec-blue)',
+      background: isDark ? '#1A2342' : '#fff',
     },
-    ghost: { color: 'var(--smvec-blue)' },
+    ghost: { color: isDark ? '#A8B2DC' : 'var(--smvec-blue)' },
   };
   const pillStyle: CSSProperties = pill
     ? {
@@ -159,27 +162,29 @@ function Surface({
   title,
   body,
   cta,
+  isDark,
 }: {
   variant?: 'white' | 'blue';
   kicker: string;
   title: string;
   body: string;
   cta: ReactNode;
+  isDark?: boolean;
 }) {
   const isBlue = variant === 'blue';
   return (
     <div
       className="rounded-[10px] border p-[22px]"
       style={{
-        background: isBlue ? 'var(--smvec-blue)' : '#fff',
-        borderColor: isBlue ? 'var(--smvec-blue)' : 'var(--border)',
+        background: isBlue ? 'var(--smvec-blue)' : isDark ? '#111827' : '#fff',
+        borderColor: isBlue ? 'var(--smvec-blue)' : isDark ? '#2A3860' : 'var(--border)',
         color: isBlue ? '#fff' : 'var(--fg-1)',
         boxShadow: 'var(--shadow-1)',
       }}
     >
       <p
         className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em]"
-        style={{ color: isBlue ? 'var(--smvec-gold)' : 'var(--smvec-blue)' }}
+        style={{ color: isBlue ? 'var(--smvec-gold)' : isDark ? '#A8B2DC' : 'var(--smvec-blue)' }}
       >
         {kicker}
       </p>
@@ -203,8 +208,8 @@ function Surface({
 function Stat({ num, label }: { num: string; label: string }) {
   return (
     <div
-      className="relative flex flex-col gap-1 overflow-hidden rounded-[10px] border bg-white px-5 py-4"
-      style={{ borderColor: 'var(--border)' }}
+      className="relative flex flex-col gap-1 overflow-hidden rounded-[10px] border px-5 py-4"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-1)' }}
     >
       <span
         className="text-[36px] leading-none"
@@ -250,6 +255,9 @@ export default function Components() {
   const [phone, setPhone] = useState('+91 98x');
   const [msg, setMsg] = useState('Requesting a campus visit next weekend.');
   const [prog, setProg] = useState('B.Tech — Computer Science and Engineering');
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const fieldDark: CSSProperties = isDark ? { background: '#1A2342', color: 'var(--fg-1)', borderColor: 'var(--border)' } : {};
 
   return (
     <div className="brand-card">
@@ -269,14 +277,14 @@ export default function Components() {
       <section className="mt-2">
         <div className="brand-section-title">Buttons</div>
         <div className="flex flex-wrap items-center gap-3">
-          <Btn variant="primary">Apply Now</Btn>
-          <Btn variant="secondary">Download Brochure</Btn>
-          <Btn variant="outline">Learn More</Btn>
-          <Btn variant="ghost">Cancel</Btn>
-          <Btn variant="primary" pill>
+          <Btn variant="primary" isDark={isDark}>Apply Now</Btn>
+          <Btn variant="secondary" isDark={isDark}>Download Brochure</Btn>
+          <Btn variant="outline" isDark={isDark}>Learn More</Btn>
+          <Btn variant="ghost" isDark={isDark}>Cancel</Btn>
+          <Btn variant="primary" pill isDark={isDark}>
             Enrol Now
           </Btn>
-          <Btn variant="primary" disabled>
+          <Btn variant="primary" disabled isDark={isDark}>
             Disabled
           </Btn>
         </div>
@@ -290,10 +298,10 @@ export default function Components() {
         <div>
           <div className="brand-section-title">Form fields</div>
           <Field label="Full name">
-            <input value={name} onChange={(e) => setName(e.target.value)} style={fieldBase} />
+            <input value={name} onChange={(e) => setName(e.target.value)} style={{ ...fieldBase, ...fieldDark }} />
           </Field>
           <Field label="Programme">
-            <select value={prog} onChange={(e) => setProg(e.target.value)} style={fieldBase}>
+            <select value={prog} onChange={(e) => setProg(e.target.value)} style={{ ...fieldBase, ...fieldDark }}>
               <option>B.Tech — Computer Science and Engineering</option>
               <option>B.Tech — Electronics &amp; Communication</option>
               <option>MBA — Management Studies</option>
@@ -307,7 +315,7 @@ export default function Components() {
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              style={{ ...fieldBase, borderColor: '#B00020' }}
+              style={{ ...fieldBase, ...fieldDark, borderColor: isDark ? 'var(--status-rejected-fg)' : '#B00020' }}
             />
           </Field>
           <Field label="Message">
@@ -315,7 +323,7 @@ export default function Components() {
               value={msg}
               onChange={(e) => setMsg(e.target.value)}
               rows={3}
-              style={{ ...fieldBase, resize: 'vertical' }}
+              style={{ ...fieldBase, ...fieldDark, resize: 'vertical' }}
             />
           </Field>
         </div>
@@ -339,8 +347,9 @@ export default function Components() {
       <section className="mt-10">
         <div className="brand-section-title">Navigation</div>
         <div
-          className="flex items-center justify-between rounded-[8px] bg-white px-[22px] py-3.5"
+          className="flex items-center justify-between rounded-[8px] px-[22px] py-3.5"
           style={{
+            background: 'var(--bg-1)',
             borderBottom: '4px solid var(--smvec-gold)',
             boxShadow: 'var(--shadow-1)',
           }}
@@ -385,7 +394,8 @@ export default function Components() {
             kicker="Programme"
             title="B.Tech — Computer Science and Engineering"
             body="Four-year autonomous programme accredited by NBA. Curriculum covers core CS with electives in AI, cybersecurity, and distributed systems."
-            cta={<Btn variant="outline">View syllabus</Btn>}
+            isDark={isDark}
+            cta={<Btn variant="outline" isDark={isDark}>View syllabus</Btn>}
           />
         </div>
         <div>

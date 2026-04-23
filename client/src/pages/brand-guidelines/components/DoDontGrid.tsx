@@ -13,9 +13,17 @@ type DoDontGridProps = {
 export function DoDontGrid({ dos, donts, doMedia, dontMedia }: DoDontGridProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <div className="rounded-md border border-[#36429B]/15 bg-white">
+      <div
+        className="rounded-md border"
+        style={{ borderColor: 'rgba(54, 66, 155, 0.15)', background: 'var(--bg-1)' }}
+      >
         {doMedia ? (
-          <div className="border-b border-[#36429B]/10 bg-[#F8F9FE] p-6">{doMedia}</div>
+          <div
+            className="border-b p-6"
+            style={{ borderColor: 'rgba(54, 66, 155, 0.10)', background: 'var(--smvec-blue-050)' }}
+          >
+            {doMedia}
+          </div>
         ) : null}
         <div className="p-5">
           <div className="flex items-center gap-2">
@@ -26,10 +34,10 @@ export function DoDontGrid({ dos, donts, doMedia, dontMedia }: DoDontGridProps) 
           </div>
           <ul className="mt-3 space-y-2.5">
             {dos.map((item) => (
-              <li key={item.label} className="text-[13.5px] leading-6 text-[#0B1024]">
+              <li key={item.label} className="text-[13.5px] leading-6" style={{ color: 'var(--fg-1)' }}>
                 <span className="font-medium">{item.label}</span>
                 {item.description ? (
-                  <span className="block text-[12.5px] leading-5 text-[#48506B]">
+                  <span className="block text-[12.5px] leading-5" style={{ color: 'var(--fg-2)' }}>
                     {item.description}
                   </span>
                 ) : null}
@@ -39,9 +47,17 @@ export function DoDontGrid({ dos, donts, doMedia, dontMedia }: DoDontGridProps) 
         </div>
       </div>
 
-      <div className="rounded-md border border-[#C5443A]/15 bg-white">
+      <div
+        className="rounded-md border"
+        style={{ borderColor: 'rgba(197, 68, 58, 0.15)', background: 'var(--bg-1)' }}
+      >
         {dontMedia ? (
-          <div className="border-b border-[#C5443A]/10 bg-[#FBF6F5] p-6">{dontMedia}</div>
+          <div
+            className="border-b p-6"
+            style={{ borderColor: 'rgba(197, 68, 58, 0.10)', background: 'var(--status-rejected-bg)' }}
+          >
+            {dontMedia}
+          </div>
         ) : null}
         <div className="p-5">
           <div className="flex items-center gap-2">
@@ -52,10 +68,10 @@ export function DoDontGrid({ dos, donts, doMedia, dontMedia }: DoDontGridProps) 
           </div>
           <ul className="mt-3 space-y-2.5">
             {donts.map((item) => (
-              <li key={item.label} className="text-[13.5px] leading-6 text-[#0B1024]">
+              <li key={item.label} className="text-[13.5px] leading-6" style={{ color: 'var(--fg-1)' }}>
                 <span className="font-medium">{item.label}</span>
                 {item.description ? (
-                  <span className="block text-[12.5px] leading-5 text-[#48506B]">
+                  <span className="block text-[12.5px] leading-5" style={{ color: 'var(--fg-2)' }}>
                     {item.description}
                   </span>
                 ) : null}

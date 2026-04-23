@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTheme } from 'next-themes';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -36,6 +37,8 @@ export default function Home() {
   const stageRef = useRef<HTMLDivElement>(null);
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [phrasePhase, setPhrasePhase] = useState<'in' | 'out'>('in');
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -84,11 +87,11 @@ export default function Home() {
             <span
               aria-hidden="true"
               className="h-[2px] w-7"
-              style={{ background: 'var(--smvec-gold)' }}
+              style={{ background: isDark ? 'rgba(255,255,255,0.22)' : 'var(--smvec-gold)' }}
             />
             <p
               className="text-[10.5px] font-semibold uppercase tracking-[0.32em]"
-              style={{ color: 'var(--smvec-blue)', fontFamily: 'var(--font-display)' }}
+              style={{ color: isDark ? 'rgba(255,255,255,0.45)' : 'var(--smvec-blue)', fontFamily: 'var(--font-display)' }}
             >
               SMVEC · Brand Reference
             </p>
@@ -109,7 +112,7 @@ export default function Home() {
               <span
                 className="brand-phrase"
                 data-phase={phrasePhase}
-                style={{ color: 'var(--smvec-blue)' }}
+                style={{ color: isDark ? 'var(--smvec-gold)' : 'var(--smvec-blue)' }}
               >
                 {activePhrase.emphasis} {activePhrase.trailing}
               </span>
@@ -148,8 +151,8 @@ export default function Home() {
               </Link>
               <Link
                 to="/brand-guidelines/review"
-                className="ai-beam-btn group inline-flex h-12 w-full items-center justify-center gap-2.5 whitespace-nowrap rounded-[6px] border bg-white px-5 text-[13.5px] font-semibold text-[#36429B] outline-none transition-all duration-200 hover:-translate-y-[1px] hover:bg-[#EEF1FB] focus-visible:ring-2 focus-visible:ring-[var(--smvec-blue-300)] focus-visible:ring-offset-2 active:translate-y-0"
-                style={{ borderColor: 'transparent' }}
+                className="ai-beam-btn group inline-flex h-12 w-full items-center justify-center gap-2.5 whitespace-nowrap rounded-[6px] border px-5 text-[13.5px] font-semibold outline-none transition-all duration-200 hover:-translate-y-[1px] focus-visible:ring-2 focus-visible:ring-[var(--smvec-blue-300)] focus-visible:ring-offset-2 active:translate-y-0"
+                style={{ borderColor: 'transparent', color: isDark ? '#fff' : 'var(--smvec-blue)' }}
               >
                 <Sparkles className="ai-review-btn__icon h-4 w-4 shrink-0 text-[#DBA328]" strokeWidth={2} />
                 AI Review
@@ -168,19 +171,22 @@ export default function Home() {
             {/* Brand version status */}
             <div className="mt-20 max-w-[32rem]">
               <div
-                className="flex items-center gap-3 rounded-[10px] border bg-white px-4 py-3"
-                style={{ borderColor: 'var(--smvec-blue-100)' }}
+                className="flex items-center gap-3 rounded-[10px] border px-4 py-3"
+                style={{ borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'var(--smvec-blue-100)', background: 'var(--bg-1)' }}
               >
                 <span
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[7px]"
-                  style={{ background: 'var(--smvec-blue-050)', color: 'var(--smvec-blue)' }}
+                  style={{
+                    background: isDark ? 'rgba(219,163,40,0.20)' : 'var(--smvec-blue-050)',
+                    color: isDark ? '#fff' : 'var(--smvec-blue)',
+                  }}
                 >
                   <ShieldCheck className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
                   <p
                     className="text-[10.5px] font-semibold uppercase tracking-[0.18em]"
-                    style={{ color: 'var(--smvec-blue)', fontFamily: 'var(--font-display)' }}
+                    style={{ color: isDark ? '#fff' : 'var(--smvec-blue)', fontFamily: 'var(--font-display)' }}
                   >
                     Brand Manual · v1.0
                   </p>
@@ -191,7 +197,7 @@ export default function Home() {
                 <Link
                   to="/brand-guidelines/approval"
                   className="hidden shrink-0 text-[11.5px] font-semibold transition-colors hover:underline sm:inline-flex"
-                  style={{ color: 'var(--smvec-blue)' }}
+                  style={{ color: isDark ? 'var(--smvec-gold)' : 'var(--smvec-blue)' }}
                 >
                   Workflow →
                 </Link>
@@ -223,7 +229,7 @@ export default function Home() {
               className="brand-hero-card brand-hero-card-shell group col-span-7 row-span-5 col-start-1 row-start-1 flex flex-col overflow-hidden rounded-[14px] outline-none"
               style={{
                 animationDelay: '120ms',
-                background: 'rgba(54, 66, 155, 0.05)',
+                background: 'var(--smvec-blue-tint)',
                 transform:
                   'translate3d(calc(var(--brand-px) * -8px), calc(var(--brand-py) * -8px), 0)',
               }}
@@ -242,7 +248,7 @@ export default function Home() {
               </div>
               <div
                 className="flex items-center justify-between px-4 py-2.5"
-                style={{ background: 'rgba(54, 66, 155, 0.06)' }}
+                style={{ background: 'var(--smvec-blue-tint)' }}
               >
                 <div className="min-w-0">
                   <p className="text-[12.5px] font-semibold leading-tight" style={{ color: 'var(--smvec-ink)' }}>
@@ -312,7 +318,7 @@ export default function Home() {
               className="brand-hero-card brand-hero-card-shell group col-span-3 row-span-3 col-start-1 row-start-6 flex flex-col overflow-hidden rounded-[14px] p-4 outline-none"
               style={{
                 animationDelay: '320ms',
-                background: 'rgba(54, 66, 155, 0.05)',
+                background: 'var(--smvec-blue-tint)',
                 transform:
                   'translate3d(calc(var(--brand-px) * -14px), calc(var(--brand-py) * 6px), 0)',
               }}
@@ -346,7 +352,7 @@ export default function Home() {
               className="brand-hero-card brand-hero-card--float brand-hero-card-shell group col-span-4 row-span-3 col-start-4 row-start-6 flex flex-col overflow-hidden rounded-[14px] p-4 outline-none"
               style={{
                 animationDelay: '420ms',
-                background: 'rgba(54, 66, 155, 0.05)',
+                background: 'var(--smvec-blue-tint)',
                 transform:
                   'translate3d(calc(var(--brand-px) * 6px), calc(var(--brand-py) * -10px), 0)',
               }}
@@ -440,19 +446,25 @@ export default function Home() {
           ].map(({ tag, title, body, Icon }) => (
             <article
               key={tag}
-              className="group flex h-full flex-col gap-3 rounded-[12px] border bg-white p-5 transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_18px_38px_-24px_rgba(54,66,155,0.18)]"
-              style={{ borderColor: 'var(--border)' }}
+              className="group flex h-full flex-col gap-3 rounded-[12px] border p-5 transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_18px_38px_-24px_rgba(54,66,155,0.18)]"
+              style={{
+                borderColor: isDark ? '#2A3860' : 'var(--border)',
+                background: isDark ? '#111827' : 'var(--bg-1)',
+              }}
             >
               <div className="flex items-center justify-between">
                 <span
                   className="flex h-9 w-9 items-center justify-center rounded-[8px]"
-                  style={{ background: 'var(--smvec-blue-050)', color: 'var(--smvec-blue)' }}
+                  style={{
+                    background: isDark ? '#1E2D55' : 'var(--smvec-blue-050)',
+                    color: isDark ? '#ffffff' : 'var(--smvec-blue)',
+                  }}
                 >
                   <Icon className="h-4 w-4" />
                 </span>
                 <p
                   className="text-[10.5px] font-semibold uppercase tracking-[0.22em]"
-                  style={{ color: 'var(--smvec-blue)' }}
+                  style={{ color: isDark ? '#A8B2DC' : 'var(--smvec-blue)' }}
                 >
                   {tag}
                 </p>
@@ -487,8 +499,8 @@ export default function Home() {
             <Link
               key={link.href}
               to={link.href}
-              className="group flex items-center justify-between rounded-md border bg-white px-4 py-3.5 text-[13.5px] font-medium transition-all duration-200 hover:-translate-y-[1px] hover:border-[var(--smvec-blue-300)] hover:bg-[var(--smvec-blue-050)]"
-              style={{ borderColor: 'var(--border)', color: 'var(--smvec-ink)' }}
+              className="group flex items-center justify-between rounded-md border px-4 py-3.5 text-[13.5px] font-medium transition-all duration-200 hover:-translate-y-[1px] hover:border-[var(--smvec-blue-300)] hover:bg-[var(--smvec-blue-050)]"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg-1)', color: 'var(--smvec-ink)' }}
             >
               {link.label}
               <ArrowRight

@@ -39,11 +39,38 @@
   /* Surface aliases */
   --bg-1: var(--smvec-white);
   --bg-2: var(--smvec-bg-soft);
+  --surface: var(--smvec-white);
   --fg-1: var(--smvec-ink);
   --fg-2: var(--smvec-ink-3);
   --fg-3: var(--smvec-ink-4);
   --border: var(--smvec-line);
   --focus-ring: rgba(54, 66, 155, 0.18);
+
+  /* Adaptive role-badge tints */
+  --role-staff-bg:    #EEF1FB;
+  --role-designer-bg: #ECFEFF;
+  --role-lead-bg:     #F5F3FF;
+  --role-treasurer-bg:#FFFBEB;
+
+  /* Blue tint overlay — used for card watermarks and section backgrounds */
+  --smvec-blue-tint: rgba(54, 66, 155, 0.06);
+
+  /* Semantic status tints — approval badges, callout warning */
+  --status-approved-bg:  #ECFDF3;
+  --status-approved-fg:  #15803D;
+  --status-approved-bd:  #BBF7D0;
+  --status-amend-bg:     #FFFBEB;
+  --status-amend-fg:     #92400E;
+  --status-amend-bd:     #FDE68A;
+  --status-revision-bg:  #FFF7ED;
+  --status-revision-fg:  #C2410C;
+  --status-revision-bd:  #FDBA74;
+  --status-rejected-bg:  #FEF2F2;
+  --status-rejected-fg:  #B91C1C;
+  --status-rejected-bd:  #FECACA;
+  --callout-warning-bg:  #FBF1F0;
+  --callout-warning-bd:  rgba(197, 68, 58, 0.25);
+  --score-track:         #F3F4F6;
 
   /* Typography families */
   --font-display: 'Google Sans Display', 'Google Sans', 'Inter', system-ui, sans-serif;
@@ -74,6 +101,245 @@
   --rule-gold: 4px solid var(--smvec-gold);
   --rule-blue: 4px solid var(--smvec-blue);
 }
+
+/* ── Dark mode overrides ───────────────────────────────────────────── */
+
+.dark .brand-root {
+  /* Neutrals — deep navy matching DesignDesk dark */
+  --smvec-bg-soft: #111827;
+  --smvec-line:    #1F2B47;
+  --smvec-ink-4:   #6B7494;
+  --smvec-ink-3:   #9AA3BF;
+  --smvec-ink:     #EDF0F7;
+
+  /* Surface aliases */
+  --bg-1:    #0C1220;
+  --bg-2:    #111827;
+  --surface:  #111827;
+  --fg-1:    #EDF0F7;
+  --fg-2:    #9AA3BF;
+  --fg-3:    #6B7494;
+  --border:  #1F2B47;
+  --focus-ring: rgba(54, 66, 155, 0.35);
+
+  /* Blue tints — darkened for dark surfaces */
+  --smvec-blue-050: #192040;
+  --smvec-blue-100: #1E2A50;
+
+  /* Gold tints */
+  --smvec-gold-050: #271B06;
+  --smvec-gold-100: #2E2008;
+
+  /* Shadows */
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.40);
+  --shadow-2: 0 8px 24px -12px rgba(0, 0, 0, 0.65);
+
+  /* Adaptive role-badge tints */
+  --role-staff-bg:    rgba(54,66,155,0.28);
+  --role-designer-bg: rgba(14,116,144,0.28);
+  --role-lead-bg:     rgba(124,58,237,0.28);
+  --role-treasurer-bg:rgba(180,83,9,0.28);
+
+  /* Blue tint overlay — stronger in dark so tinted cards stay visible */
+  --smvec-blue-tint: rgba(54, 66, 155, 0.18);
+
+  /* Semantic status tints — dark variants */
+  --status-approved-bg:  #052e16;
+  --status-approved-fg:  #4ade80;
+  --status-approved-bd:  #166534;
+  --status-amend-bg:     #1c1407;
+  --status-amend-fg:     #fbbf24;
+  --status-amend-bd:     #854d0e;
+  --status-revision-bg:  #1c0e05;
+  --status-revision-fg:  #fb923c;
+  --status-revision-bd:  #7c2d12;
+  --status-rejected-bg:  #1c0505;
+  --status-rejected-fg:  #f87171;
+  --status-rejected-bd:  #7f1d1d;
+  --callout-warning-bg:  #1c0a09;
+  --callout-warning-bd:  rgba(197, 68, 58, 0.35);
+  --score-track:         #1F2B47;
+}
+
+/* ── BrandLayout adaptive chrome ───────────────────────────────────── */
+
+.brand-layout-header {
+  background: rgba(255, 255, 255, 0.95);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.dark .brand-layout-header {
+  background: rgba(12, 18, 32, 0.96);
+  border-bottom-color: var(--border);
+}
+
+/* Header wordmark — lighter blue in dark mode for legibility */
+.brand-header-wordmark {
+  color: var(--smvec-blue);
+  font-family: var(--font-display);
+}
+.dark .brand-header-wordmark {
+  color: #A8B2DC;
+}
+
+.brand-layout-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  width: 2rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--fg-3);
+  background: transparent;
+  transition: border-color 150ms, color 150ms;
+  text-decoration: none;
+}
+.brand-layout-back-btn:hover {
+  border-color: rgba(54, 66, 155, 0.4);
+  color: var(--smvec-blue);
+}
+
+.brand-layout-theme-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  width: 2rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--fg-3);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 150ms, color 150ms;
+}
+.brand-layout-theme-btn:hover {
+  border-color: rgba(54, 66, 155, 0.4);
+  color: var(--smvec-blue);
+}
+
+.brand-topnav-link {
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg-3);
+  transition: color 150ms;
+  text-decoration: none;
+}
+.brand-topnav-link:hover { color: var(--fg-1); }
+.brand-topnav-link--active { color: var(--smvec-blue); }
+
+.brand-analyser-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--smvec-blue-100);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--smvec-blue);
+  background: var(--bg-1);
+  transition: border-color 150ms, background 150ms;
+  text-decoration: none;
+}
+.brand-analyser-pill:hover {
+  border-color: rgba(54, 66, 155, 0.5);
+  background: var(--smvec-blue-050);
+}
+.brand-analyser-pill--active {
+  border-color: var(--smvec-blue);
+  background: var(--smvec-blue-050);
+}
+
+.brand-nav-group-label   { color: var(--fg-3); }
+.brand-nav-group-number  { color: var(--border); }
+.brand-nav-group-caption { color: var(--fg-3); opacity: 0.8; }
+
+.brand-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.25rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  outline: none;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+  text-decoration: none;
+}
+.brand-nav-link:hover {
+  background: var(--smvec-blue-050);
+  color: var(--fg-1);
+}
+.brand-nav-link:focus-visible {
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+.brand-nav-link--active {
+  background: var(--smvec-blue-050);
+  color: var(--smvec-blue);
+}
+
+/* Dark mode — brand blue text must be lighter for contrast on dark surfaces */
+.dark .brand-section-title    { color: #A8B2DC; }
+.dark .brand-card__eyebrow    { color: #A8B2DC; }
+.dark .brand-topnav-link--active { color: #A8B2DC; }
+.dark .brand-nav-link--active { color: #A8B2DC; }
+.dark .brand-analyser-pill {
+  color: #C8CEEC;
+  border-color: #3A4E80;
+  background: #131D35;
+}
+.dark .brand-analyser-pill--active {
+  color: #C8CEEC;
+  border-color: #5566B7;
+  background: #1A2645;
+}
+.dark .brand-analyser-pill:hover {
+  color: #DDE1F4;
+  border-color: #5566B7;
+  background: #1A2645;
+}
+
+/* Dark mode form field placeholders */
+.dark .brand-root input::placeholder,
+.dark .brand-root textarea::placeholder {
+  color: var(--fg-3);
+}
+
+.brand-mobile-sidebar {
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand-layout-footer {
+  background: var(--bg-1);
+  border-top: 1px solid var(--border);
+}
+.brand-footer-copy    { color: var(--fg-3); }
+.brand-footer-version { color: var(--border); }
+
+/* ── Common adaptive surface utilities ─────────────────────────────── */
+/* Use these classes instead of bg-white / bg-[#EEF1FB] / border-[#E4E7F1]  */
+
+.brand-surface   { background: var(--bg-1); }
+.brand-surface-2 { background: var(--bg-2); }
+.brand-icon-bg   { background: var(--smvec-blue-050); }
+.brand-gold-bg   { background: var(--smvec-gold-050); }
+.brand-border-c  { border-color: var(--border); }
+.brand-text-1    { color: var(--fg-1); }
+.brand-text-2    { color: var(--fg-2); }
+.brand-text-3    { color: var(--fg-3); }
+
+/* Role badge tints — adapt between light and dark via CSS vars */
+.brand-role-staff     { background: var(--role-staff-bg); }
+.brand-role-designer  { background: var(--role-designer-bg); }
+.brand-role-lead      { background: var(--role-lead-bg); }
+.brand-role-treasurer { background: var(--role-treasurer-bg); }
 
 /* Card chrome — applied to each section page so every section gets the
    gold left keyline + structured header from the official manual. */
@@ -262,6 +528,10 @@ html:has(.brand-root)::-webkit-scrollbar {
 .ai-beam-btn {
   position: relative;
   border-color: transparent !important;
+  background: var(--bg-1);
+}
+.ai-beam-btn:hover {
+  background: var(--smvec-blue-050);
 }
 
 .ai-beam-btn::after {

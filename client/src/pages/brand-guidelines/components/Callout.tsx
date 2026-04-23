@@ -10,31 +10,27 @@ type CalloutProps = {
 const VARIANTS = {
   info: {
     icon: Info,
-    border: 'border-[#36429B]/25',
-    bg: 'bg-[#F2F4FB]',
-    iconColor: 'text-[#36429B]',
-    titleColor: 'text-[#0B1024]',
+    borderColor: 'rgba(54, 66, 155, 0.25)',
+    bg: 'var(--smvec-blue-050)',
+    iconColor: 'var(--smvec-blue)',
   },
   gold: {
     icon: Info,
-    border: 'border-[#DBA328]/35',
-    bg: 'bg-[#FBF5E8]',
-    iconColor: 'text-[#A47A1B]',
-    titleColor: 'text-[#0B1024]',
+    borderColor: 'rgba(219, 163, 40, 0.35)',
+    bg: 'var(--smvec-gold-050)',
+    iconColor: 'var(--smvec-gold)',
   },
   success: {
     icon: CheckCircle2,
-    border: 'border-[#36429B]/20',
-    bg: 'bg-white',
-    iconColor: 'text-[#1F8B5A]',
-    titleColor: 'text-[#0B1024]',
+    borderColor: 'rgba(54, 66, 155, 0.20)',
+    bg: 'var(--bg-1)',
+    iconColor: '#1F8B5A',
   },
   warning: {
     icon: AlertTriangle,
-    border: 'border-[#C5443A]/25',
-    bg: 'bg-[#FBF1F0]',
-    iconColor: 'text-[#C5443A]',
-    titleColor: 'text-[#0B1024]',
+    borderColor: 'var(--callout-warning-bd)',
+    bg: 'var(--callout-warning-bg)',
+    iconColor: '#C5443A',
   },
 } as const;
 
@@ -42,14 +38,17 @@ export function Callout({ variant = 'info', title, children }: CalloutProps) {
   const config = VARIANTS[variant];
   const Icon = config.icon;
   return (
-    <div className={`rounded-md border ${config.border} ${config.bg} p-4`}>
+    <div
+      className="rounded-md border p-4"
+      style={{ borderColor: config.borderColor, background: config.bg }}
+    >
       <div className="flex items-start gap-3">
-        <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${config.iconColor}`} />
+        <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: config.iconColor }} />
         <div className="min-w-0 flex-1">
           {title ? (
-            <p className={`text-[13px] font-semibold ${config.titleColor}`}>{title}</p>
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--fg-1)' }}>{title}</p>
           ) : null}
-          <div className="text-[13px] leading-6 text-[#48506B]">{children}</div>
+          <div className="text-[13px] leading-6" style={{ color: 'var(--fg-2)' }}>{children}</div>
         </div>
       </div>
     </div>
