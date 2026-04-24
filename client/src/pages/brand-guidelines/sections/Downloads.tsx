@@ -21,7 +21,8 @@ const BRAND_MANUAL_FILE_ID = (() => {
   const m = BRAND_MANUAL_DRIVE_URL.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
   return m ? m[1] : '';
 })();
-const BRAND_MANUAL_THUMBNAIL = `https://lh3.googleusercontent.com/d/${BRAND_MANUAL_FILE_ID}=w800`;
+const BRAND_MANUAL_THUMBNAIL = `https://drive.google.com/thumbnail?id=${BRAND_MANUAL_FILE_ID}&sz=w800`;
+const BRAND_MANUAL_PREVIEW_EMBED = `https://drive.google.com/file/d/${BRAND_MANUAL_FILE_ID}/preview`;
 
 const RESOURCES = [
   {
@@ -64,6 +65,13 @@ export default function Downloads() {
   const cardStyle = {
     borderColor: isDark ? '#2A3860' : 'var(--border)',
     background: isDark ? '#111827' : 'var(--bg-1)',
+  };
+  // HoverCardContent is rendered in a Radix Portal (outside .brand-root),
+  // so brand CSS vars are unavailable — use explicit colors here so the
+  // popover stays fully opaque and doesn't bleed through underlying cards.
+  const popoverStyle = {
+    borderColor: isDark ? '#2A3860' : '#E5E7EE',
+    background: isDark ? '#111827' : '#FFFFFF',
   };
   const iconStyle = {
     background: isDark ? '#1E2D55' : 'var(--smvec-blue-050)',
@@ -110,7 +118,7 @@ export default function Downloads() {
             align="start"
             sideOffset={12}
             className="w-[24rem] max-w-[calc(100vw-2rem)] p-3 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.22)]"
-            style={cardStyle}
+            style={popoverStyle}
           >
             <div className="mb-2 flex items-center gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--fg-3)' }}>
@@ -178,7 +186,7 @@ export default function Downloads() {
             align="start"
             sideOffset={12}
             className="w-[24rem] max-w-[calc(100vw-2rem)] p-3 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.22)]"
-            style={cardStyle}
+            style={popoverStyle}
           >
             <div className="mb-2 flex items-center gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--fg-3)' }}>
@@ -200,17 +208,28 @@ export default function Downloads() {
               </p>
             </div>
             <div
-              className="overflow-hidden rounded-lg border"
-              style={{ borderColor: 'var(--smvec-blue-100)', background: 'var(--smvec-blue-050)' }}
+              className="relative overflow-hidden rounded-lg border"
+              style={{
+                borderColor: isDark ? '#2A3860' : '#D5DDF5',
+                background: isDark ? '#0F1A33' : '#EEF1FB',
+                aspectRatio: '4 / 3',
+              }}
             >
+              <iframe
+                src={BRAND_MANUAL_PREVIEW_EMBED}
+                title="Brand manual preview"
+                className="absolute inset-0 h-full w-full border-0"
+                allow="autoplay"
+                loading="lazy"
+              />
               <img
                 src={BRAND_MANUAL_THUMBNAIL}
-                alt="Brand manual preview"
-                className="h-auto w-full object-contain"
+                alt=""
+                aria-hidden="true"
                 referrerPolicy="no-referrer"
+                className="absolute inset-0 h-full w-full -z-10 object-contain"
                 onError={(event) => {
-                  event.currentTarget.parentElement!.innerHTML =
-                    '<div class="flex h-32 items-center justify-center text-xs" style="color:var(--fg-3)">Preview unavailable</div>';
+                  event.currentTarget.style.display = 'none';
                 }}
               />
             </div>
