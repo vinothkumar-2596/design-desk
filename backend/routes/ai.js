@@ -1489,7 +1489,7 @@ router.post("/design-critique", async (req, res) => {
         return res.status(400).json({ error: "imageBase64 and mimeType are required" });
     }
     const configuredKeys = getConfiguredGeminiKeys();
-    if (configuredKeys.length === 0) {
+    if (configuredKeys.length === 0 && getGroqKeys().length === 0) {
         return res.status(503).json({ error: "AI service is temporarily unavailable.", code: "AI_KEY_MISSING" });
     }
     let promptText = DESIGN_CRITIQUE_SYSTEM_PROMPT;
