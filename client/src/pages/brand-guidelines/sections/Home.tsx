@@ -268,7 +268,7 @@ export default function Home() {
               </div>
             </Link>
 
-            {/* Design principle card */}
+            {/* Quote card */}
             <Link
               to="/brand-guidelines/overview"
               className="brand-hero-card brand-hero-card--float-alt brand-hero-card-shell group col-span-5 row-span-5 col-start-8 row-start-1 relative flex flex-col overflow-hidden rounded-[14px] outline-none"
@@ -280,35 +280,29 @@ export default function Home() {
               }}
             >
               <span className="pointer-events-none absolute inset-0" aria-hidden="true">
-                <span className="absolute left-8 top-8 h-[3px] w-14 bg-[var(--smvec-gold)]" />
-                <span className="absolute right-7 top-8 h-px w-14 bg-white/12" />
-                <span className="absolute bottom-11 left-8 h-px w-16 bg-white/12" />
-                <span className="absolute bottom-8 left-8 h-px w-24 bg-white/12" />
+                <span className="absolute left-6 top-6 h-[3px] w-14 bg-[var(--smvec-gold)]" />
+                <span className="absolute bottom-12 left-6 h-px w-24 bg-white/14" />
               </span>
-              <span className="flex flex-1 items-center px-8 pt-4">
-                <span className="relative block max-w-[10.5rem] text-left">
-                  <span className="block text-[10px] font-semibold uppercase tracking-[0.28em] text-white/48">
-                    Principle
-                  </span>
+              <span className="flex flex-1 items-center px-6 pb-7 pt-8">
+                <span className="relative block max-w-[11.75rem] text-left">
                   <span
-                    className="mt-2 block text-[28px] leading-[1.04] text-white"
-                    style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}
+                    className="block text-[24px] leading-[1.13] text-white"
+                    style={{ fontFamily: 'var(--font-display)', fontWeight: 650, letterSpacing: '-0.04em' }}
                   >
-                    One clear
+                    Design is so simple.
                     <br />
-                    focal point.
+                    That&rsquo;s why it&rsquo;s
+                    <br />
+                    so complicated
                   </span>
                   <span className="mt-4 block h-[3px] w-10 bg-[var(--smvec-gold)] transition-all duration-300 group-hover:w-16" />
-                  <span className="mt-3 block text-[11px] leading-[1.55] text-white/58">
-                    Remove anything that does not strengthen recognition, hierarchy, or action.
+                  <span className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.2em] text-white/60">
+                    Simplicity requires discipline
                   </span>
                 </span>
               </span>
-              <span className="absolute left-8 bottom-4 text-left text-[9px] font-semibold uppercase tracking-[0.2em] text-white/32">
-                Clarity over decoration
-              </span>
               <span
-                className="absolute bottom-3 right-4 inline-flex items-center gap-1 text-[10.5px] font-medium text-white/50 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-white/80"
+                className="absolute bottom-3 right-4 inline-flex items-center gap-1 text-[10.5px] font-semibold text-white/70 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-white"
               >
                 Story
                 <ArrowRight className="h-3 w-3" />
