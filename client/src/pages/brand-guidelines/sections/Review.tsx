@@ -527,7 +527,7 @@ const CRITERIA_SECTIONS = [
       { title: 'Ornamental curl / floral dividers', desc: 'Used between sections in ceremonial invitations.' },
       { title: 'Gold ribbon / streamer imagery', desc: 'Acceptable in graduation and festive formal events.' },
       { title: 'Oversized SMVEC emblem as graphic motif', desc: 'Emblem used at large scale as a design background element.' },
-      { title: '25 / 26 Years anniversary badge', desc: 'Official identity element — always acceptable alongside the main logo.' },
+      { title: '26 Years anniversary mark', desc: 'Use the script numeral as a heritage cue only: white or Royal Blue "26", small uppercase YEARS, and a short Gold rule. It should support the main logo, not replace it or become a general decorative font style.' },
       { title: 'Blue-to-blue gradient', desc: 'Subtle depth variation within the Royal Blue family — acceptable.' },
     ],
   },

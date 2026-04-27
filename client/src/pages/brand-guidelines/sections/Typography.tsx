@@ -302,6 +302,15 @@ export default function Typography() {
           Downloads. Never use this script face anywhere else: not for headlines, pull-quotes,
           event titles, or decorative flourishes.
         </p>
+        <p
+          className="mt-3 max-w-[60ch] text-[14px] leading-[1.65]"
+          style={{ color: 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
+        >
+          Principle: keep the mark ceremonial and restrained. The flowing numeral signals heritage,
+          while the small uppercase <strong style={{ color: 'var(--fg-1)' }}>YEARS</strong> label
+          and short Gold rule add structure. It should sit beside the official lockup or in a quiet
+          corner, never compete with the event title.
+        </p>
       </section>
     </div>
   );

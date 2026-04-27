@@ -682,6 +682,11 @@ TYPOGRAPHY VIOLATIONS:
 □ V7. Is italic/script used for body text or major headings in A1? (wrong style)
 □ V8. Do multiple text elements have the same visual weight with no dominant heading? (hierarchy collapse)
 
+APPROVED ANNIVERSARY MARK PRINCIPLE:
+□ The "26 YEARS" mark is an approved ceremonial brand element when used as a compact heritage cue: flowing script numeral 26, small uppercase YEARS label, and a short Gold rule.
+□ Do NOT count this mark as a typography violation by itself. It is the only approved script usage.
+□ It must support the official SMVEC lockup or sit quietly in a corner. If the script style is reused for event titles, body text, pull-quotes, or multiple decorative words, then V7/V5/V6 may still apply.
+
 LOGO VIOLATIONS:
 □ V9. Is the SMVEC botanical emblem absent or unrecognizable?
 □ V10. Is the logo placed directly on a photograph or busy texture without a solid panel behind it?
