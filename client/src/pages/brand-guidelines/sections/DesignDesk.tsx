@@ -365,12 +365,12 @@ export default function DesignDesk() {
           style={{ background: 'var(--smvec-blue)' }}
         >
           <span
-            className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full opacity-10"
+            className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full opacity-25 blur-3xl"
             style={{ background: 'var(--smvec-gold)' }}
             aria-hidden
           />
           <span
-            className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full opacity-10"
+            className="pointer-events-none absolute -bottom-24 -left-16 h-48 w-48 rounded-full opacity-20 blur-3xl"
             style={{ background: 'var(--smvec-gold)' }}
             aria-hidden
           />

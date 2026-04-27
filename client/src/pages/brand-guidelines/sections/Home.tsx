@@ -270,7 +270,7 @@ export default function Home() {
 
             {/* Quote card */}
             <Link
-              to="/brand-guidelines/overview"
+              to="/brand-guidelines/overview#guiding-principle"
               className="brand-hero-card brand-hero-card--float-alt brand-hero-card-shell group col-span-5 row-span-5 col-start-8 row-start-1 relative flex flex-col overflow-hidden rounded-[14px] outline-none"
               style={{
                 animationDelay: '220ms',
@@ -301,6 +301,12 @@ export default function Home() {
                     That&rsquo;s why it&rsquo;s
                     <br />
                     so complicated.<span style={{ color: 'var(--smvec-gold)' }}>&rdquo;</span>
+                  </span>
+                  <span
+                    className="mt-3 block text-[11px] italic text-white/70"
+                    style={{ fontFamily: "'Playfair Display', 'Georgia', serif", fontWeight: 500 }}
+                  >
+                    &mdash; Paul Rand
                   </span>
                 </span>
               </span>

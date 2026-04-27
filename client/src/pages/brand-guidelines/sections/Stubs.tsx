@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { useTheme } from 'next-themes';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Mail, Users, Briefcase, Printer, GraduationCap, Building2, Globe } from 'lucide-react';
+import { ArrowRight, Mail, Users, Briefcase, Printer, GraduationCap, Building2, Globe, Quote } from 'lucide-react';
 import { SectionTitle } from '../components/SectionTitle';
 import { Callout } from '../components/Callout';
 import { DoDontGrid } from '../components/DoDontGrid';
@@ -94,6 +94,39 @@ export function Overview() {
         emphasis="overview"
         description="An academic, authoritative, and trustworthy identity built for clarity, longevity, and disciplined application across every touchpoint."
       />
+      <section
+        id="guiding-principle"
+        className="relative overflow-hidden rounded-[14px] px-8 py-10 md:px-12 md:py-14"
+        style={{ background: 'var(--smvec-blue)' }}
+      >
+        <Quote
+          aria-hidden="true"
+          strokeWidth={1.5}
+          className="pointer-events-none absolute -right-6 -top-2 h-44 w-44 rotate-180 md:h-56 md:w-56"
+          style={{ color: '#ffd06a', opacity: 0.05 }}
+        />
+        <p className="relative text-[11px] font-semibold uppercase tracking-[0.22em] text-white/60">
+          Guiding principle
+        </p>
+        <blockquote
+          className="mt-5 max-w-3xl text-[28px] leading-[1.18] text-white md:text-[32px]"
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontWeight: 500,
+            letterSpacing: '-0.02em',
+            paddingLeft: '0.55em',
+            textIndent: '-0.55em',
+          }}
+        >
+          <span style={{ color: 'var(--smvec-gold)' }}>&ldquo;</span>Design is so simple. That&rsquo;s why it&rsquo;s so complicated.<span style={{ color: 'var(--smvec-gold)' }}>&rdquo;</span>
+        </blockquote>
+        <p
+          className="mt-4 text-[12.5px] italic text-white/70"
+          style={{ fontFamily: 'var(--font-body)', fontWeight: 500 }}
+        >
+          &mdash; Paul Rand
+        </p>
+      </section>
       <section>
         <h2 className="text-[20px] font-medium" style={{ color: 'var(--fg-1)' }}>Brand values</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
