@@ -280,24 +280,27 @@ export default function Home() {
               }}
             >
               <span className="pointer-events-none absolute inset-0" aria-hidden="true">
-                <span className="absolute left-6 top-6 h-[3px] w-14 bg-[var(--smvec-gold)]" />
                 <span className="absolute bottom-12 left-6 h-px w-24 bg-white/14" />
               </span>
               <span className="flex flex-1 items-center px-6 pb-7 pt-8">
                 <span className="relative block max-w-[11.75rem] text-left">
                   <span
-                    className="block text-[24px] leading-[1.13] text-white"
-                    style={{ fontFamily: 'var(--font-display)', fontWeight: 650, letterSpacing: '-0.04em' }}
+                    className="block text-[18px] leading-[1.13] text-white"
+                    style={{
+                      fontFamily: "'Playfair Display', 'Georgia', serif",
+                      fontWeight: 700,
+                      letterSpacing: '-0.01em',
+                      paddingLeft: '0.55em',
+                      textIndent: '-0.55em',
+                    }}
                   >
-                    Design is so simple.
+                    <span style={{ color: 'var(--smvec-gold)' }}>&ldquo;</span>Design is
+                    <br />
+                    so simple.
                     <br />
                     That&rsquo;s why it&rsquo;s
                     <br />
-                    so complicated
-                  </span>
-                  <span className="mt-4 block h-[3px] w-10 bg-[var(--smvec-gold)] transition-all duration-300 group-hover:w-16" />
-                  <span className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.2em] text-white/60">
-                    Simplicity requires discipline
+                    so complicated.<span style={{ color: 'var(--smvec-gold)' }}>&rdquo;</span>
                   </span>
                 </span>
               </span>
