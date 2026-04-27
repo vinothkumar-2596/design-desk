@@ -26,7 +26,13 @@
       "Bash(node --check routes/ai.js)",
       "Bash(gcloud auth *)",
       "Bash(gcloud config *)",
-      "Read(//c/Program Files \\(x86\\)/Google/Cloud SDK/google-cloud-sdk/**)"
+      "Read(//c/Program Files \\(x86\\)/Google/Cloud SDK/google-cloud-sdk/**)",
+      "PowerShell(gcloud auth print-access-token 2>&1)",
+      "PowerShell(gcloud secrets list --format='value\\(name\\)' 2>&1)",
+      "PowerShell($f = Get-Item \"d:/project/design-desk/backend/cloudrun.env\"; $f.Name + \" \" + $f.Length + \" bytes\"; \\(Get-Content $f.FullName\\)[0..4])",
+      "PowerShell(try { Invoke-RestMethod -Uri \"https://design-desk-backend-954949883882.asia-south1.run.app/healthz\" -TimeoutSec 30 | ConvertTo-Json -Compress } catch { \"ERROR: $\\($_.Exception.Message\\)\" })",
+      "PowerShell(try { Invoke-RestMethod -Uri \"https://design-desk-backend-954949883882.asia-south1.run.app/api/health\" -TimeoutSec 30 | ConvertTo-Json -Compress } catch { \"ERROR: $\\($_.Exception.Message\\)\" }; Write-Output '---root---'; try { \\(Invoke-WebRequest -Uri \"https://design-desk-backend-954949883882.asia-south1.run.app/\" -TimeoutSec 30\\).StatusCode } catch { \"ERROR: $\\($_.Exception.Message\\)\" })",
+      "PowerShell(gcloud run services describe design-desk-backend --region asia-south1 --format='value\\(status.conditions[0].type,status.conditions[0].status,status.latestReadyRevisionName,status.url\\)' 2>&1)"
     ]
   }
 }

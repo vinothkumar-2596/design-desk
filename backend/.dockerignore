@@ -5,6 +5,8 @@ npm-debug.log*
 .gitignore
 .env
 .env.*
+cloudrun.env
+cloudrun.yaml
 credentials
 server/credentials
 whatsapp/whatsapp_session
