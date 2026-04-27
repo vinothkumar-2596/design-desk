@@ -5,6 +5,9 @@
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 const PRODUCTION_API_URL = 'https://design-desk-backend-954949883882.asia-south1.run.app';
+const DEPRECATED_PRODUCTION_API_HOSTS = new Set([
+    'designdesk-backend-954949883882.asia-south1.run.app',
+]);
 const UNSAFE_BROWSER_PORTS = new Set([
     '1',
     '7',
@@ -122,13 +125,25 @@ const getRejectedApiUrlReason = (value: string): 'loopback' | 'unsafe-port' | ''
     return '';
 };
 
+const normalizeApiUrl = (value: string): string => {
+    try {
+        const parsed = new URL(value);
+        if (DEPRECATED_PRODUCTION_API_HOSTS.has(parsed.hostname.toLowerCase())) {
+            return PRODUCTION_API_URL;
+        }
+    } catch {
+        return value;
+    }
+    return value;
+};
+
 export const getApiUrl = (): string | undefined => {
     // Priority 1: Environment variable (standard for Vite)
     const envUrl = import.meta.env.VITE_API_URL;
     if (envUrl) {
         const reason = getRejectedApiUrlReason(envUrl);
         if (!reason) {
-            return envUrl;
+            return normalizeApiUrl(envUrl);
         }
         console.error(
             reason === 'unsafe-port'
@@ -143,7 +158,7 @@ export const getApiUrl = (): string | undefined => {
     if (altEnvUrl) {
         const reason = getRejectedApiUrlReason(altEnvUrl);
         if (!reason) {
-            return altEnvUrl;
+            return normalizeApiUrl(altEnvUrl);
         }
         console.error(
             reason === 'unsafe-port'
