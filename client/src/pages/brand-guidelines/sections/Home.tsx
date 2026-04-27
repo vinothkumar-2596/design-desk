@@ -268,10 +268,10 @@ export default function Home() {
               </div>
             </Link>
 
-            {/* Anniversary accent card */}
+            {/* Brand story accent card */}
             <Link
               to="/brand-guidelines/overview"
-              className="brand-hero-card brand-hero-card--float-alt brand-hero-card-shell group col-span-5 row-span-5 col-start-8 row-start-1 relative flex flex-col items-center justify-center overflow-hidden rounded-[14px] text-center outline-none"
+              className="brand-hero-card brand-hero-card--float-alt brand-hero-card-shell group col-span-5 row-span-5 col-start-8 row-start-1 relative flex flex-col overflow-hidden rounded-[14px] outline-none"
               style={{
                 animationDelay: '220ms',
                 background: 'var(--smvec-blue)',
@@ -279,30 +279,32 @@ export default function Home() {
                   'translate3d(calc(var(--brand-px) * 12px), calc(var(--brand-py) * 12px), 0)',
               }}
             >
-              <span className="inline-flex items-start">
-                <span
-                  className="leading-[0.85]"
-                  style={{
-                    fontFamily: 'var(--font-script)',
-                    fontSize: 96,
-                    color: '#fff',
-                    letterSpacing: '-0.02em',
-                  }}
-                >
-                  26
-                </span>
-                <span className="ml-2 mt-2 inline-flex flex-col items-start">
-                  <span
-                    className="text-[11px] font-semibold uppercase"
-                    style={{ letterSpacing: '0.2em', lineHeight: 1, color: 'rgba(255,255,255,0.9)' }}
-                  >
-                    Years
+              <span
+                className="pointer-events-none absolute left-6 right-6 top-6 h-px origin-left scale-x-0 bg-white/12 transition-transform duration-500 group-hover:scale-x-100"
+                aria-hidden="true"
+              />
+              <span
+                className="pointer-events-none absolute bottom-9 left-6 h-px w-12 bg-[var(--smvec-gold)] opacity-80"
+                aria-hidden="true"
+              />
+              <span className="flex flex-1 items-center px-8">
+                <span className="relative block max-w-[10rem] text-left">
+                  <span className="mb-5 block h-[3px] w-12 bg-[var(--smvec-gold)] transition-all duration-300 group-hover:w-20" />
+                  <span className="block text-[11px] font-semibold uppercase tracking-[0.28em] text-white/55">
+                    Brand story
                   </span>
                   <span
-                    className="mt-1.5 inline-block h-[3px] w-9"
-                    style={{ background: 'var(--smvec-gold)' }}
-                  />
+                    className="mt-2 block text-[30px] leading-[1.05] text-white"
+                    style={{ fontFamily: 'var(--font-display)', fontWeight: 500 }}
+                  >
+                    Minimal,
+                    <br />
+                    powerful.
+                  </span>
                 </span>
+              </span>
+              <span className="absolute left-6 bottom-4 max-w-[8.5rem] text-left text-[9.5px] font-medium uppercase tracking-[0.18em] text-white/35">
+                Restraint creates recall
               </span>
               <span
                 className="absolute bottom-3 right-4 inline-flex items-center gap-1 text-[10.5px] font-medium text-white/50 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-white/80"
