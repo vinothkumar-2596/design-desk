@@ -23,7 +23,10 @@
       "Bash(git checkout *)",
       "Bash(node --input-type=module)",
       "Bash(node --input-type=module --eval ' *)",
-      "Bash(node --check routes/ai.js)"
+      "Bash(node --check routes/ai.js)",
+      "Bash(gcloud auth *)",
+      "Bash(gcloud config *)",
+      "Read(//c/Program Files \\(x86\\)/Google/Cloud SDK/google-cloud-sdk/**)"
     ]
   }
 }
