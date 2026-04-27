@@ -4,6 +4,7 @@
  */
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+const PRODUCTION_API_URL = 'https://design-desk-backend-954949883882.asia-south1.run.app';
 const UNSAFE_BROWSER_PORTS = new Set([
     '1',
     '7',
@@ -160,7 +161,7 @@ export const getApiUrl = (): string | undefined => {
         }
     }
 
-    return undefined;
+    return PRODUCTION_API_URL;
 };
 
 export const API_URL = getApiUrl();

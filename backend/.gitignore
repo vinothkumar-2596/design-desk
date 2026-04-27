@@ -5,6 +5,8 @@ node_modules/
 
 cloudrun.env
 cloudrun.env.local
+cloudrun.yaml
+cloudrun.yaml.local
 
 # Credentials
 credentials/
