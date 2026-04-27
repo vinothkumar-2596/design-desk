@@ -268,7 +268,7 @@ export default function Home() {
               </div>
             </Link>
 
-            {/* Brand story accent card */}
+            {/* Design principle card */}
             <Link
               to="/brand-guidelines/overview"
               className="brand-hero-card brand-hero-card--float-alt brand-hero-card-shell group col-span-5 row-span-5 col-start-8 row-start-1 relative flex flex-col overflow-hidden rounded-[14px] outline-none"
@@ -279,32 +279,33 @@ export default function Home() {
                   'translate3d(calc(var(--brand-px) * 12px), calc(var(--brand-py) * 12px), 0)',
               }}
             >
-              <span
-                className="pointer-events-none absolute left-6 right-6 top-6 h-px origin-left scale-x-0 bg-white/12 transition-transform duration-500 group-hover:scale-x-100"
-                aria-hidden="true"
-              />
-              <span
-                className="pointer-events-none absolute bottom-9 left-6 h-px w-12 bg-[var(--smvec-gold)] opacity-80"
-                aria-hidden="true"
-              />
-              <span className="flex flex-1 items-center px-8">
-                <span className="relative block max-w-[10rem] text-left">
-                  <span className="mb-5 block h-[3px] w-12 bg-[var(--smvec-gold)] transition-all duration-300 group-hover:w-20" />
-                  <span className="block text-[11px] font-semibold uppercase tracking-[0.28em] text-white/55">
-                    Brand story
+              <span className="pointer-events-none absolute inset-0" aria-hidden="true">
+                <span className="absolute left-8 top-8 h-[3px] w-14 bg-[var(--smvec-gold)]" />
+                <span className="absolute right-7 top-8 h-px w-14 bg-white/12" />
+                <span className="absolute bottom-11 left-8 h-px w-16 bg-white/12" />
+                <span className="absolute bottom-8 left-8 h-px w-24 bg-white/12" />
+              </span>
+              <span className="flex flex-1 items-center px-8 pt-4">
+                <span className="relative block max-w-[10.5rem] text-left">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.28em] text-white/48">
+                    Principle
                   </span>
                   <span
-                    className="mt-2 block text-[30px] leading-[1.05] text-white"
-                    style={{ fontFamily: 'var(--font-display)', fontWeight: 500 }}
+                    className="mt-2 block text-[28px] leading-[1.04] text-white"
+                    style={{ fontFamily: 'var(--font-display)', fontWeight: 600 }}
                   >
-                    Minimal,
+                    One clear
                     <br />
-                    powerful.
+                    focal point.
+                  </span>
+                  <span className="mt-4 block h-[3px] w-10 bg-[var(--smvec-gold)] transition-all duration-300 group-hover:w-16" />
+                  <span className="mt-3 block text-[11px] leading-[1.55] text-white/58">
+                    Remove anything that does not strengthen recognition, hierarchy, or action.
                   </span>
                 </span>
               </span>
-              <span className="absolute left-6 bottom-4 max-w-[8.5rem] text-left text-[9.5px] font-medium uppercase tracking-[0.18em] text-white/35">
-                Restraint creates recall
+              <span className="absolute left-8 bottom-4 text-left text-[9px] font-semibold uppercase tracking-[0.2em] text-white/32">
+                Clarity over decoration
               </span>
               <span
                 className="absolute bottom-3 right-4 inline-flex items-center gap-1 text-[10.5px] font-medium text-white/50 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-white/80"
