@@ -1,7 +1,7 @@
 ﻿import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { createPortal } from 'react-dom';
-import { Sparkles, Upload, X, Loader2, CheckCircle2, AlertTriangle, XCircle, Info, ChevronDown, ChevronUp, FileImage, Download, ChevronRight } from 'lucide-react';
+import { Sparkles, Upload, X, Loader2, CheckCircle2, AlertTriangle, XCircle, Info, ChevronDown, ChevronUp, FileImage, Download, ChevronRight, ShieldCheck, WandSparkles } from 'lucide-react';
 import { API_URL, authFetch } from '@/lib/api';
 
 const TUTORIAL_KEY = 'brand-review-tutorial-v1';
@@ -885,12 +885,26 @@ export default function Review() {
       </header>
 
       {/* Mode toggle */}
-      <div className="mb-6 inline-flex rounded-[10px] border p-1" style={{ borderColor: 'var(--border)', background: 'var(--bg-2)' }}>
+      <div
+        className="mb-6 inline-grid w-full max-w-[430px] grid-cols-2 gap-1 rounded-[14px] border p-1.5"
+        style={{
+          borderColor: isDark ? 'rgba(168,178,220,0.16)' : 'rgba(54,66,155,0.13)',
+          background: isDark
+            ? 'linear-gradient(180deg, rgba(22,32,66,0.92), rgba(15,23,42,0.86))'
+            : 'linear-gradient(180deg, #F7F9FF 0%, #F0F4FE 100%)',
+          boxShadow: isDark
+            ? 'inset 0 1px 0 rgba(255,255,255,0.06)'
+            : 'inset 0 1px 0 rgba(255,255,255,0.95), 0 1px 2px rgba(30,41,59,0.04)',
+        }}
+        role="tablist"
+        aria-label="Review mode"
+      >
         {([
           {
             value: 'brand',
             label: 'Brand Compliance',
             sub: 'vs SMVEC guidelines',
+            icon: ShieldCheck,
             tooltipTitle: 'SMVEC Brand Audit',
             tooltipPoints: ['Logo placement & proportions', 'Royal Blue & Gold palette', 'Typography standards', 'Institutional identity score'],
             tooltipScore: '100-pt score · Approval status',
@@ -899,23 +913,51 @@ export default function Review() {
             value: 'critique',
             label: 'Design Critique',
             sub: 'universal principles',
+            icon: WandSparkles,
             tooltipTitle: '8-Framework Evaluation',
             tooltipPoints: ['Visual hierarchy & grid', 'Typography & colour theory', 'Readability & contrast', 'Institutional tone & impact'],
             tooltipScore: '100-pt score · Brand-neutral',
           },
-        ] as const).map(opt => (
+        ] as const).map(opt => {
+          const Icon = opt.icon;
+          const active = mode === opt.value;
+          return (
           <button
             key={opt.value}
             onClick={() => { setMode(opt.value); setResult(null); setCritiqueResult(null); setError(null); }}
-            className="group relative flex flex-col items-start rounded-[7px] px-4 py-2.5 text-left transition-colors"
+            className="group relative flex min-h-[62px] items-center gap-3 rounded-[11px] px-4 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--smvec-blue)] focus-visible:ring-offset-2"
+            role="tab"
+            aria-selected={active}
             style={{
-              background: mode === opt.value ? (isDark ? '#1A2342' : 'var(--bg-1)') : 'transparent',
-              boxShadow: mode === opt.value ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-              border: mode === opt.value ? '1px solid var(--border)' : '1px solid transparent',
+              background: active
+                ? (isDark ? 'linear-gradient(180deg, #223064 0%, #18234A 100%)' : 'linear-gradient(135deg, #FFFFFF 0%, #FBFCFF 55%, #F4F7FF 100%)')
+                : 'transparent',
+              boxShadow: active
+                ? (isDark ? '0 4px 14px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.08)' : '0 4px 14px rgba(30,41,89,0.07), inset 0 1px 0 rgba(255,255,255,0.95)')
+                : 'none',
+              border: active
+                ? '1px solid transparent'
+                : '1px solid transparent',
             }}
           >
-            <span className="text-[12.5px] font-semibold" style={{ color: mode === opt.value ? 'var(--smvec-blue)' : 'var(--fg-3)' }}>{opt.label}</span>
-            <span className="text-[10.5px]" style={{ color: 'var(--fg-3)' }}>{opt.sub}</span>
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] transition-all duration-200"
+              style={{
+                background: active
+                  ? (isDark ? 'linear-gradient(135deg, rgba(219,163,40,0.22), rgba(54,66,155,0.34))' : 'linear-gradient(135deg, var(--smvec-blue), #4B57B5)')
+                  : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(54,66,155,0.06)'),
+                color: active ? '#FFFFFF' : (isDark ? '#A8B2DC' : 'var(--smvec-blue)'),
+                boxShadow: active
+                  ? (isDark ? 'inset 0 1px 0 rgba(255,255,255,0.12)' : '0 5px 12px rgba(54,66,155,0.18), inset 0 1px 0 rgba(255,255,255,0.18)')
+                  : 'none',
+              }}
+            >
+              <Icon className="h-4 w-4" strokeWidth={2.1} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[12.5px] font-bold leading-4" style={{ color: active ? (isDark ? '#FFFFFF' : '#18256F') : 'var(--fg-2)' }}>{opt.label}</span>
+              <span className="mt-0.5 block text-[10.5px] leading-4" style={{ color: active ? (isDark ? '#A8B2DC' : '#657195') : 'var(--fg-3)' }}>{opt.sub}</span>
+            </span>
             {/* Hover tooltip */}
             <span
               className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-max max-w-[190px] rounded-[5px] border px-2.5 py-1.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
@@ -925,7 +967,8 @@ export default function Review() {
               <span className="block text-[10.5px] leading-snug" style={{ color: 'var(--fg-3)' }}>{opt.tooltipScore}</span>
             </span>
           </button>
-        ))}
+          );
+        })}
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[1fr_340px]">

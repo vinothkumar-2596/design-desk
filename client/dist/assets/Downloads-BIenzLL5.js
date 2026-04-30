@@ -1,4 +1,4 @@
-import{c as j,j as v,a as e,q as x,s as h,t as y,E as d,v as f,w as N,x as b,F as w,D as m,P as D,e as _,T as k,y as A}from"./index-B1PuIa1n.js";import{S as E,b as P,C}from"./BrandGuidelines-DRlkukj9.js";import{downloadColorPaletteJPEG as F}from"./Colors-BqfI3ogE.js";/**
+import{c as j,j as v,a as e,q as x,s as h,t as y,E as d,v as f,w as N,x as b,F as w,D as m,P as D,e as _,T as k,y as A}from"./index-DXTAEjLJ.js";import{S as E,b as P,C}from"./BrandGuidelines-B43eBDBZ.js";import{downloadColorPaletteJPEG as F}from"./Colors-DjrQyJGv.js";/**
  * @license lucide-react v0.462.0 - ISC
  *
  * This source code is licensed under the ISC license.
