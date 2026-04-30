@@ -95,10 +95,14 @@ const getRequestOrigin = (req) => {
 };
 
 const getGoogleRedirectUri = (req) => {
+  const requestOrigin = getRequestOrigin(req);
+  if (isLoopbackOrigin(requestOrigin)) {
+    return new URL("/api/auth/google/callback", requestOrigin).toString();
+  }
   if (process.env.GOOGLE_OAUTH_REDIRECT_URI) {
     return process.env.GOOGLE_OAUTH_REDIRECT_URI;
   }
-  return new URL("/api/auth/google/callback", getRequestOrigin(req)).toString();
+  return new URL("/api/auth/google/callback", requestOrigin).toString();
 };
 
 const normalizeRole = (role) => {
@@ -124,6 +128,15 @@ const normalizeLoopbackHost = (host) => {
     return "localhost";
   }
   return value;
+};
+
+const isLoopbackOrigin = (value) => {
+  try {
+    const parsed = new URL(String(value || ""));
+    return normalizeLoopbackHost(parsed.hostname) === "localhost";
+  } catch {
+    return false;
+  }
 };
 
 const parseOrigin = (value) => {
