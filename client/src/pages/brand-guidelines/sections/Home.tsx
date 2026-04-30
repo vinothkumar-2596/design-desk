@@ -79,18 +79,18 @@ export default function Home() {
   };
 
   return (
-    <div className="space-y-14">
-      <section className="space-y-8 pt-10 lg:pt-16">
+    <div className="space-y-14 overflow-hidden sm:overflow-visible">
+      <section className="space-y-8 pt-8 sm:pt-10 lg:pt-16">
         {/* FULL-WIDTH HEADLINE */}
-        <div className="brand-hero-card" style={{ animationDelay: '60ms' }}>
-          <div className="flex items-center gap-3">
+        <div className="brand-hero-card min-w-0" style={{ animationDelay: '60ms' }}>
+          <div className="flex min-w-0 items-center gap-3">
             <span
               aria-hidden="true"
-              className="h-[2px] w-7"
+              className="h-[2px] w-7 shrink-0"
               style={{ background: isDark ? 'rgba(255,255,255,0.22)' : 'var(--smvec-gold)' }}
             />
             <p
-              className="text-[10.5px] font-semibold uppercase tracking-[0.32em]"
+              className="min-w-0 text-[10px] font-semibold uppercase tracking-[0.22em] sm:text-[10.5px] sm:tracking-[0.32em]"
               style={{ color: isDark ? 'rgba(255,255,255,0.45)' : 'var(--smvec-blue)', fontFamily: 'var(--font-display)' }}
             >
               SMVEC · Brand Reference
@@ -98,7 +98,7 @@ export default function Home() {
           </div>
 
           <h1
-            className="mt-6 leading-[1.04] tracking-[-0.025em]"
+            className="mt-6 max-w-full text-balance leading-[1.04] tracking-[-0.025em]"
             style={{
               fontFamily: 'var(--font-display)',
               fontSize: 'clamp(33px, 4.8vw, 63px)',
@@ -107,10 +107,10 @@ export default function Home() {
             }}
           >
             <span className="block">The official system for</span>
-            <span className="block">
+            <span className="block min-w-0">
               SMVEC{' '}
               <span
-                className="brand-phrase"
+                className="brand-phrase max-w-full break-words"
                 data-phase={phrasePhase}
                 style={{ color: isDark ? 'var(--smvec-gold)' : 'var(--smvec-blue)' }}
               >
@@ -124,20 +124,20 @@ export default function Home() {
         </div>
 
         {/* GRID: LEFT body+CTAs · RIGHT showcase */}
-        <div className="grid items-start gap-12 lg:grid-cols-[0.95fr,1.05fr] lg:gap-20">
-          <div className="brand-hero-card" style={{ animationDelay: '160ms' }}>
+        <div className="grid min-w-0 items-start gap-10 lg:grid-cols-[0.95fr,1.05fr] lg:gap-20">
+          <div className="brand-hero-card min-w-0" style={{ animationDelay: '160ms' }}>
             <p
-              className="max-w-[34rem] text-[16px] leading-[1.7]"
+              className="max-w-full text-[15px] leading-[1.7] sm:max-w-[34rem] sm:text-[16px]"
               style={{ color: 'var(--fg-2)' }}
             >
               Ensuring every communication reflects consistent quality, clarity, and a unified
               SMVEC brand identity across print, digital, events, and institutional touchpoints.
             </p>
 
-            <div className="mt-8 grid max-w-[32rem] grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="mt-8 grid max-w-full grid-cols-1 gap-3 sm:max-w-[32rem] sm:grid-cols-2">
               <Link
                 to="/brand-guidelines/downloads"
-                className="group inline-flex h-12 w-full items-center justify-center gap-3 whitespace-nowrap rounded-[6px] px-5 text-[13.5px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_24px_-14px_rgba(54,66,155,0.55)] outline-none transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_16px_32px_-14px_rgba(54,66,155,0.65)] focus-visible:ring-2 focus-visible:ring-[var(--smvec-blue-300)] focus-visible:ring-offset-2 active:translate-y-0"
+                className="group inline-flex h-12 w-full min-w-0 items-center justify-center gap-3 rounded-[6px] px-4 text-center text-[13.5px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_24px_-14px_rgba(54,66,155,0.55)] outline-none transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_16px_32px_-14px_rgba(54,66,155,0.65)] focus-visible:ring-2 focus-visible:ring-[var(--smvec-blue-300)] focus-visible:ring-offset-2 active:translate-y-0 sm:whitespace-nowrap sm:px-5"
                 style={{ background: 'var(--smvec-blue)' }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.background = 'var(--smvec-blue-800)';
@@ -151,7 +151,7 @@ export default function Home() {
               </Link>
               <Link
                 to="/brand-guidelines/review"
-                className="ai-beam-btn group inline-flex h-12 w-full items-center justify-center gap-2.5 whitespace-nowrap rounded-[6px] border px-5 text-[13.5px] font-semibold outline-none transition-all duration-200 hover:-translate-y-[1px] focus-visible:ring-2 focus-visible:ring-[var(--smvec-blue-300)] focus-visible:ring-offset-2 active:translate-y-0"
+                className="ai-beam-btn group inline-flex h-12 w-full min-w-0 items-center justify-center gap-2.5 rounded-[6px] border px-4 text-center text-[13.5px] font-semibold outline-none transition-all duration-200 hover:-translate-y-[1px] focus-visible:ring-2 focus-visible:ring-[var(--smvec-blue-300)] focus-visible:ring-offset-2 active:translate-y-0 sm:whitespace-nowrap sm:px-5"
                 style={{ borderColor: 'transparent', color: isDark ? '#fff' : 'var(--smvec-blue)' }}
               >
                 <Sparkles className="ai-review-btn__icon h-4 w-4 shrink-0 text-[#DBA328]" strokeWidth={2} />
@@ -169,9 +169,9 @@ export default function Home() {
             </Link>
 
             {/* Brand version status */}
-            <div className="mt-20 max-w-[32rem]">
+            <div className="mt-14 max-w-full sm:mt-20 sm:max-w-[32rem]">
               <div
-                className="flex items-center gap-3 rounded-[10px] border px-4 py-3"
+                className="flex min-w-0 items-center gap-3 rounded-[10px] border px-4 py-3"
                 style={{ borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'var(--smvec-blue-100)', background: 'var(--bg-1)' }}
               >
                 <span
@@ -210,7 +210,7 @@ export default function Home() {
           ref={stageRef}
           onMouseMove={handleStageMove}
           onMouseLeave={handleStageLeave}
-          className="brand-hero-stage relative isolate lg:mt-12"
+          className="brand-hero-stage relative isolate min-w-0 lg:mt-12"
           style={{ ['--brand-px' as const]: '0', ['--brand-py' as const]: '0' }}
         >
           <div

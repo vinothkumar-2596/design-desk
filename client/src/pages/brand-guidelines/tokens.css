@@ -626,6 +626,37 @@ html:has(.brand-root)::-webkit-scrollbar {
 }
 
 @media (max-width: 768px) {
+  .brand-root {
+    overflow-x: clip;
+  }
+
+  .brand-hero-stage {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .brand-hero-stage > .relative.grid {
+    display: flex;
+    min-height: 0;
+    aspect-ratio: auto;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .brand-hero-stage .brand-hero-card-shell {
+    min-height: 176px;
+    transform: none !important;
+  }
+
+  .brand-hero-stage .brand-hero-card-shell:hover {
+    transform: none !important;
+  }
+
+  .brand-phrase {
+    display: inline;
+    overflow-wrap: anywhere;
+  }
+
   .brand-card {
     padding: 32px 24px 40px;
   }

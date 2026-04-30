@@ -4,9 +4,9 @@
  */
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
-const PRODUCTION_API_URL = 'https://design-desk-backend-954949883882.asia-south1.run.app';
+const PRODUCTION_API_URL = 'https://designdesk-backend-954949883882.asia-south1.run.app';
 const DEPRECATED_PRODUCTION_API_HOSTS = new Set([
-    'designdesk-backend-954949883882.asia-south1.run.app',
+    'design-desk-backend-954949883882.asia-south1.run.app',
 ]);
 const UNSAFE_BROWSER_PORTS = new Set([
     '1',
