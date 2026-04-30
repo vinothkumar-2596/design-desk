@@ -62,6 +62,14 @@ const normalizeGoogleAuthError = (value: unknown) => {
   return value.trim();
 };
 
+const getResponseErrorMessage = async (response: Response, fallback: string) => {
+  const data = await response.json().catch(() => null);
+  if (data && typeof data.error === 'string' && data.error.trim()) {
+    return data.error.trim();
+  }
+  return fallback;
+};
+
 const emitGoogleAuthError = (message: unknown) => {
   if (typeof window === 'undefined') return;
   const normalizedMessage = normalizeGoogleAuthError(message) || 'Google sign-in failed.';
@@ -302,13 +310,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role,
       origin: window.location.origin,
     });
-    const response = await fetch(`${API_URL}/api/auth/google/start?${query.toString()}`);
-    if (!response.ok) {
-      throw new Error('Google login not configured');
+    let response: Response;
+    try {
+      response = await fetch(`${API_URL}/api/auth/google/start?${query.toString()}`);
+    } catch {
+      throw new Error(
+        `Unable to reach the auth server at ${API_URL}. Start the backend or update VITE_API_URL.`
+      );
     }
-    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        await getResponseErrorMessage(response, 'Google sign-in could not be started.')
+      );
+    }
+    const data = await response.json().catch(() => null);
     if (!data?.url) {
-      throw new Error('Google login not configured');
+      throw new Error('Google sign-in URL is missing.');
     }
     localStorage.setItem(ROLE_KEY, role);
     const width = 520;

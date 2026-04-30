@@ -283,7 +283,12 @@ export default function Login() {
       }
       await loginWithGoogle(role);
     } catch (error) {
-      toast.error('Google login failed');
+      toast.error('Google login failed', {
+        description:
+          error instanceof Error && error.message.trim()
+            ? error.message.trim()
+            : 'Google sign-in could not be started.',
+      });
     }
   };
 
