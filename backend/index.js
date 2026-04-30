@@ -35,19 +35,37 @@ app.use((req, res, next) => {
   next();
 });
 
+const allowedOrigins = new Set([
+  process.env.FRONTEND_URL,
+  "http://localhost:5173",
+  "http://localhost:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:8080",
+  "http://127.0.0.1:8081"
+].filter(Boolean));
+
+const isLocalDevOrigin = (origin) => {
+  if (!origin) return true;
+  try {
+    const parsed = new URL(origin);
+    return ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+};
+
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL,
-    "http://localhost:5173",
-    "http://localhost:8080",
-    "http://localhost:8081",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:8080",
-    "http://127.0.0.1:8081"
-  ].filter(Boolean),
+  origin(origin, callback) {
+    if (allowedOrigins.has(origin) || isLocalDevOrigin(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`Origin not allowed by CORS: ${origin}`));
+  },
   credentials: true,
 }));
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '25mb' }));
 app.use(attachClientMeta);
 
 app.get('/healthz', (req, res) => {
